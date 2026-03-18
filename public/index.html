@@ -28,11 +28,130 @@
             height: 100vh;
         }
 
+        /* ── TERAPİ LAYOUT ── */
+        .therapy-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr auto;
+            gap: 12px;
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            background: #080510;
+        }
+
+        .panel-lyra {
+            grid-column: 1;
+            grid-row: 1;
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            background: #0a0618;
+            box-shadow: 0 0 0 1px rgba(200, 169, 110, 0.15);
+            transition: box-shadow 0.4s ease;
+        }
+
+        .panel-user {
+            grid-column: 2;
+            grid-row: 1;
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            background: #0d0a07;
+            box-shadow: 0 0 0 1px rgba(200, 169, 110, 0.15);
+            transition: box-shadow 0.4s ease;
+        }
+
+        .panel-label {
+            position: absolute;
+            bottom: 12px;
+            left: 16px;
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #user-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .camera-off-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: rgba(255,255,255,0.25);
+            pointer-events: none;
+        }
+        .camera-off-msg span { font-size: 36px; display: block; }
+        .camera-off-msg p { font-size: 12px; margin: 8px 0 0; letter-spacing: 0.1em; text-transform: uppercase; }
+        .camera-off-msg.hidden { display: none; }
+
+        .bottom-controls {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0 8px;
+        }
+
+        .top-bar-inline {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-small span {
+            font-weight: 200;
+            font-size: 14px;
+            letter-spacing: 6px;
+            color: var(--primary);
+            text-transform: uppercase;
+        }
+
+        #transcript-small {
+            font-size: 13px;
+            color: rgba(255,255,255,0.45);
+            font-style: italic;
+            max-width: 600px;
+            text-align: center;
+            min-height: 18px;
+        }
+
+        .controls-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            pointer-events: all;
+        }
+
         #canvas-container {
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
             z-index: 1;
+        }
+
+        @media (max-width: 767px) {
+            .therapy-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr auto;
+                padding: 12px;
+                gap: 8px;
+            }
+            .panel-lyra  { grid-column: 1; grid-row: 1; }
+            .panel-user  { grid-column: 1; grid-row: 2; }
+            .bottom-controls { grid-row: 3; }
         }
 
         /* ── LOADER ── */
@@ -177,31 +296,35 @@
             background: rgba(200, 112, 96, 0.15);
         }
 
-        /* Camera widget */
-        #camera-widget {
-            position: absolute;
-            bottom: 40px; right: 40px;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 14px;
-            pointer-events: auto;
+        /* ── GLOW ÇERÇEVE ── */
+        @keyframes glow-lyra {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 2px rgba(140, 100, 255, 0.6),
+                    0 0 20px 4px rgba(100, 80, 220, 0.3);
+            }
+            50% {
+                box-shadow:
+                    0 0 0 3px rgba(160, 120, 255, 0.9),
+                    0 0 40px 10px rgba(120, 90, 240, 0.5);
+            }
         }
 
-        #camera-preview {
-            width: 200px; height: 150px;
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            object-fit: cover;
-            opacity: 0; visibility: hidden;
-            transform: scale(0.9) translateY(10px);
-            transition: all 0.5s ease;
+        @keyframes glow-user {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 2px rgba(180, 255, 180, 0.5),
+                    0 0 20px 4px rgba(100, 200, 100, 0.25);
+            }
+            50% {
+                box-shadow:
+                    0 0 0 3px rgba(200, 255, 200, 0.85),
+                    0 0 40px 10px rgba(120, 220, 120, 0.4);
+            }
         }
 
-        #camera-preview.active {
-            opacity: 1; visibility: visible;
-            transform: scale(1) translateY(0);
-        }
+        .panel-lyra.speaking { animation: glow-lyra 1.4s ease-in-out infinite; }
+        .panel-user.speaking  { animation: glow-user 1.4s ease-in-out infinite; }
 
         .camera-btn {
             width: 48px; height: 48px;
@@ -454,18 +577,33 @@
     </div>
 
     <div id="error-toast"></div>
-    <div id="canvas-container"></div>
     <canvas id="hidden-canvas" style="display:none"></canvas>
 
-    <div class="ui-overlay" id="mainUI">
-        <div class="top-bar">
-            <div class="brand"><h1>LYRA</h1></div>
-            <div class="status-badge" id="status">SİSTEM HAZIR</div>
+    <div class="therapy-layout" id="therapyLayout">
+        <!-- Sol panel: Lyra 3D avatar -->
+        <div class="panel-lyra" id="panel-lyra">
+            <div id="canvas-container"></div>
+            <div class="panel-label">Lyra</div>
         </div>
 
-        <div class="interaction-area">
-            <div id="transcript">"Merhaba, bugün nasılsınız? Size nasıl yardımcı olabilirim?"</div>
-            <div class="controls">
+        <!-- Sağ panel: Kullanıcı kamerası -->
+        <div class="panel-user" id="panel-user">
+            <video id="user-video" autoplay muted playsinline></video>
+            <div class="panel-label">Sen</div>
+            <div class="camera-off-msg" id="camera-off-msg">
+                <span>📷</span>
+                <p>Kamera kapalı</p>
+            </div>
+        </div>
+
+        <!-- Alt kontroller -->
+        <div class="bottom-controls">
+            <div class="top-bar-inline">
+                <div class="brand-small"><span>LYRA</span></div>
+                <div class="status-badge" id="status">SİSTEM HAZIR</div>
+            </div>
+            <div id="transcript-small">"Merhaba, bugün nasılsınız?"</div>
+            <div class="controls-row">
                 <div id="mic-indicator">
                     <span style="height:8px"></span>
                     <span style="height:14px"></span>
@@ -474,15 +612,12 @@
                     <span style="height:8px"></span>
                 </div>
                 <button class="main-btn" id="talkBtn">GÖRÜŞMEYİ BAŞLAT</button>
+                <button class="camera-btn" id="camera-toggle" title="Kamera Analizi">📷</button>
             </div>
         </div>
-
-        <div id="camera-widget">
-            <video id="camera-preview" autoplay muted playsinline></video>
-            <div class="status-badge" id="emotion-badge" style="display:none">ANALİZ...</div>
-            <button class="camera-btn" id="camera-toggle" title="Kamera Analizi">📷</button>
-        </div>
     </div>
+
+    <!-- Eski ui-overlay kaldırıldı, transcript ve controls bottom-controls'a taşındı -->
 
     <script type="module">
         import * as THREE from 'three';
@@ -619,7 +754,7 @@
         // ── UI ──
         const talkBtn      = document.getElementById('talkBtn');
         const statusEl     = document.getElementById('status');
-        const transcriptEl = document.getElementById('transcript');
+        const transcriptEl = document.getElementById('transcript-small');
         const loaderOverlay = document.getElementById('loader-overlay');
         const loaderStatus  = document.getElementById('loader-status');
 
@@ -642,65 +777,109 @@
         let fullConversation = "";
 
         // ── CAMERA ──
-        let cameraStream = null, cameraActive = false, emotionInterval = null;
+        let camStream = null, cameraActive = false;
         let currentEmotionState = 'sakin';
         const cameraToggleBtn = document.getElementById('camera-toggle');
-        const cameraPreview   = document.getElementById('camera-preview');
-        const emotionBadge    = document.getElementById('emotion-badge');
-        const hiddenCanvas    = document.getElementById('hidden-canvas');
+        const userVideo        = document.getElementById('user-video');
+        const cameraOffMsg     = document.getElementById('camera-off-msg');
 
-        const EMOTION_EMOJIS = {
-            mutlu:'😊', üzgün:'😢', endişeli:'😰', korkmuş:'😨',
-            sakin:'😌', şaşırmış:'😮', sinirli:'😠', ağlamak_üzere:'😭'
-        };
+        // Adaptif interval
+        let adaptifInterval = 4000;
+        let sonDuygu = null;
+        let ardiArdina = 0;
+        let emotionTimer = null;
+
+        function getBaseInterval(duygu) {
+            if (['sakin', 'mutlu'].includes(duygu))                          return 6000;
+            if (['endişeli', 'üzgün', 'korkmuş', 'sinirli'].includes(duygu)) return 2000;
+            return 4000;
+        }
+
+        function scheduleNextAnalysis() {
+            clearTimeout(emotionTimer);
+            emotionTimer = setTimeout(analyzeEmotion, adaptifInterval);
+        }
 
         async function startCamera() {
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video:{width:320,height:240}, audio:false });
-                cameraPreview.srcObject = cameraStream;
-                cameraPreview.classList.add('active');
-                emotionBadge.style.display = '';
-                emotionBadge.textContent = '🔄 Analiz başlıyor...';
+                camStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+                    audio: false
+                });
+                userVideo.srcObject = camStream;
+                if (cameraOffMsg) cameraOffMsg.classList.add('hidden');
                 cameraActive = true;
                 cameraToggleBtn.classList.add('active');
                 cameraToggleBtn.textContent = '🟢';
-                emotionInterval = setInterval(analyzeEmotion, 5000);
-                setTimeout(analyzeEmotion, 1000);
-            } catch(err) {
+                scheduleNextAnalysis();
+            } catch (err) {
                 console.error('[KAMERA] Erişim reddedildi:', err);
+                // Kamera panelini gizle, Lyra paneli tam genişliğe
+                const panelUser = document.getElementById('panel-user');
+                if (panelUser) panelUser.style.display = 'none';
+                const layout = document.querySelector('.therapy-layout');
+                if (layout) layout.style.gridTemplateColumns = '1fr';
             }
         }
 
         function stopCamera() {
-            if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
-            cameraStream = null; cameraActive = false;
-            clearInterval(emotionInterval);
-            cameraPreview.classList.remove('active');
-            cameraPreview.srcObject = null;
-            emotionBadge.style.display = 'none';
+            if (camStream) camStream.getTracks().forEach(t => t.stop());
+            camStream = null;
+            cameraActive = false;
+            clearTimeout(emotionTimer);
+            emotionTimer = null;
+            adaptifInterval = 4000;
+            sonDuygu = null;
+            ardiArdina = 0;
+            if (userVideo) userVideo.srcObject = null;
+            if (cameraOffMsg) cameraOffMsg.classList.remove('hidden');
             cameraToggleBtn.classList.remove('active');
             cameraToggleBtn.textContent = '📷';
         }
 
         async function analyzeEmotion() {
-            if (!cameraActive || !cameraStream) return;
+            if (!cameraActive || !camStream) {
+                scheduleNextAnalysis();
+                return;
+            }
             try {
-                hiddenCanvas.width = 160; hiddenCanvas.height = 120;
+                const hiddenCanvas = document.getElementById('hidden-canvas');
                 const ctx = hiddenCanvas.getContext('2d');
-                ctx.drawImage(cameraPreview, 0, 0, 160, 120);
-                const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                hiddenCanvas.width = 320;
+                hiddenCanvas.height = 240;
+                ctx.drawImage(userVideo, 0, 0, 320, 240);
+                const imageBase64 = hiddenCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+
                 const resp = await fetch('/analyze-emotion', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ imageBase64: base64, userId: persistentUserId })
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageBase64, userId: persistentUserId, sessionId: null })
                 });
-                const data = await resp.json();
-                if (data.duygu) {
-                    currentEmotionState = data.duygu;
-                    const emoji = EMOTION_EMOJIS[data.duygu] || '🔮';
-                    emotionBadge.textContent = `${emoji} ${data.duygu}`;
+                const result = await resp.json();
+
+                if (!result.yuz_var) {
+                    scheduleNextAnalysis();
+                    return;
                 }
-            } catch(err) { console.warn('[DUYGU]', err.message); }
+
+                currentEmotionState = result.duygu;
+
+                // Adaptif interval güncelle
+                const base = getBaseInterval(result.duygu);
+                if (result.duygu === sonDuygu) {
+                    ardiArdina++;
+                    if (ardiArdina >= 3) adaptifInterval = Math.min(base * 2, 6000);
+                } else {
+                    ardiArdina = 0;
+                    adaptifInterval = base;
+                }
+                sonDuygu = result.duygu;
+
+                console.log(`[DUYGU UI] ${result.duygu} | yogunluk:${result.yogunluk} | interval:${adaptifInterval}ms`);
+            } catch (err) {
+                console.warn('[DUYGU]', err.message);
+            }
+            scheduleNextAnalysis();
         }
 
         cameraToggleBtn.addEventListener('click', () => { cameraActive ? stopCamera() : startCamera(); });
@@ -745,12 +924,16 @@
         function initScene() {
             scene = new THREE.Scene();
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const panelLyra = document.getElementById('panel-lyra');
+            const panelW = panelLyra ? panelLyra.clientWidth  : window.innerWidth / 2;
+            const panelH = panelLyra ? panelLyra.clientHeight : window.innerHeight;
+
+            camera = new THREE.PerspectiveCamera(50, panelW / panelH, 0.1, 1000);
             // Başlangıç pozisyonu — room yüklenince güncellenecek
             camera.position.set(0, 1.2, 5);
 
             renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:"high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(panelW, panelH);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1098,10 +1281,13 @@
         }
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const pl = document.getElementById('panel-lyra');
+            const w = pl ? pl.clientWidth  : window.innerWidth / 2;
+            const h = pl ? pl.clientHeight : window.innerHeight;
+            camera.aspect = w / h;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(w, h);
+            if (composer) composer.setSize(w, h);
         });
 
         // ── VAPI EVENTS ──
@@ -1120,6 +1306,10 @@
             });
         });
 
+        // Glow panel referansları
+        const panelLyraEl = document.getElementById('panel-lyra');
+        const panelUserEl = document.getElementById('panel-user');
+
         vapiInstance.on('call-start', () => {
             isCallActive = true;
             fullConversation = "";
@@ -1131,6 +1321,15 @@
             setCamera('close', 1800);
         });
 
+        vapiInstance.on('speech-start', () => {
+            if (panelLyraEl) panelLyraEl.classList.add('speaking');
+            if (panelUserEl) panelUserEl.classList.remove('speaking');
+        });
+
+        vapiInstance.on('speech-end', () => {
+            if (panelLyraEl) panelLyraEl.classList.remove('speaking');
+        });
+
         vapiInstance.on('call-end', async () => {
             isCallActive = false;
             statusEl.textContent = "SİSTEM HAZIR";
@@ -1139,6 +1338,8 @@
             talkBtn.classList.remove('active');
             document.getElementById('mic-indicator').classList.remove('active');
             targetVolume = 0;
+            if (panelLyraEl) panelLyraEl.classList.remove('speaking');
+            if (panelUserEl) panelUserEl.classList.remove('speaking');
             setCamera('normal', 2000);
 
             console.log('[MEMORY] call-end fired. userId:', persistentUserId, 'transcript length:', fullConversation.length);
@@ -1158,7 +1359,16 @@
             }
         });
 
-        vapiInstance.on('volume-level', vol => { targetVolume = vol; });
+        vapiInstance.on('volume-level', vol => {
+            targetVolume = vol;
+            if (panelUserEl) {
+                if (vol > 0.05) {
+                    panelUserEl.classList.add('speaking');
+                } else {
+                    panelUserEl.classList.remove('speaking');
+                }
+            }
+        });
 
         vapiInstance.on('message', (message) => {
             // Vapi'nin end-of-call-report mesajından transcript al
