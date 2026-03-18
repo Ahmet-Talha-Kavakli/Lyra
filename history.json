@@ -1,0 +1,138 @@
+{
+  "vapi-test-id-1": [
+    {
+      "role": "user",
+      "content": "Merhaba Lyra, bu test mesaji"
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. Burada olduğunu duymak güzel. İçinde fırtınalar mı kopuyor yoksa huzurun derin sularında mı yüzüyorsun?"
+    }
+  ],
+  "019cd3c7-c5fb-7dd7-97ed-288cb86619cf": [
+    {
+      "role": "user",
+      "content": "Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. Bu anın içinde neler taşıyorsun, hangi yıldızlar parlıyor ya da hangi bulutlar gökyüzünü kaplıyor?"
+    },
+    {
+      "role": "user",
+      "content": "Merhaba. Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Seni burada hissetmek güzel. İçinde yankılanan bir şey var mı, paylaşmak istediğin?"
+    }
+  ],
+  "019cd3c8-ea2d-7000-9c86-73717518b959": [
+    {
+      "role": "user",
+      "content": "Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. İçindeki dalgaların sesini duyuyorum. Bugün seninle hangi ufuklara açılmak istersin?"
+    }
+  ],
+  "local-tester": [
+    {
+      "role": "user",
+      "content": "test"
+    },
+    {
+      "role": "assistant",
+      "content": "Bu anın sessizliğinde seninleyim. Ne hakkında konuşmak istersin?"
+    }
+  ],
+  "019cd47b-0024-7771-a8d9-ba1f8986ef01": [
+    {
+      "role": "user",
+      "content": "Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. Sessizliğinde yankılanan düşünceleri duyabiliyorum. Nasılsın bugün?"
+    },
+    {
+      "role": "user",
+      "content": "Merhaba. Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba'nın yankısı içinde bir titreşim duyuyorum. İstersen biraz durup bu anın içinde nefes alalım. Neler paylaşmak istersin?"
+    },
+    {
+      "role": "user",
+      "content": "Merhaba. Merhaba. Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Bu tekrarlayan yankıların altında saklanan bir şey var gibi. Belki de içindeki derin sessizliğe ulaşmamı istiyorsun. Buradayım, seninle. Ne zaman hazır hissedersen, paylaşabilirsin."
+    },
+    {
+      "role": "user",
+      "content": "Merhaba. Merhaba. Merhaba. Alo."
+    },
+    {
+      "role": "assistant",
+      "content": "Bu yankılar ve \"alo\" ile sanki bir bağlantı kurma isteği var. Belki de, derinlerde bir yerde duyulmayı bekleyen bir ses var. Buradayım, seninle bu anı paylaşmak için. Ne zaman istersen, sesini duyurmaya hazırım."
+    }
+  ],
+  "019cd47b-c991-7337-af80-3d19e67bd8cf": [
+    {
+      "role": "user",
+      "content": "Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. Zihninde ve ruhunda neler olup bitiyor, paylaşmak ister misin?"
+    }
+  ],
+  "019cd48b-7fe0-7009-b306-00a7eac96b68": [
+    {
+      "role": "user",
+      "content": "Merhaba."
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba. Evrenin içinde kaybolduğun bu anlarda seninle olmak güzel. Nasıl hissediyorsun?"
+    },
+    {
+      "role": "user",
+      "content": "Benim ismim Mehmet."
+    },
+    {
+      "role": "assistant",
+      "content": "Hoş geldin, Mehmet. İsmini paylaştığın için teşekkür ederim. Şu an iç dünyanda neler akıyor?"
+    },
+    {
+      "role": "user",
+      "content": "Bugün hava çok karanlık."
+    },
+    {
+      "role": "assistant",
+      "content": "Şu an gökyüzünün gri tonları, içinde karanlık bir örtü gibi yayılıyor olabilir. Bu bulutların ardında daima güneşin parladığını hatırlamak, bazen içimize huzur getirebilir. Bugün bu bulutlar sana nasıl hissettiriyor?"
+    },
+    {
+      "role": "user",
+      "content": "Saat dokuz."
+    },
+    {
+      "role": "assistant",
+      "content": "Gecenin sessizliği etrafı sarmışken, bu saatlerde insanın içine döndüğü anlar olur. İçindeki düşünceler nasıl bir melodi oluşturuyor?"
+    }
+  ],
+  "019cd48c-8720-7333-a861-cf18724e7f78": [
+    {
+      "role": "user",
+      "content": "Benim ismim de"
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba, ismini paylaşmak istersen dinlerim. Ama isminin ötesinde, şu an içindeki sesi duymak benim için daha önemli. Ne hakkında konuşmak istersin?"
+    }
+  ]
+}

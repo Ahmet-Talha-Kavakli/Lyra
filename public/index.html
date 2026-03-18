@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lyra</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/20.0.0/tween.umd.js"></script>
+    <style>
+        :root {
+            --primary: #c8a96e;
+            --accent: #e8c99a;
+            --bg: #1a1510;
+            --panel-bg: rgba(20, 15, 10, 0.65);
+            --border: rgba(200, 169, 110, 0.25);
+            --text-color: rgba(240, 230, 210, 0.92);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-color);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        /* ── LOADER ── */
+        #loader-overlay {
+            position: fixed;
+            inset: 0;
+            background: #100d08;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 1.2s ease;
+        }
+
+        .loader-ring {
+            width: 64px; height: 64px;
+            border: 1.5px solid rgba(200, 169, 110, 0.15);
+            border-top: 1.5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1.2s linear infinite;
+            margin-bottom: 24px;
+        }
+
+        #loader-status {
+            letter-spacing: 6px;
+            font-size: 11px;
+            color: var(--primary);
+            text-transform: uppercase;
+            font-weight: 200;
+            opacity: 0.8;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── MAIN UI ── */
+        .ui-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 32px 40px 40px;
+            transition: opacity 0.8s ease;
+        }
+
+        /* Top bar */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            animation: fadeInDown 0.9s ease-out both;
+        }
+
+        .brand h1 {
+            font-weight: 200;
+            letter-spacing: 12px;
+            margin: 0;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-size: 1.8rem;
+            opacity: 0.9;
+        }
+
+        .status-badge {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            padding: 8px 22px;
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            font-size: 10px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--primary);
+        }
+
+        /* Bottom interaction area */
+        .interaction-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            animation: fadeInUp 1s ease-out both;
+            width: 100%;
+        }
+
+        #transcript {
+            background: var(--panel-bg);
+            backdrop-filter: blur(24px);
+            padding: 22px 44px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 780px;
+            text-align: center;
+            font-size: 1.1rem;
+            line-height: 1.65;
+            min-height: 76px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-color);
+        }
+
+        .controls {
+            display: flex;
+            gap: 16px;
+            pointer-events: auto;
+        }
+
+        .main-btn {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            padding: 18px 60px;
+            border-radius: 100px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            font-size: 0.75rem;
+            font-weight: 400;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            backdrop-filter: blur(12px);
+            pointer-events: auto;
+        }
+
+        .main-btn:hover {
+            background: rgba(200, 169, 110, 0.15);
+            border-color: var(--primary);
+            transform: translateY(-4px);
+        }
+
+        .main-btn.active {
+            border-color: #c87060;
+            color: #e8a090;
+        }
+
+        .main-btn.active:hover {
+            background: rgba(200, 112, 96, 0.15);
+        }
+
+        /* Camera widget */
+        #camera-widget {
+            position: absolute;
+            bottom: 40px; right: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 14px;
+            pointer-events: auto;
+        }
+
+        #camera-preview {
+            width: 200px; height: 150px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            object-fit: cover;
+            opacity: 0; visibility: hidden;
+            transform: scale(0.9) translateY(10px);
+            transition: all 0.5s ease;
+        }
+
+        #camera-preview.active {
+            opacity: 1; visibility: visible;
+            transform: scale(1) translateY(0);
+        }
+
+        .camera-btn {
+            width: 48px; height: 48px;
+            border-radius: 14px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            color: var(--primary);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .camera-btn.active {
+            background: rgba(200, 169, 110, 0.2);
+            border-color: var(--primary);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .hidden { display: none !important; }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(200,80,70,0.5); }
+            50%       { box-shadow: 0 0 0 10px rgba(200,80,70,0); }
+        }
+        @keyframes mic-wave {
+            0%, 100% { transform: scaleY(0.4); }
+            50%       { transform: scaleY(1.0); }
+        }
+
+        .status-badge.listening {
+            animation: pulse-red 1.2s ease-in-out infinite;
+            border-color: #c87060;
+            color: #e8a090;
+        }
+
+        #mic-indicator {
+            display: none;
+            align-items: center;
+            gap: 3px;
+            height: 24px;
+        }
+        #mic-indicator.active { display: flex; }
+        #mic-indicator span {
+            display: inline-block;
+            width: 3px;
+            background: var(--primary);
+            border-radius: 2px;
+            animation: mic-wave 0.8s ease-in-out infinite;
+        }
+        #mic-indicator span:nth-child(2) { animation-delay: 0.1s; }
+        #mic-indicator span:nth-child(3) { animation-delay: 0.2s; }
+        #mic-indicator span:nth-child(4) { animation-delay: 0.3s; }
+        #mic-indicator span:nth-child(5) { animation-delay: 0.15s; }
+
+        #loader-bar-wrap {
+            width: 220px;
+            height: 1px;
+            background: rgba(200,169,110,0.15);
+            border-radius: 2px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        #loader-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--primary);
+            border-radius: 2px;
+            transition: width 0.4s ease;
+        }
+
+        #transcript {
+            transition: opacity 0.3s ease;
+        }
+
+        #error-toast {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(180, 60, 50, 0.9);
+            border: 1px solid rgba(220,100,90,0.4);
+            backdrop-filter: blur(12px);
+            color: #ffd4cc;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+        #error-toast.show { opacity: 1; }
+
+        /* ── LOGIN OVERLAY ── */
+        #login-overlay {
+            position: fixed;
+            inset: 0;
+            background: #100d08;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.6s ease;
+        }
+        #login-overlay.hidden { opacity: 0; pointer-events: none; }
+
+        .login-box {
+            width: 340px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 36px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            backdrop-filter: blur(20px);
+        }
+        .login-box h1 {
+            font-size: 2rem;
+            font-weight: 200;
+            letter-spacing: 0.4em;
+            color: var(--primary);
+            margin: 0 0 4px;
+        }
+        .login-box p {
+            font-size: 0.72rem;
+            letter-spacing: 0.15em;
+            color: rgba(200,169,110,0.5);
+            margin: 0 0 8px;
+            text-transform: uppercase;
+        }
+        .login-input {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: var(--text-color);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .login-input:focus { border-color: var(--primary); }
+        .login-input::placeholder { color: rgba(200,169,110,0.3); }
+
+        .remember-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: rgba(200,169,110,0.6);
+            cursor: pointer;
+        }
+        .remember-row input[type="checkbox"] {
+            accent-color: var(--primary);
+            width: 14px; height: 14px;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 13px;
+            background: var(--primary);
+            color: #1a1510;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 4px;
+        }
+        .login-btn:hover { opacity: 0.85; }
+        .login-btn.secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--primary);
+            font-weight: 400;
+            margin-top: 0;
+        }
+        .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #login-error {
+            font-size: 0.78rem;
+            color: #e87060;
+            text-align: center;
+            min-height: 18px;
+            letter-spacing: 0.05em;
+        }
+        .login-divider {
+            width: 100%;
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 4px 0;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+</head>
+
+<body>
+    <!-- ── GİRİŞ EKRANI ── -->
+    <div id="login-overlay">
+        <div class="login-box">
+            <h1>LYRA</h1>
+            <p>Kozmik Rehberinize Bağlanın</p>
+            <input class="login-input" type="email" id="login-email" placeholder="E-posta" autocomplete="email">
+            <input class="login-input" type="password" id="login-password" placeholder="Şifre" autocomplete="current-password">
+            <label class="remember-row">
+                <input type="checkbox" id="remember-me" checked>
+                Beni Hatırla
+            </label>
+            <div id="login-error"></div>
+            <button class="login-btn" id="login-btn">GİRİŞ YAP</button>
+            <hr class="login-divider">
+            <button class="login-btn secondary" id="register-btn">KAYIT OL</button>
+        </div>
+    </div>
+
+    <div id="loader-overlay" style="display:none">
+        <div class="loader-ring"></div>
+        <div id="loader-status">BAŞLATILIYOR...</div>
+        <div id="loader-bar-wrap">
+            <div id="loader-bar"></div>
+        </div>
+    </div>
+
+    <div id="error-toast"></div>
+    <div id="canvas-container"></div>
+    <canvas id="hidden-canvas" style="display:none"></canvas>
+
+    <div class="ui-overlay" id="mainUI">
+        <div class="top-bar">
+            <div class="brand"><h1>LYRA</h1></div>
+            <div class="status-badge" id="status">SİSTEM HAZIR</div>
+        </div>
+
+        <div class="interaction-area">
+            <div id="transcript">"Merhaba, bugün nasılsınız? Size nasıl yardımcı olabilirim?"</div>
+            <div class="controls">
+                <div id="mic-indicator">
+                    <span style="height:8px"></span>
+                    <span style="height:14px"></span>
+                    <span style="height:20px"></span>
+                    <span style="height:14px"></span>
+                    <span style="height:8px"></span>
+                </div>
+                <button class="main-btn" id="talkBtn">GÖRÜŞMEYİ BAŞLAT</button>
+            </div>
+        </div>
+
+        <div id="camera-widget">
+            <video id="camera-preview" autoplay muted playsinline></video>
+            <div class="status-badge" id="emotion-badge" style="display:none">ANALİZ...</div>
+            <button class="camera-btn" id="camera-toggle" title="Kamera Analizi">📷</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import Vapi from "https://esm.sh/@vapi-ai/web";
+
+        // ── SUPABASE AUTH ──
+        let supabaseClient = null;
+        let persistentUserId = null;
+        let supabaseToken = null;
+
+        async function initAuth() {
+            // Config'i backend'den al
+            const cfg = await fetch('/config').then(r => r.json());
+            supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+            // Mevcut oturumu kontrol et
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) {
+                persistentUserId = session.user.id;
+                supabaseToken = session.access_token;
+                hideLoginOverlay();
+            } else {
+                showLoginOverlay();
+            }
+
+            setupLoginHandlers();
+        }
+
+        function showLoginOverlay() {
+            document.getElementById('login-overlay').style.display = 'flex';
+        }
+
+        function hideLoginOverlay() {
+            const el = document.getElementById('login-overlay');
+            el.classList.add('hidden');
+            // Loader'ı göster, sonra login overlay'i kapat
+            const loader = document.getElementById('loader-overlay');
+            loader.style.display = 'flex';
+            setTimeout(() => { el.style.display = 'none'; }, 700);
+        }
+
+        function setupLoginHandlers() {
+            const loginBtn = document.getElementById('login-btn');
+            const registerBtn = document.getElementById('register-btn');
+            const errorEl = document.getElementById('login-error');
+            const rememberMe = document.getElementById('remember-me');
+
+            async function doLogin() {
+                const email = document.getElementById('login-email').value.trim();
+                const password = document.getElementById('login-password').value;
+                errorEl.textContent = '';
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'GİRİŞ YAPILIYOR...';
+
+                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) {
+                    errorEl.textContent = 'Hatalı e-posta veya şifre.';
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'GİRİŞ YAP';
+                    return;
+                }
+
+                persistentUserId = data.user.id;
+                supabaseToken = data.session.access_token;
+
+                if (!rememberMe.checked) {
+                    // Remember me kapalıysa session'ı temizle çıkışta
+                    window._noRemember = true;
+                }
+
+                hideLoginOverlay();
+            }
+
+            loginBtn.addEventListener('click', doLogin);
+            document.getElementById('login-password').addEventListener('keydown', e => {
+                if (e.key === 'Enter') doLogin();
+            });
+
+            registerBtn.addEventListener('click', async () => {
+                const email = document.getElementById('login-email').value.trim();
+                const password = document.getElementById('login-password').value;
+                errorEl.textContent = '';
+                registerBtn.disabled = true;
+                registerBtn.textContent = 'KAYIT YAPILIYOR...';
+
+                const { data, error } = await supabaseClient.auth.signUp({ email, password });
+                if (error) {
+                    errorEl.textContent = error.message;
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'KAYIT OL';
+                    return;
+                }
+
+                if (data.user && data.session) {
+                    persistentUserId = data.user.id;
+                    supabaseToken = data.session.access_token;
+                    hideLoginOverlay();
+                } else {
+                    errorEl.textContent = 'E-posta doğrulama gerekiyor, lütfen e-postanı kontrol et.';
+                    registerBtn.disabled = false;
+                    registerBtn.textContent = 'KAYIT OL';
+                }
+            });
+        }
+
+        // Auth bittikten sonra sahneyi başlat
+        initAuth().then(() => {
+            // loader-overlay başlangıçta gizli — auth geçtikten sonra initScene çağrılacak
+            // hideLoginOverlay içinde initScene tetiklenir (MutationObserver ile)
+            const loginOverlay = document.getElementById('login-overlay');
+            const observer = new MutationObserver(() => {
+                if (loginOverlay.style.display === 'none' && persistentUserId) {
+                    observer.disconnect();
+                    initScene();
+                }
+            });
+            observer.observe(loginOverlay, { attributes: true, attributeFilter: ['style'] });
+
+            // Eğer zaten giriş yapılmışsa (session var), overlay zaten gizlendi
+            if (loginOverlay.style.display === 'none' && persistentUserId) {
+                initScene();
+            }
+        });
+
+        // ── VAPI ──
+        const VAPI_PUBLIC_KEY    = "2bd1acf3-d1eb-423e-9e31-23418fe111d4";
+        const VAPI_ASSISTANT_ID  = "25ef33ad-0459-4057-841f-ea222bdfa126";
+        const vapiInstance = new Vapi(VAPI_PUBLIC_KEY);
+
+        // ── UI ──
+        const talkBtn      = document.getElementById('talkBtn');
+        const statusEl     = document.getElementById('status');
+        const transcriptEl = document.getElementById('transcript');
+        const loaderOverlay = document.getElementById('loader-overlay');
+        const loaderStatus  = document.getElementById('loader-status');
+
+        // ── PROGRESS & ERRORS ──
+        const loaderBar = document.getElementById('loader-bar');
+        function setProgress(pct, label) {
+            if (loaderBar) loaderBar.style.width = pct + '%';
+            if (loaderStatus && label) loaderStatus.textContent = label;
+        }
+
+        function showError(msg) {
+            const t = document.getElementById('error-toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 4000);
+        }
+
+        let isCallActive = false;
+        let targetVolume = 0, currentVolume = 0;
+        let fullConversation = "";
+
+        // ── CAMERA ──
+        let cameraStream = null, cameraActive = false, emotionInterval = null;
+        let currentEmotionState = 'sakin';
+        const cameraToggleBtn = document.getElementById('camera-toggle');
+        const cameraPreview   = document.getElementById('camera-preview');
+        const emotionBadge    = document.getElementById('emotion-badge');
+        const hiddenCanvas    = document.getElementById('hidden-canvas');
+
+        const EMOTION_EMOJIS = {
+            mutlu:'😊', üzgün:'😢', endişeli:'😰', korkmuş:'😨',
+            sakin:'😌', şaşırmış:'😮', sinirli:'😠', ağlamak_üzere:'😭'
+        };
+
+        async function startCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video:{width:320,height:240}, audio:false });
+                cameraPreview.srcObject = cameraStream;
+                cameraPreview.classList.add('active');
+                emotionBadge.style.display = '';
+                emotionBadge.textContent = '🔄 Analiz başlıyor...';
+                cameraActive = true;
+                cameraToggleBtn.classList.add('active');
+                cameraToggleBtn.textContent = '🟢';
+                emotionInterval = setInterval(analyzeEmotion, 5000);
+                setTimeout(analyzeEmotion, 1000);
+            } catch(err) {
+                console.error('[KAMERA] Erişim reddedildi:', err);
+            }
+        }
+
+        function stopCamera() {
+            if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null; cameraActive = false;
+            clearInterval(emotionInterval);
+            cameraPreview.classList.remove('active');
+            cameraPreview.srcObject = null;
+            emotionBadge.style.display = 'none';
+            cameraToggleBtn.classList.remove('active');
+            cameraToggleBtn.textContent = '📷';
+        }
+
+        async function analyzeEmotion() {
+            if (!cameraActive || !cameraStream) return;
+            try {
+                hiddenCanvas.width = 160; hiddenCanvas.height = 120;
+                const ctx = hiddenCanvas.getContext('2d');
+                ctx.drawImage(cameraPreview, 0, 0, 160, 120);
+                const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                const resp = await fetch('/analyze-emotion', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ imageBase64: base64, userId: persistentUserId })
+                });
+                const data = await resp.json();
+                if (data.duygu) {
+                    currentEmotionState = data.duygu;
+                    const emoji = EMOTION_EMOJIS[data.duygu] || '🔮';
+                    emotionBadge.textContent = `${emoji} ${data.duygu}`;
+                }
+            } catch(err) { console.warn('[DUYGU]', err.message); }
+        }
+
+        cameraToggleBtn.addEventListener('click', () => { cameraActive ? stopCamera() : startCamera(); });
+
+        // ── THREE.JS ──
+        let scene, camera, renderer, composer, clock;
+        let avatar, mixer, currentAction;
+        let animationsMap = {};
+        let cameraTarget = new THREE.Vector3(0, 0.5, 0);
+        let blinkTime = 0, emotionState = 'neutral';
+        const container = document.getElementById('canvas-container');
+
+        // Lyra karakter tanımı
+        const character = {
+            name: "Lyra",
+            model: "avatar.glb",
+            animMap: {
+                'Yes':'Agreeing', 'No':'Disagreeing', 'Wave':'Wave',
+                'Jump':'Joyful Jump', 'Dance':'Wave Hip Hop Dance',
+                'Surprise':'Surprised', 'Looking':'Looking Around', 'Talk':'Talk',
+                'Sad':'Sad Idle',
+                'Angry':'Angry Gesture'
+            },
+            scaleMult: 1.0
+        };
+
+        // Extra animasyon dosyaları
+        const extraAnims = [
+            { file:'Agreeing.glb',           name:'Agreeing' },
+            { file:'Jump.glb',               name:'Joyful Jump' },
+            { file:'Waving.glb',             name:'Wave' },
+            { file:'Talking.glb',            name:'Talk' },
+            { file:'Shaking Head No.glb',    name:'Disagreeing' },
+            { file:'Surprised.glb',          name:'Surprised' },
+            { file:'Looking Around.glb',     name:'Looking Around' },
+            { file:'Idle.glb',               name:'Idle' },
+            { file:'Sad Idle.glb',           name:'Sad Idle' },
+            { file:'Wave Hip Hop Dance.glb', name:'Wave Hip Hop Dance' },
+            { file:'Angry Gesture.glb',      name:'Angry Gesture' },
+        ];
+
+        function initScene() {
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Başlangıç pozisyonu — room yüklenince güncellenecek
+            camera.position.set(0, 1.2, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:"high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Işıklandırma — sıcak terapi odası
+            scene.add(new THREE.AmbientLight(0xfff0d8, 0.7));
+            const hemi = new THREE.HemisphereLight(0xffecd2, 0x3d2b1f, 0.8);
+            scene.add(hemi);
+            const sun = new THREE.DirectionalLight(0xffd4a0, 1.0);
+            sun.position.set(4, 8, 6); sun.castShadow = true;
+            sun.shadow.mapSize.set(1024, 1024);
+            scene.add(sun);
+            const fill = new THREE.DirectionalLight(0xffecd2, 0.4);
+            fill.position.set(-4, 3, 2);
+            scene.add(fill);
+            const warmPoint = new THREE.PointLight(0xff8844, 1.2, 18);
+            warmPoint.position.set(0, 4, 0);
+            scene.add(warmPoint);
+            // Şömine ateşi
+            const fireLight = new THREE.PointLight(0xff5500, 1.8, 12);
+            fireLight.position.set(0, 0.5, -10);
+            scene.add(fireLight);
+            window.fireLight = fireLight;
+
+            // Avatar spotlight — konuşunca parlasın
+            const avatarSpot = new THREE.SpotLight(0xfff5e0, 1.2, 8, Math.PI / 5, 0.4);
+            avatarSpot.position.set(0, 4, 2);
+            avatarSpot.castShadow = false;
+            scene.add(avatarSpot);
+            scene.add(avatarSpot.target);
+            window.avatarSpot = avatarSpot;
+
+            setupPostProcessing();
+            animate();
+
+            setProgress(10, "ODA YÜKLENİYOR...");
+            loadRoom().then(() => {
+                setProgress(40, "AVATAR YÜKLENİYOR...");
+                return loadAvatar();
+            }).then(() => {
+                setProgress(100, "HAZIR");
+                playAnimation('Idle', true);
+                hideLoader();
+            });
+        }
+
+        function loadRoom() {
+            return new Promise((resolve) => {
+                const loader = new GLTFLoader();
+                loader.load('/room_model/scene.gltf', (gltf) => {
+                    const room = gltf.scene;
+                    room.traverse(n => { if(n.isMesh) { n.receiveShadow = true; n.castShadow = true; } });
+                    scene.add(room);
+
+                    const box    = new THREE.Box3().setFromObject(room);
+                    const size   = box.getSize(new THREE.Vector3());
+                    const center = box.getCenter(new THREE.Vector3());
+                    window.roomBox    = box;
+                    window.roomCenter = center;
+                    window.floorY     = box.min.y;
+
+                    console.log('[ROOM] size:', size, 'center:', center, 'boxMinY:', box.min.y);
+
+                    const raycaster = new THREE.Raycaster(
+                        new THREE.Vector3(center.x, box.max.y + 1, center.z),
+                        new THREE.Vector3(0, -1, 0)
+                    );
+                    const meshes = [];
+                    room.traverse(n => { if (n.isMesh) meshes.push(n); });
+                    const hits = raycaster.intersectObjects(meshes, false);
+                    if (hits.length > 0) {
+                        window.floorY = hits[0].point.y;
+                        console.log('[ROOM] raycasted floorY:', window.floorY);
+                    } else {
+                        window.floorY = box.min.y;
+                        console.log('[ROOM] fallback floorY:', window.floorY);
+                    }
+                    resolve();
+                }, undefined, (err) => {
+                    console.error('[ROOM] Yükleme hatası:', err);
+                    window.floorY = -1.5;
+                    window.roomCenter = new THREE.Vector3(0, 0, 0);
+                    resolve();
+                });
+            });
+        }
+
+        function loadAvatar() {
+            return new Promise((resolve) => {
+                const loader = new GLTFLoader();
+                loader.load('/' + character.model, (gltf) => {
+                    loaderStatus.textContent = "AVATAR YÜKLENİYOR...";
+
+                    avatar = gltf.scene;
+
+                    // Toon gradient map (3 bant: gölge / orta / aydınlık)
+                    const gradientData = new Uint8Array([40, 140, 255]);
+                    const gradientTex = new THREE.DataTexture(gradientData, 3, 1, THREE.RedFormat);
+                    gradientTex.needsUpdate = true;
+
+                    // Toon shader uygula
+                    avatar.traverse(n => {
+                        if (!n.isMesh) return;
+                        n.castShadow = true;
+                        n.receiveShadow = true;
+
+                        const origColor = n.material?.color
+                            ? n.material.color.clone()
+                            : new THREE.Color(0xc8a882);
+                        const origMap = n.material?.map || null;
+
+                        n.material = new THREE.MeshToonMaterial({
+                            color: origColor,
+                            map: origMap,
+                            gradientMap: gradientTex,
+                        });
+                    });
+
+                    // Ölç ve boyutlandır
+                    avatar.position.set(0,0,0);
+                    avatar.scale.set(1,1,1);
+                    avatar.updateMatrixWorld(true);
+                    const aBox  = new THREE.Box3().setFromObject(avatar);
+                    const aSize = aBox.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(aSize.x, aSize.y, aSize.z);
+                    const targetH = 1.55;
+                    const sc = (targetH / maxDim) * character.scaleMult;
+                    avatar.scale.set(sc, sc, sc);
+                    avatar.updateMatrixWorld(true);
+
+                    // Zemine oturtur — X=0, Z=0 world origin, sadece Y zemine snap
+                    const newBox = new THREE.Box3().setFromObject(avatar);
+                    const fy = window.floorY !== undefined ? window.floorY : -1.0;
+
+                    const charH = (newBox.max.y - newBox.min.y);
+                    // Odanın ortasına yerleştir
+                    avatar.position.set(0, fy - newBox.min.y, 0);
+                    avatar.updateMatrixWorld(true);
+
+                    // Kameraya baksın (varsayılan yön: +Z)
+                    avatar.rotation.y = 0;
+                    avatar.userData.baseRotY = 0;
+
+                    // Kamera: göğüs/baş hizasında, avatarın önünde
+                    const camY  = fy + charH * 0.65;
+                    const camZ  = charH * 2.2;
+                    camera.position.set(0, camY, camZ);
+                    cameraTarget.set(0, fy + charH * 0.55, 0);
+                    camera.lookAt(cameraTarget);
+                    window.defaultCam = { y: camY, z: camZ, tgtY: fy + charH * 0.55 };
+
+                    console.log('[CHAR] pos:', avatar.position, 'charH:', charH, 'fy:', fy);
+                    scene.add(avatar);
+
+                    // Avatar spotlight'ı karaktere yönelt
+                    if (window.avatarSpot) {
+                        window.avatarSpot.position.set(avatar.position.x, fy + charH * 1.8, avatar.position.z + 2);
+                        window.avatarSpot.target.position.set(avatar.position.x, fy + charH * 0.6, avatar.position.z);
+                        window.avatarSpot.target.updateMatrixWorld();
+                    }
+
+                    // Mixer
+                    mixer = new THREE.AnimationMixer(avatar);
+                    animationsMap = {};
+                    if (gltf.animations) {
+                        gltf.animations.forEach(clip => {
+                            const validTracks = clip.tracks.filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
+                            if (validTracks.length > 0) {
+                                const nc = new THREE.AnimationClip(clip.name, clip.duration, validTracks);
+                                animationsMap[clip.name] = mixer.clipAction(nc);
+                            }
+                        });
+                    }
+
+                    // Extra animasyonları yükle
+                    loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
+                    const extraLoader = new GLTFLoader();
+                    Promise.all(extraAnims.map(({ file, name }) =>
+                        new Promise(res => {
+                            extraLoader.load('/' + file, (a) => {
+                                if (a.animations.length) {
+                                    const clip = a.animations[0];
+                                    const ft = clip.tracks.filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
+                                    if (ft.length > 0) {
+                                        const nc = new THREE.AnimationClip(name, clip.duration, ft);
+                                        animationsMap[name] = mixer.clipAction(nc);
+                                    }
+                                }
+                                res();
+                            }, undefined, () => res());
+                        })
+                    )).then(() => {
+                        resolve();
+                    });
+
+                }, undefined, (err) => {
+                    console.error('[CHAR] Yükleme hatası:', err);
+                    resolve();
+                });
+            });
+        }
+
+        function hideLoader() {
+            loaderOverlay.style.opacity = '0';
+            setTimeout(() => loaderOverlay.classList.add('hidden'), 1000);
+        }
+
+        function playAnimation(name, loop = false) {
+            if (!mixer) return;
+
+            // animMap çevirisi
+            if (character.animMap && character.animMap[name]) name = character.animMap[name];
+
+            let action = animationsMap[name];
+
+            // Idle için fallback — mevcut animasyonlardan birini seç
+            if (!action) {
+                if (name === 'Idle' || name === 'idle') {
+                    action = Object.values(animationsMap).find(a => a._clip.name.toLowerCase().includes('idle'))
+                          || Object.values(animationsMap)[0];
+                } else {
+                    return; // bilinmeyen animasyon, yoksay
+                }
+            }
+
+            if (!action || currentAction === action) return;
+
+            const prev = currentAction;
+            currentAction = action;
+
+            if (loop) {
+                currentAction.setLoop(THREE.LoopRepeat);
+                currentAction.clampWhenFinished = false;
+            } else {
+                currentAction.setLoop(THREE.LoopOnce, 1);
+                currentAction.clampWhenFinished = true;
+                mixer.addEventListener('finished', restoreIdle);
+            }
+
+            currentAction.reset().play();
+            if (prev) currentAction.crossFadeFrom(prev, 0.5, true);
+        }
+
+        function restoreIdle(e) {
+            if (e.action === currentAction) {
+                mixer.removeEventListener('finished', restoreIdle);
+                playAnimation('Idle', true);
+            }
+        }
+
+        function setCamera(mode, durationMs = 1800) {
+            if (!avatar || !window.defaultCam) return;
+            const d = window.defaultCam;
+            const ax = avatar.position.x;
+            const az = avatar.position.z;
+
+            let toCam, toTgt;
+            if (mode === 'close') {
+                toCam = { x: ax, y: d.y + 0.15, z: az + 1.4 };
+                toTgt = { x: ax, y: d.tgtY + 0.15, z: az };
+            } else {
+                toCam = { x: ax, y: d.y, z: d.z };
+                toTgt = { x: ax, y: d.tgtY, z: az };
+            }
+
+            new TWEEN.Tween(camera.position).to(toCam, durationMs)
+                .easing(TWEEN.Easing.Cubic.InOut).start();
+            new TWEEN.Tween(cameraTarget).to(toTgt, durationMs)
+                .easing(TWEEN.Easing.Cubic.InOut).start();
+        }
+
+        function setupPostProcessing() {
+            composer = new EffectComposer(renderer);
+            composer.addPass(new RenderPass(scene, camera));
+            const bloom = new UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                0.15, 0.5, 0.92
+            );
+            composer.addPass(bloom);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (typeof TWEEN !== 'undefined') TWEEN.update();
+            const delta = clock.getDelta();
+            const time  = clock.getElapsedTime();
+
+            currentVolume += (targetVolume - currentVolume) * 0.15;
+            if (mixer) mixer.update(delta);
+            camera.lookAt(cameraTarget);
+
+            if (avatar) {
+                // D) Breathing — yavaş ritmik nefes hareketi
+                const breathe = Math.sin(time * 1.1) * 0.008 + Math.sin(time * 2.3) * 0.003;
+                if (avatar.userData.baseY === undefined) avatar.userData.baseY = avatar.position.y;
+                avatar.position.y = avatar.userData.baseY + breathe;
+
+                // Hafif doğal sallantı
+                avatar.rotation.y = avatar.userData.baseRotY + Math.sin(time * 0.35) * 0.03;
+
+                // A) Lip sync: morph target varsa kullan, yoksa head nod ile simüle et
+                let hasMorph = false;
+                avatar.traverse(node => {
+                    if (node.isMesh && node.morphTargetInfluences && node.morphTargetDictionary) {
+                        const d = node.morphTargetDictionary;
+                        const mIdx = d['MouthOpen'] ?? d['viseme_aa'] ?? d['Surprised'];
+                        if (mIdx !== undefined) { node.morphTargetInfluences[mIdx] = currentVolume * 3.5; hasMorph = true; }
+                        const bIdx = d['EyeBlink'] ?? d['Blink'];
+                        if (bIdx !== undefined) {
+                            node.morphTargetInfluences[bIdx] = (time > blinkTime && time < blinkTime + 0.1) ? 1 : 0;
+                            if (time >= blinkTime + 0.1) blinkTime = time + 2.5 + Math.random() * 3.5;
+                        }
+                    }
+                });
+                // Morph target yoksa: konuşurken hafif baş hareketi
+                if (!hasMorph && currentVolume > 0.05) {
+                    avatar.rotation.x = Math.sin(time * 8) * currentVolume * 0.04;
+                } else {
+                    avatar.rotation.x *= 0.9; // sıfıra dön
+                }
+
+                // C) Avatar spotlight — konuşunca parlaklık artar
+                if (window.avatarSpot) {
+                    const targetIntensity = 1.2 + currentVolume * 2.0;
+                    window.avatarSpot.intensity += (targetIntensity - window.avatarSpot.intensity) * 0.08;
+                }
+            }
+
+            // Kamera organik sallantı
+            camera.position.y += Math.sin(time * 0.6) * 0.0003;
+            camera.position.x += Math.cos(time * 0.4) * 0.0003;
+
+            // Ateş titremesi
+            if (window.fireLight) {
+                window.fireLight.intensity = 1.5 + Math.sin(time * 9) * 0.4 + Math.random() * 0.15;
+            }
+
+            composer ? composer.render() : renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ── VAPI EVENTS ──
+        talkBtn.addEventListener('click', async () => {
+            if (isCallActive) { vapiInstance.stop(); return; }
+
+            // Backend'e token ile aktif kullanıcıyı bildir
+            await fetch('/session-start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: supabaseToken })
+            });
+
+            vapiInstance.start(VAPI_ASSISTANT_ID, {
+                variableValues: { userId: persistentUserId }
+            });
+        });
+
+        vapiInstance.on('call-start', () => {
+            isCallActive = true;
+            fullConversation = "";
+            statusEl.textContent = "GÖRÜŞME AKTİF";
+            statusEl.classList.add('listening');
+            talkBtn.textContent = "BAĞLANTIYI KES";
+            talkBtn.classList.add('active');
+            document.getElementById('mic-indicator').classList.add('active');
+            setCamera('close', 1800);
+        });
+
+        vapiInstance.on('call-end', async () => {
+            isCallActive = false;
+            statusEl.textContent = "SİSTEM HAZIR";
+            statusEl.classList.remove('listening');
+            talkBtn.textContent = "GÖRÜŞMEYİ BAŞLAT";
+            talkBtn.classList.remove('active');
+            document.getElementById('mic-indicator').classList.remove('active');
+            targetVolume = 0;
+            setCamera('normal', 2000);
+
+            console.log('[MEMORY] call-end fired. userId:', persistentUserId, 'transcript length:', fullConversation.length);
+            console.log('[MEMORY] transcript preview:', fullConversation.substring(0, 200));
+
+            if (fullConversation.length > 50) {
+                try {
+                    const res = await fetch('/save-local-memory', {
+                        method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ userId: persistentUserId, transcript: fullConversation })
+                    });
+                    console.log('[MEMORY] save response:', res.status);
+                } catch(e) { console.error("Memory save failed:", e); }
+            } else {
+                console.warn('[MEMORY] Transcript too short, not saving.');
+            }
+        });
+
+        vapiInstance.on('volume-level', vol => { targetVolume = vol; });
+
+        vapiInstance.on('message', (message) => {
+            // Vapi'nin end-of-call-report mesajından transcript al
+            if (message?.type === 'end-of-call-report' && message.transcript) {
+                console.log('[MEMORY] end-of-call-report alındı, transcript uzunluğu:', message.transcript.length);
+                if (message.transcript.length > 50 && persistentUserId) {
+                    fetch('/save-local-memory', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: persistentUserId, transcript: message.transcript })
+                    }).then(r => console.log('[MEMORY] Kaydedildi:', r.status))
+                      .catch(e => console.error('[MEMORY] Hata:', e));
+                }
+            }
+
+            if (message?.type === 'transcript' && message.transcriptType === 'final') {
+                const text = message.transcript.toLowerCase();
+                fullConversation += (message.role || 'user') + ': ' + message.transcript + '\n';
+                transcriptEl.style.opacity = '0';
+                setTimeout(() => {
+                    transcriptEl.textContent = `"${message.transcript}"`;
+                    transcriptEl.style.opacity = '1';
+                }, 150);
+
+                if      (text.includes('mutlu') || text.includes('harika')) emotionState = 'neutral';
+                else if (text.includes('üzgün') || text.includes('kötü'))   emotionState = 'sad';
+                else if (text.includes('sinirli'))                           emotionState = 'angry';
+
+                if      (text.includes('evet') || text.includes('kesinlikle') || text.includes('tabii'))
+                                                                              playAnimation('Yes');
+                else if (text.includes('hayır') || text.includes('değil'))   playAnimation('No');
+                else if (text.includes('merhaba') || text.includes('selam') || text.includes('hoş geldin'))
+                                                                              playAnimation('Wave');
+                else if (text.includes('dans'))                               playAnimation('Dance');
+                else if (text.includes('şaşır') || text.includes('inanılmaz') || text.includes('gerçekten mi'))
+                                                                              playAnimation('Surprise');
+                else if (text.includes('üzgün') || text.includes('zor') || text.includes('endişe'))
+                                                                              playAnimation('Sad');
+                else if (text.includes('sinirli') || text.includes('kızgın')) playAnimation('Angry');
+                else                                                           playAnimation('Talk');
+            }
+        });
+
+        vapiInstance.on('error', (err) => {
+            console.error('[VAPI] Hata:', err);
+            isCallActive = false;
+            talkBtn.textContent = "GÖRÜŞMEYİ BAŞLAT";
+            talkBtn.classList.remove('active');
+            document.getElementById('mic-indicator').classList.remove('active');
+            statusEl.classList.remove('listening');
+            statusEl.textContent = "SİSTEM HAZIR";
+            showError("Bağlantı hatası oluştu. Lütfen tekrar deneyin.");
+        });
+
+    </script>
+</body>
+</html>

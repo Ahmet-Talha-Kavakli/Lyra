@@ -1,0 +1,27 @@
+<h2>Animasyon Problemi — Hangi Yönde Gidelim?</h2>
+<p class="subtitle">SpongeBob modeli Mixamo animasyon sistemiyle uyumsuz. İki çözüm yolu var:</p>
+
+<div class="options">
+  <div class="option" data-choice="humanoid" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Humanoid Karakter Kullan (Önerilen)</h3>
+      <p>Projede zaten <strong>avatar.glb</strong> ve <strong>cyborg.glb</strong> modelleri var. Bunlar Mixamo'ya uyumlu — tüm animasyonlar (Idle, Talk, Wave, vb.) anında çalışır. SpongeBob görsel olarak terapötik bir karakter değil; avatar/cyborg daha profesyonel görünür.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Artılar</h4><ul><li>Tüm animasyonlar hemen çalışır</li><li>Lip-sync mükemmel olur</li><li>Daha profesyonel görünüm</li></ul></div>
+        <div class="cons"><h4>Eksiler</h4><ul><li>SpongeBob'dan vazgeçilir</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="spongebob" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>SpongeBob'u Koru, Animasyonları Yeniden Yaz</h3>
+      <p>SpongeBob modelinin kendi içindeki kemiklere göre prosedürel animasyon yaz: zıplama, sallama, vb. CSS/Three.js ile manuel hareket — animasyon GLB dosyaları kullanılmaz.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Artılar</h4><ul><li>SpongeBob kalır</li></ul></div>
+        <div class="cons"><h4>Eksiler</h4><ul><li>Daha fazla iş</li><li>Animasyon kalitesi düşük olabilir</li><li>Lip-sync zorlaşır</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
