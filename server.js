@@ -26,11 +26,119 @@ app.get('/', (req, res) => {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// ─── DUYGU ANALİZİ YARDIMCILARI ─────────────────────────────
+const yogunlukToNum = (y) => ({ 'düşük': 30, 'orta': 60, 'yüksek': 90 }[y] ?? 60);
+
+const calculateTrend = (gecmis) => {
+    if (gecmis.length < 3) return 'stabil';
+    const son3 = gecmis.slice(-3).map(a => yogunlukToNum(a.yogunluk));
+    const fark = son3[2] - son3[0];
+    if (fark > 10) return 'kötüleşiyor';
+    if (fark < -10) return 'iyileşiyor';
+    return 'stabil';
+};
+
+const getAktifSinyaller = (jestler) => {
+    if (!jestler) return [];
+    const sinyaller = [];
+    if (jestler.kas_catma === true)           sinyaller.push('kas_catma');
+    if (jestler.gozyasi_izi === true)         sinyaller.push('gozyasi_izi');
+    if (jestler.dudak_sikistirma === true)    sinyaller.push('dudak_sikistirma');
+    if (jestler.bas_egme === true)            sinyaller.push('bas_egme');
+    if (jestler.goz_temasi === 'düşük')       sinyaller.push('goz_temasi:düşük');
+    if (jestler.omuz_durusu === 'düşük')      sinyaller.push('omuz_durusu:düşük');
+    if (jestler.cene_gerginligi === 'yüksek') sinyaller.push('cene_gerginligi:yüksek');
+    if (jestler.goz_kirpma_hizi === 'yavaş')  sinyaller.push('goz_kirpma_hizi:yavaş');
+    return sinyaller;
+};
+
+const getDominantDuygu = (gecmis) => {
+    if (!gecmis.length) return 'sakin';
+    const sayac = {};
+    gecmis.forEach(a => { sayac[a.duygu] = (sayac[a.duygu] || 0) + 1; });
+    const maxSayi = Math.max(...Object.values(sayac));
+    const adaylar = Object.keys(sayac).filter(d => sayac[d] === maxSayi);
+    if (adaylar.length === 1) return adaylar[0];
+    for (let i = gecmis.length - 1; i >= 0; i--) {
+        if (adaylar.includes(gecmis[i].duygu)) return gecmis[i].duygu;
+    }
+    return adaylar[0];
+};
+
+// ─── KURAL MOTORU ─────────────────────────────────────────
+const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
+    if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
+    const kurallar = [];
+    const { duygu, yogunluk, enerji, jestler, guven } = sonAnaliz;
+
+    if (duygu === 'korkmuş' && guven > 80 && jestler?.gozyasi_izi === true)
+        kurallar.push('Kullanıcı korkmuş ve gözyaşı izi var. Önce güven ver, hiç soru sorma. Sessiz, kısa, destekleyici cümleler kur.');
+
+    if (duygu === 'sinirli' && jestler?.cene_gerginligi === 'yüksek' && jestler?.omuz_durusu === 'yüksek')
+        kurallar.push('Kullanıcı sinirli ve gergin. Doğrula, çözüm önerme. Gerekirse nefes egzersizi sun.');
+
+    if (duygu === 'yorgun' && jestler?.goz_kirpma_hizi === 'yavaş' && enerji === 'yorgun')
+        kurallar.push('Kullanıcı çok yorgun. Seansı kısalt, konuyu değiştirme, enerjik sorular sorma.');
+
+    if (duygu === 'üzgün' && jestler?.genel_vucut_dili === 'kapalı')
+        kurallar.push('Kullanıcı üzgün ve kapalı beden dili sergiliyor. Daha az soru, daha çok yansıtma ve empati.');
+
+    if (jestler?.gozyasi_izi === true)
+        kurallar.push('Gözyaşı izi tespit edildi. Çok dikkatli ol, sessizlik ver, yargılama.');
+
+    if (yogunluk === 'yüksek' && jestler?.kas_catma === true)
+        kurallar.push('Yüksek yoğunluk ve kaş çatma. Yavaş konuş, kısa cümleler kur.');
+
+    return kurallar.join(' ');
+};
+
+const buildLayer2Rules = (trend, dominantDuygu, gecmis) => {
+    if (!gecmis || gecmis.length < 2) return '';
+    const kurallar = [];
+
+    if (trend === 'kötüleşiyor' && dominantDuygu === 'endişeli')
+        kurallar.push('Kullanıcının endişe seviyesi artıyor. Tempo düşür, kısa cümleler kur, uygun yerlerde sessizlik bırak.');
+
+    if (trend === 'iyileşiyor')
+        kurallar.push('Kullanıcı sakinleşiyor. Bu ilerlemeyi nazikçe yansıt, zorlamadan teşvik et.');
+
+    const son5 = gecmis.slice(-5);
+    const hepsiYogun = son5.length === 5 && son5.every(a => a.yogunluk === 'yüksek' || a.yogunluk === 'orta');
+    if (hepsiYogun)
+        kurallar.push(`Kullanıcı uzun süredir ${dominantDuygu} hissediyor. Bu duyguyu doğrudan nazikçe ele almayı düşün.`);
+
+    const yogunlukOrt = gecmis.reduce((s, a) => s + yogunlukToNum(a.yogunluk), 0) / gecmis.length;
+    if (yogunlukOrt > 75 && gecmis.length >= 5)
+        kurallar.push('Kullanıcı bu seans boyunca yüksek duygusal yoğunlukta. Sabırlı ve yavaş ol.');
+
+    return kurallar.join(' ');
+};
+
+const buildLayer3Rules = (hafizaMetni, sonAnaliz) => {
+    if (!hafizaMetni || !sonAnaliz) return '';
+    const kurallar = [];
+    const lower = hafizaMetni.toLowerCase();
+
+    if ((lower.includes('üzgün') || lower.includes('uzgun')) &&
+        (lower.includes('seans') || lower.includes('hafta') || lower.includes('süre')))
+        kurallar.push('Hafızaya göre kullanıcı bir süredir üzgün. Bu tekrarlayan durumu nazikçe gündeme getirmeyi düşün.');
+
+    if (lower.includes('iyileş') || lower.includes('daha iyi') || lower.includes('güzel geçt'))
+        kurallar.push('Önceki seanslarda iyileşme kaydedilmiş. Bu ilerlemeyi fark et ve kutla.');
+
+    if (sonAnaliz.yogunluk === 'yüksek' && sonAnaliz.guven > 80 &&
+        !lower.includes('yoğun') && !lower.includes('kriz'))
+        kurallar.push('Bu seansta ilk kez yüksek yoğunluk görülüyor. Daha dikkatli yaklaş, acele etme.');
+
+    return kurallar.join(' ');
+};
+
 // --- DUYGU DURUMU TAKİBİ ---
 const userEmotions = new Map(); // userId -> { duygu, guven, timestamp }
 
 // --- AKTİF OTURUM ---
 let activeSessionUserId = null;
+let activeSessionId = null;
 
 // ─── HAFIZA YÖNETİMİ (Supabase) ───────────────────────────
 const getMemory = async (userId) => {
@@ -69,7 +177,8 @@ app.post('/session-start', async (req, res) => {
             const { data: { user } } = await supabase.auth.getUser(token);
             if (user) {
                 activeSessionUserId = user.id;
-                console.log(`[SESSION] Aktif kullanıcı: ${user.id} (${user.email})`);
+                activeSessionId = crypto.randomUUID();
+                console.log(`[SESSION] Aktif kullanıcı: ${user.id} | sessionId: ${activeSessionId}`);
             }
         } catch (e) {
             console.error('[SESSION] Token doğrulama hatası:', e.message);
@@ -117,13 +226,37 @@ app.post('/vapi-webhook', async (req, res) => {
                 max_tokens: 250
             });
 
-            const summary = summaryResponse.choices[0].message.content;
+            // Seans emotion özetini çek ve hafızaya ekle
+            let emotionOzeti = '';
+            try {
+                if (activeSessionId) {
+                    const { data: logs } = await supabase
+                        .from('emotion_logs')
+                        .select('duygu, yogunluk, trend, guven')
+                        .eq('session_id', activeSessionId)
+                        .order('timestamp', { ascending: true });
+
+                    if (logs && logs.length > 0) {
+                        const sayac = {};
+                        logs.forEach(l => { sayac[l.duygu] = (sayac[l.duygu] || 0) + 1; });
+                        const dominant = Object.keys(sayac).sort((a, b) => sayac[b] - sayac[a])[0];
+                        const ortGuven = Math.round(logs.reduce((s, l) => s + (l.guven || 0), 0) / logs.length);
+                        const sonTrend = logs[logs.length - 1]?.trend || 'stabil';
+                        emotionOzeti = `\n\nBu seanstaki duygu analizi: Baskın duygu "${dominant}", ortalama güven %${ortGuven}, seans sonu trendi "${sonTrend}".`;
+                    }
+                }
+            } catch (e) { console.error('[EMOTION OZET] Hata:', e.message); }
+
+            const summary = summaryResponse.choices[0].message.content + emotionOzeti;
             await saveMemory(userId, summary);
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
         } catch (err) {
             console.error('[BRAIN ASCENSION] ❌ Özetleme hatası:', err.message);
         }
+
+        // Seans bitti, ID'yi sıfırla
+        activeSessionId = null;
     }
 
     res.json({});
@@ -186,15 +319,26 @@ app.post('/api/chat/completions', async (req, res) => {
             console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}`);
         }
 
-        const latestEmotion = userEmotions.get(userId);
-        if (latestEmotion) {
-            console.log(`[CUSTOM LLM] 🎭 Duygu Enjeksiyonu: ${latestEmotion.duygu} (%${latestEmotion.guven})`);
-            const sysIdx = enrichedMessages.findIndex(m => m.role === 'system');
-            if (sysIdx !== -1) {
-                enrichedMessages[sysIdx] = {
-                    ...enrichedMessages[sysIdx],
-                    content: enrichedMessages[sysIdx].content + `\n\n[GİZLİ DUYGU VERİSİ - Kamera Analizi]: Kullanıcı şu an ${latestEmotion.duygu} görünüyor (%${latestEmotion.guven} güven). Bu duyguyu cevaba doğal şekilde yansıt (örn: sakinse sen de sakin kal, çok korkmuşsa teselli et).`
-                };
+        const userState = userEmotions.get(userId);
+        if (userState) {
+            const { son_analiz, trend, dominant_duygu, aktif_sinyal, gecmis, yogunluk_ort } = userState;
+
+            const l1 = buildLayer1Rules(son_analiz, aktif_sinyal);
+            const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || []);
+            const l3 = buildLayer3Rules(userMemory, son_analiz);
+
+            const tumKurallar = [l1, l2, l3].filter(Boolean).join(' ');
+
+            if (tumKurallar) {
+                const sysIdx = enrichedMessages.findIndex(m => m.role === 'system');
+                const enjeksiyon = `\n\n[GİZLİ TALIMAT — Kamera & Trend Analizi]:\n${tumKurallar}\nBu talimatları doğal şekilde uygula, asla "kamerayı görüyorum" ya da "analiz ediyorum" deme.`;
+                if (sysIdx !== -1) {
+                    enrichedMessages[sysIdx] = {
+                        ...enrichedMessages[sysIdx],
+                        content: enrichedMessages[sysIdx].content + enjeksiyon
+                    };
+                }
+                console.log(`[KURAL MOTORU] Katman1:${!!l1} Katman2:${!!l2} Katman3:${!!l3} | trend:${trend} | dominant:${dominant_duygu}`);
             }
         }
 
@@ -222,39 +366,85 @@ app.post('/api/chat/completions', async (req, res) => {
     }
 });
 
-// ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision) ─────────────────
+// ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
 app.post('/analyze-emotion', async (req, res) => {
     try {
-        const { imageBase64, userId } = req.body;
-        if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0 });
+        const { imageBase64, userId, sessionId } = req.body;
+        if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: [{
                 role: 'user',
                 content: [
-                    { type: 'text', text: 'Bu yüzün duygusunu analiz et. Sadece JSON döndür: {"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli","guven":80}' },
-                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' } }
+                    {
+                        type: 'text',
+                        text: `Bu görüntüdeki kişinin duygusal durumunu, jest ve mimiklerini ayrıntılı analiz et.
+Yüz görünmüyorsa yuz_var:false döndür, diğer alanları null yap.
+Yalnızca geçerli JSON döndür, başka hiçbir şey ekleme:
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gülümseme_tipi":"gerçek|sosyal|yok","gülümseme_gerceklik":true,"bas_egme":false,"bas_sallama_ritmi":"aktif|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false},"genel_vucut_dili":"açık|nötr|kapalı","nefes_ritmi":"hızlı|normal|ağır","guven":85,"yuz_var":true,"timestamp":0}`
+                    },
+                    {
+                        type: 'image_url',
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' }
+                    }
                 ]
             }],
-            max_tokens: 60
+            max_tokens: 200
         });
 
-        let result = { duygu: 'sakin', guven: 50 };
+        let result = { duygu: 'sakin', guven: 0, yuz_var: false };
         try {
             const raw = response.choices[0].message.content.trim().replace(/```json|```/g, '');
             result = JSON.parse(raw);
-        } catch { }
+            result.timestamp = Date.now();
+        } catch { /* parse hatası → fallback */ }
 
-        if (userId) {
-            userEmotions.set(userId, { ...result, timestamp: Date.now() });
+        if (userId && result.yuz_var) {
+            // userEmotions Map'i güncelle (gecmis: tam analiz objesi, jestler dahil)
+            const mevcut = userEmotions.get(userId) || { gecmis: [] };
+            const yeniGecmis = [...mevcut.gecmis, {
+                duygu: result.duygu,
+                yogunluk: result.yogunluk,
+                enerji: result.enerji,
+                guven: result.guven,
+                jestler: result.jestler || null,
+                timestamp: result.timestamp
+            }].slice(-10);
+
+            const guncel = {
+                gecmis: yeniGecmis,
+                trend: calculateTrend(yeniGecmis),
+                dominant_duygu: getDominantDuygu(yeniGecmis),
+                yogunluk_ort: Math.round(yeniGecmis.reduce((s, a) => s + yogunlukToNum(a.yogunluk), 0) / yeniGecmis.length),
+                aktif_sinyal: getAktifSinyaller(result.jestler),
+                son_analiz: result
+            };
+            userEmotions.set(userId, guncel);
+            console.log(`[DUYGU] ${userId}: ${result.duygu} | yogunluk:${result.yogunluk} | trend:${guncel.trend} | sinyaller:${guncel.aktif_sinyal.join(',') || '-'}`);
+
+            // emotion_logs'a kaydet — fire-and-forget
+            const sid = sessionId || activeSessionId;
+            if (sid) {
+                supabase.from('emotion_logs').insert({
+                    user_id: userId,
+                    session_id: sid,
+                    duygu: result.duygu,
+                    yogunluk: result.yogunluk,
+                    enerji: result.enerji,
+                    jestler: result.jestler || null,
+                    trend: guncel.trend,
+                    guven: result.guven
+                }).then(({ error }) => {
+                    if (error) console.error('[EMOTION LOG] Insert hatası:', error.message);
+                });
+            }
         }
 
-        console.log(`[DUYGU] ${userId || '?'}: ${result.duygu} %${result.guven}`);
         res.json(result);
     } catch (err) {
         console.error('[DUYGU] Hata:', err.message);
-        res.json({ duygu: 'sakin', guven: 0 });
+        res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
     }
 });
 
