@@ -1,0 +1,569 @@
+# 🧠 MindBridge AI — Full-AI Global Psikoloji Platformu
+
+### Kapsamlı Master Plan & Yol Haritası
+
+> **Vizyon**: Gerçek bir psikologun sınırlarını aşan, 7/24 erişilebilir, 50+ dilde hizmet veren, her türlü seans modunda (sesli / metin / görüntülü) tüm terapi sürecini uçtan uca yapay zekanın yönettiği dünyanın ilk ve en gelişmiş Full-AI psikoloji platformunu inşa etmek.
+
+> [!IMPORTANT]
+> Bu platform **tamamen yapay zeka tarafından yönetilir**. Herhangi bir insan psikolog veya terapist sisteme dahil değildir. AI, seansın tamamını başından sonuna kadar yürütür.
+
+---
+
+## 🌍 Temel Konsept & Fırsat Pencerisi
+
+### Neden Daha Önce Yapılmadı? (Zamanlama Fırsatı)
+
+Bu modelin geçmişte neden tam anlamıyla gerçekleştirilemediğinin teknik ve psikolojik nedenleri:
+
+1. **Düşük Gecikmeli Ses Motorları Yeni Çıktı**: İnsan beyni sohbette 500ms üzeri gecikmeyi "robotik" algılar. VAPI.ai gibi ultra düşük gecikmeli, kesintiyi anlayan AI ses altyapısı kelimenin tam anlamıyla **son 6 ayın** teknolojisidir.
+2. **Duygu Analizinin (Emotion AI) Olgunlaşması**: Hume AI gibi sesten ve yüzden mikro mimikleri analiz eden modeller, LLM'lerle (GPT-4o) ancak çok yakın zamanda entegre olabildi. Eskiden AI, kullanıcının "ağlamaklı" bir ses tonuyla konuştuğunu anlayamaz, sadece metne yanıt verirdi.
+3. **LLM Bağlam Penceresi ve Akıl Yürütme**: Psikolojik terapi, 45 dakikalık bir seans boyunca kullanıcının söylediklerini (yaklaşık 6.000 kelime) hafızada tutup sentezlemeyi gerektirir. Eski modeller bu bağlamı kaybediyordu. GPT-4o ve Claude 3.5 Sonnet ile bu sınır kalktı.
+4. **Sentetik Seslerin Doğallaşması**: ElevenLabs gibi araçların sesi nefes alma, duraksama, "hmmm" veya "anlıyorum" gibi dolgularla insan seviyesine (human-parity) taşıması yepyeni bir gelişmedir.
+
+_Özetle: Fikir yeni değil, AI psikolog (örneğin eski ELIZA) 1960'lardan beri deneniyor. Ancak **insan seviyesine bu kadar yakın bir deneyimi** sunacak teknik altyapı 2024 sonu-2025 başlarında ancak mümkün hale geldi._
+
+### Neden Full-AI?
+
+| Geleneksel Terapi                  | MindBridge AI                      |
+| ---------------------------------- | ---------------------------------- |
+| Haftalık 1 seans, randevu gerekli  | 7/24 anlık erişim, sınırsız seans  |
+| Ortalama $150-300/seans            | Aylık sabit ücret, çok daha uygun  |
+| Tek dil, tek kültür                | 50+ dil, kültüre duyarlı yanıtlar  |
+| İnsan hataları, yorgunluk, önyargı | Tutarlı, kanıta dayalı protokoller |
+| Bekleme listeleri                  | Anında başla                       |
+| Coğrafi kısıt                      | Dünyanın her yerinde               |
+
+### AI'ın Yapacakları
+
+- Kişisel anamnez alma (ilk değerlendirme)
+- CBT, DBT, ACT, EMDR protokollerini uygulama
+- Duygu analizi ve takibi
+- Haftalık / aylık kişisel terapi planı oluşturma
+- Seans başlatma, yönetme, özetleme
+- Kriz tespiti ve otomatik güvenlik protokolü
+
+---
+
+## 🎭 3 SEANS MODU
+
+### Mod 1 — 🎙️ Sesli Seans (Telefon Gibi)
+
+Kullanıcı direkt konuşur. Hiçbir şey yazmak zorunda değil.
+
+```
+Kullanıcı Konuşur → Whisper (STT) → GPT-4o (AI Terapist) →
+→ Duygu Analizi (Hume AI) → Yanıt Üretimi →
+→ ElevenLabs/Cartesia (TTS) → Kullanıcı Duyar
+```
+
+**Özellikler**:
+
+- Gerçek zamanlı, düşük gecikmeli konuşma (< 500ms)
+- AI terapistin kişiselleştirilmiş sesi (klonlanmış, sıcak, samimi)
+- Konuşma hızına ve tonuna dinamik uyum
+- Sessizlik tespiti ve empati yönetimi
+- Seans sonunda AI üretimi özet + öneriler
+
+**Teknoloji**: VAPI.ai + OpenAI Whisper + GPT-4o + Hume AI + ElevenLabs
+
+---
+
+### Mod 2 — 💬 Metin Tabanlı Seans
+
+WhatsApp gibi sohbet arayüzüyle anlık yazışma.
+
+```
+Kullanıcı Yazar → GPT-4o (AI Terapist) → Metin Analizi →
+→ Duygu Çıkarımı → Protokol Yönlendirmesi → Yanıt
+```
+
+**Özellikler**:
+
+- Anlık yanıt (streaming)
+- Yazma göstergesi (AI "yazıyor" efekti — insan hissi)
+- Uzun form journaling modu (düşünce akışı)
+- Görsel araçlar: duygu seçim kartları, ölçekler, egzersizler
+- Dosya / görsel paylaşabilme (ruh hali panosu)
+- Geçmiş seans hafızası (vector DB ile kişisel bağlam)
+
+**Teknoloji**: OpenAI GPT-4o streaming + pgvector + Next.js
+
+---
+
+### Mod 3 — 📹 Görüntülü Online Terapi
+
+AI terapist avatar karşısında oturularak konuşulur. Göz teması var, yüz ifadesi var.
+
+```
+Kullanıcı Webcam'i Açar → Hume AI (Yüz Analizi) →
+→ AI Avatar (gerçekçi yüz) + Ses → GPT-4o Yanıt →
+→ Avatar Animasyon + Ses → Kullanıcı
+```
+
+**Özellikler**:
+
+- Gerçekçi AI terapist avatarı (HeyGen / D-ID / Tavus)
+- Canlı yüz ifadesi analizi (Hume AI — 48 duygu)
+- Göz teması simülasyonu
+- Vücut dili ve jest algılama
+- Seans odası arkaplanı (sakin, terapötik ortam)
+- Tüm seans kaydı + transkript + özet
+
+**Teknoloji**: Tavus.io / HeyGen + Hume AI + GPT-4o + WebRTC
+
+---
+
+## 🏗️ TEKNİK MİMARİ
+
+### Genel Sistem Diyagramı
+
+```
+┌─────────────────────────────────────────┐
+│              KULLANICI                  │
+│    Mobil / Web / Tablet                 │
+└───────────┬─────────┬─────────┬─────────┘
+            │ Ses     │ Metin   │ Video
+            ▼         ▼         ▼
+┌───────────────────────────────────────────┐
+│           SEANS MOTOR KATMANI             │
+│  VAPI.ai │ Chat API │ Tavus/HeyGen       │
+└───────────────────┬───────────────────────┘
+                    ▼
+┌───────────────────────────────────────────┐
+│              AI BEYIN KATMANI             │
+│  GPT-4o (Ana Model)                       │
+│  Claude 3.5 Sonnet (Yedek / Doğrulama)   │
+│  Hume AI (Duygu Analizi)                  │
+│  Whisper (STT) │ ElevenLabs (TTS)         │
+└───────────────────┬───────────────────────┘
+                    ▼
+┌───────────────────────────────────────────┐
+│           KİŞİSEL HAFIZA KATMANI          │
+│  pgvector (seans vektörleri)              │
+│  Pinecone (terapi bilgi tabanı)           │
+│  Supabase (kullanıcı profil + geçmiş)     │
+└───────────────────┬───────────────────────┘
+                    ▼
+┌───────────────────────────────────────────┐
+│          GÜVENLİK & UYUM KATMANI          │
+│  E2E Şifreleme │ HIPAA │ GDPR │ KVKK      │
+│  Kriz Protokolü │ Güvenlik Tarama         │
+└───────────────────────────────────────────┘
+```
+
+### Frontend Stack
+
+```
+Framework    : Next.js 15 (App Router)
+Mobil        : React Native (Expo)
+Styling      : Tailwind CSS + Framer Motion
+State        : Zustand + TanStack Query
+Real-time    : Supabase Realtime
+Video        : WebRTC (Daily.co altyapısı)
+```
+
+### Backend Stack
+
+```
+API          : Next.js API Routes + FastAPI (AI servisleri)
+Database     : Supabase (PostgreSQL + pgvector)
+Auth         : Supabase Auth
+Storage      : Supabase Storage (şifreli)
+Queue        : Redis + BullMQ
+Cache        : Redis
+```
+
+### AI/ML Stack
+
+```
+Ana LLM      : OpenAI GPT-4o
+Yedek LLM    : Anthropic Claude 3.5 Sonnet
+STT          : OpenAI Whisper
+TTS          : ElevenLabs / Cartesia AI
+Ses AI       : VAPI.ai (voice pipeline)
+Duygu Ses    : Hume AI (voice emotion)
+Yüz Analizi  : Hume AI (facial expression)
+Video Avatar : Tavus.io (interactive avatar)
+Vektör DB    : pgvector + Pinecone
+Fine-tuning  : Özel psikoloji veri seti (CBT/DBT/ACT)
+```
+
+### Altyapı
+
+```
+Frontend     : Vercel (edge network)
+Backend      : Railway / AWS ECS
+CDN          : Cloudflare
+CI/CD        : GitHub Actions
+Monitoring   : Sentry + Datadog
+Güvenlik     : WAF + Vault + E2EE
+```
+
+---
+
+## 🧠 AI TERAPİST MOTORU — Nasıl Çalışır?
+
+### 1. Onboarding & Profil Oluşturma
+
+Kullanıcı ilk girişte AI ile **derinlemesine bir değerlendirme seansı** yapar:
+
+- Neden burada? Ana sorun nedir?
+- Geçmiş terapi deneyimi var mı?
+- Hedefler neler? (uyku, anksiyete, ilişki, iş stresi vb.)
+- PHQ-9 (depresyon), GAD-7 (anksiyete), PCL-5 (travma) testleri
+- Kişilik eğilimi analizi
+
+Bu verilerle **kişiselleştirilmiş terapi planı** oluşturulur.
+
+### 2. Terapi Protokol Motoru
+
+AI, kanıta dayalı terapi yöntemlerini dinamik olarak uygular:
+
+| Protokol                        | Ne Zaman Kullanılır                      |
+| ------------------------------- | ---------------------------------------- |
+| **CBT** (Bilişsel Davranışçı)   | Anksiyete, depresyon, olumsuz düşünceler |
+| **DBT** (Diyalektik Davranışçı) | Duygu düzenleme, borderline özellikler   |
+| **ACT** (Kabul-Kararlılık)      | Kronik stres, anlam sorunları            |
+| **EMDR** (Göz Hareketi)         | Travma geçmişi (sesli/görüntülü modda)   |
+| **Pozitif Psikoloji**           | Genel iyi oluş, dayanıklılık             |
+| **Mindfulness**                 | Meditasyon entegrasyonu                  |
+| **Motivasyonel Görüşme**        | Değişim direnci, bağımlılık              |
+
+### 3. Kişisel Hafıza Sistemi
+
+Her seans sonunda AI şunları saklar:
+
+- Konuşulan konular (vektör embedding)
+- Tespit edilen duygular ve yoğunlukları
+- Öğrenilen tetikleyiciler
+- Uygulanan teknikler ve etkinliği
+- Bir sonraki seans için hazırlık notları
+
+Bu sayede her seans öncesinde AI, kullanıcını **gerçekten tanıyan** bir terapist gibi davranır.
+
+### 4. Duygu Algı Sistemi
+
+- **Metin**: Dil modeli + sentiment analizi
+- **Ses**: Hume AI — ses tonundaki 48 duygu boyutu
+- **Video**: Hume AI — yüz ifadesinde 48 duygu boyutu
+
+Anlık duygu haritası, AI'ın seans sırasında dinamik olarak ton ve yaklaşım değiştirmesini sağlar.
+
+---
+
+## 🗺️ 5 FAZLI YOL HARİTASI
+
+---
+
+### 🔵 FAZ 1 — MVP: Metin Tabanlı AI Terapist (0-3 Ay)
+
+**Hedef**: İlk çalışan ürünü piyasaya sürmek, 1.000 kullanıcı.
+
+- [ ] Next.js + Supabase altyapısı
+- [ ] Kullanıcı kayıt/giriş (Supabase Auth)
+- [ ] AI chat terapisti (GPT-4o + CBT/DBT prompt sistemi)
+- [ ] Onboarding değerlendirme seansı
+- [ ] PHQ-9 / GAD-7 testleri
+- [ ] Kişisel terapi planı oluşturma
+- [ ] Günlük duygu takibi (mood log)
+- [ ] Seans geçmişi & özet
+- [ ] Streamer yanıt (typing effect)
+- [ ] Stripe abonelik sistemi
+- [ ] Kriz tespit + acil yönlendirme
+- [ ] Landing page + SEO
+
+**Başarı Kriteri**: 1K kullanıcı, ort. 10+ dk/gün, %35 aylık retention
+
+---
+
+### 🟢 FAZ 2 — Sesli AI Terapist (3-6 Ay)
+
+**Hedef**: Telefon görüşmesi gibi sesli seans modu.
+
+- [ ] VAPI.ai entegrasyonu (voice pipeline)
+- [ ] OpenAI Whisper (STT)
+- [ ] ElevenLabs / Cartesia (TTS — terapist sesi)
+- [ ] Hume AI ses duygu analizi
+- [ ] Gerçek zamanlı < 500ms gecikme optimizasyonu
+- [ ] Sessizlik algılama + empati momentleri
+- [ ] Seans sonrası AI transkript + özet
+- [ ] Sesli mod UI (telefon ekranı hissi)
+- [ ] Çağrı kalitesi ayarları
+- [ ] Mobil uygulama başlangıcı (React Native)
+
+**Başarı Kriteri**: 10K kullanıcı, sesli seanslar toplam seansların %40'ı
+
+---
+
+### 🟡 FAZ 3 — Görüntülü AI Terapist & Mobil (6-12 Ay)
+
+**Hedef**: Yüz yüze online terapi hissi, tam mobil uygulama.
+
+- [ ] Tavus.io entegrasyonu (interactive AI avatar)
+- [ ] WebRTC görüntülü seans altyapısı
+- [ ] Hume AI yüz ifadesi analizi (webcam)
+- [ ] Avatar kişiselleştirme (farklı terapist görünümleri)
+- [ ] iOS + Android tam uygulama yayını
+- [ ] 10 dil desteği (önce: TR, EN, AR, ES, FR, DE, PT, RU, ZH, JA)
+- [ ] Kültüre özgü terapi protokolleri
+- [ ] Apple Watch entegrasyonu (nabız, uyku verisi)
+- [ ] Offline mod (temel özellikler)
+
+**Başarı Kriteri**: 50K kullanıcı, 10 ülke, MRR $100K+
+
+---
+
+### 🟠 FAZ 4 — Global Ölçek & Akıllı Kişiselleştirme (12-18 Ay)
+
+**Hedef**: 100K+ kullanıcı, 20+ ülke, AI motor güçlendirme.
+
+- [ ] Özel fine-tuned LLM (psikoloji veri seti üzerinde)
+- [ ] Federated learning (gizlilik korumalı öğrenme)
+- [ ] Multimodal seans analizi (ses + yüz + metin birleşik)
+- [ ] AI'ın kendi terapi etkinliğini ölçmesi
+- [ ] 30+ dil desteği
+- [ ] B2B kurumsal platform (şirket EAP)
+- [ ] Sigorta entegrasyonu
+- [ ] HIPAA SOC 2 Type II sertifikasyonu
+- [ ] API platformu (diğer uygulamalar için)
+
+**Başarı Kriteri**: 300K kullanıcı, MRR $1M+, 20+ ülke
+
+---
+
+### 🔴 FAZ 5 — Ekosistem & Global Liderlik (18-36 Ay)
+
+**Hedef**: Sektör tanımlayan platform, IPO/büyük yatırım.
+
+- [ ] AR/VR terapi (Apple Vision Pro, Meta Quest)
+- [ ] Biyometrik entegrasyon (EEG, HRV, kortizol takibi)
+- [ ] MindBridge OS — diğer uygulamaların çalıştığı platform
+- [ ] Global ruh sağlığı araştırma merkezi
+- [ ] MindBridge Vakfı (gelişen ülkelere ücretsiz erişim)
+- [ ] 50+ dil, 50+ ülke
+- [ ] 10M+ kullanıcı
+
+---
+
+## 💰 İŞ MODELİ
+
+### B2C Bireysel
+
+| Plan          | Fiyat     | Kapsam                                     |
+| ------------- | --------- | ------------------------------------------ |
+| **Free**      | $0/ay     | 3 AI seansı/ay (sadece metin), mood log    |
+| **Basic**     | $14.99/ay | Sınırsız metin seans, haftalık plan        |
+| **Voice**     | $29.99/ay | Sınırsız metin + 10 sesli seans/ay         |
+| **Premium**   | $49.99/ay | Sınırsız her şey — metin + ses + görüntülü |
+| **Intensive** | $99.99/ay | Premium + günlük AI check-in araması       |
+
+### B2B Kurumsal (EAP — Çalışan Programı)
+
+| Segment             | Fiyat                |
+| ------------------- | -------------------- |
+| Startup (< 50 kişi) | $299/ay              |
+| SME (50-500 kişi)   | $10/kullanıcı/ay     |
+| Enterprise (500+)   | Özel fiyat + SLA     |
+| Üniversite          | Öğrenci başı $3-6/ay |
+| Devlet / Belediye   | Proje bazlı          |
+
+### Ek Gelirler
+
+- **API Lisansı**: AI terapi motorunu diğer sağlık uygulamalarına kiralama
+- **White-label**: Kurumların kendi markasıyla platform kullanımı
+- **Anonimize Araştırma Verisi**: Üniversite/farma ortaklıkları
+
+---
+
+## 🔐 ETİK, GÜVENLİK & YASAL ÇERÇEVE
+
+> [!CAUTION]
+> Full-AI terapi platformunun en kritik başarı faktörü etik ve güvenliktir. Bir hata büyük legal ve insani risk oluşturabilir.
+
+### Kriz & Acil Protokolü
+
+AI her seans boyunca şu sinyalleri tarar:
+
+- İntihar / kendine zarar verme düşüncesi
+- Aktif psikoz belirtileri
+- Ciddi madde bağımlılığı krizi
+- Başkasına zarar verme ifadeleri
+
+**Kriz tespitinde otomatik akış**:
+
+1. Seans yavaşlar, AI empati moduna geçer
+2. Kullanıcıya lokal acil hattı (190+ ülke) anlık sunulur
+3. Kullanıcı rızasıyla kriz formu SMS/email gönderilir
+4. 7/24 aktif destek hattıyla yönlendirme
+5. Kriz sonrası takip seansı otomatik planlanır
+
+### AI Şeffaflık İlkeleri
+
+- AI hiçbir zaman kendini "insan psikolog" olarak tanıtmaz
+- Her seans başında "Bu bir AI terapistiyle seansınızdır" bildirimi
+- Tanı koymaz — destekler, yönlendirir, dinler
+- Kullanıcı istediği an seans kaydını silebilir
+
+### Yasal Uyumluluk
+
+| Düzenleme         | Kapsam            | Zaman        |
+| ----------------- | ----------------- | ------------ |
+| **GDPR**          | AB kullanıcıları  | Başlangıçtan |
+| **KVKK**          | Türkiye           | Başlangıçtan |
+| **HIPAA**         | ABD sağlık verisi | Faz 2        |
+| **SOC 2 Type II** | Kurumsal güven    | Faz 4        |
+| **ISO 27001**     | Bilgi güvenliği   | Faz 3        |
+
+### Güvenlik Önlemleri
+
+- Uçtan uca şifreleme (E2EE) — tüm seans içerikleri
+- Sıfır bilgi mimarisi — hassas veriler şifreli saklanır
+- Penetrasyon testi — 3 ayda bir
+- Veri lokalizasyonu — AB verisi AB'de, Türkiye verisi Türkiye'de
+
+> [!NOTE]
+> Bazı ülkeler "psikolojik danışmanlık" için lisans şartı arayabilir. Ürün "AI destekli ruh sağlığı koçluğu" olarak konumlandırılmalı, medikal iddia yapılmamalıdır. Hukuki ekiple her ülke için ayrı değerlendirme şart.
+
+---
+
+## 📣 PAZARLAMA & BÜYÜME STRATEJİSİ
+
+### Konumlandırma Mesajı
+
+> _"Psikologunuz yok mu, randevu alamıyor musunuz, pahalı mı? MindBridge her an yanınızda — dilediğiniz gibi konuşun, yazın ya da görün."_
+
+### Hedef Kitle
+
+1. **Birincil**: 18-35 yaş, teknoloji meraklısı, ruh sağlığına önem veren
+2. **İkincil**: 35-50 yaş, yoğun iş hayatı, psikoloya gidemeyen
+3. **Üçüncül**: Gelişmekte olan ülkeler — psikolog erişimi sınırlı
+
+### Büyüme Kanalları
+
+- **SEO**: AI üretimi psikoloji içerikleri (her gün 10+ makale, 10+ dil)
+- **TikTok/Reels**: "AI terapistim ile konuştum" içerik formatı
+- **Podcast**: "MindBridge Konuşmaları"
+- **Referral**: "Arkadaşını davet et, 1 ay ücretsiz"
+- **B2B**: HR platformlarında reklam (Workday, SAP)
+- **App Store Optimizasyonu**: Mental health kategori liderliği
+
+---
+
+## 📈 GLOBAL BAŞARI ORANI VE STRATEJİSİ
+
+Bir girişimin global düzeyde unicorn (milyar dolar değerleme) statüsüne ulaşma olasılığı normalde %1'den azdır. Ancak bu projenin **pazar dinamikleri (TAM), acil ihtiyaç ve monopol potansiyeli** değerlendirildiğinde:
+
+| Kriter                    | Ölçek / Durum                                                                        | Etki       |
+| ------------------------- | ------------------------------------------------------------------------------------ | ---------- |
+| **Pazar Büyüklüğü (TAM)** | $120 Milyar+ (Global Mental Health Pazarı)                                           | ⭐⭐⭐⭐⭐ |
+| **Ölçeklenebilirlik**     | Sonsuz (AI klonlanabilir, marjinal maliyet sıfıra yakın)                             | ⭐⭐⭐⭐⭐ |
+| **Kullanıcı İhtiyacı**    | Akut (Dünyada 1 Milyar kişi ruhsal bozukluk yaşıyor, %70'i tedavi alamıyor)          | ⭐⭐⭐⭐⭐ |
+| **Bariyer Değeri**        | Orta/Yüksek (Klinik veri seti + duygu analiz motorunu doğru kuran pazar lideri olur) | ⭐⭐⭐⭐   |
+
+**Tahmini Başarı Katkıları:**
+Eğer ürün _hiç gecikmesiz_ bir ses deneyimi ve _doğru empati_ hissi verirse, global pazarda %20-30 arasında bir pazar payı yakalama ihtimalimiz mevcuttur. **Geliştirme stratejimizde** şunlara odaklanırsak başarı oranımız katlanır:
+
+### Başarıyı Garantiye Alacak 4 Kilit Strateji:
+
+1. **Veri Tekeli (Data Moat) Oluşturmak:** API'leri kullanmak herkesin yapabileceği bir şeydir. Bizim gerçek değerimiz, milyonlarca konuşmayı analiz edip "Hangi kelime / ses tonu spesifik olarak Türk veya Amerikalı bir gençte anksiyeteyi en hızlı düşürüyor?" sorusunu cevaplayan **özel klinik modelimizi** (fine-tuned LLM) eğittiğimiz gün oluşacaktır.
+2. **Kültürel Lokalizasyon (Sadece Çeviri Değil):** Hindistanlı bir kullanıcıya Amerikan standartlarıyla terapi veremezsiniz. AI, sadece dili değil, "kültürel bağlamı" (aile yapısı, inançlar, toplumsal baskılar) algılayacak spesifik prompt sistemlerine sahip olacak.
+3. **Biyometrik Sağlama:** Tekst veya sese güvenmek yerine, yakında akıllı saatlerden (Apple Health) HRV (kalp hızı değişkenliği) gibi verileri alıp, seansın vücut stresinde fizyolojik bir iyileşme yatıp yaratmadığını kanıtlayacağız.
+4. **Gamification (Oyunlaştırma) ve Streak:** Terapi zor bir iştir, insanlar bırakmaya eğilimlidir. Duolingo'nun dil öğretirken yaptığı bağımlılık yaratan "streak" (seri) mantığını günlük "mood check-in" sistemine entegre edeceğiz ki günlük aktif kullanıcı (DAU) oranımız yüksek kalsın.
+
+---
+
+## 👨‍💼 EKİP YAPISI (Full-AI Modele Göre)
+
+### Kurucu Kadro
+
+- **CEO**: Vizyon, iş geliştirme, yatırımcı ilişkileri
+- **CTO**: AI mimari, teknik liderlik
+- **CPO**: Ürün tasarımı, kullanıcı deneyimi
+- **Klinik Danışman** (yarı zamanlı/danışman): AI protokollerinin klinik validasyonu, etik denetim
+
+> [!NOTE]
+> "Klinik danışman" rolü: Gerçek psikolog sistemi yürütmez, ancak AI'ın uyguladığı protokollerin bilimsel doğruluğunu ve güvenliğini denetler. Bu kritik bir hukuki ve etik koruyucudur.
+
+### Faz 1 Ekip (8-10 kişi)
+
+- 3x Full-stack Developer (Next.js + Python/FastAPI)
+- 1x AI/ML Engineer (LLM fine-tuning, prompt mühendisliği)
+- 1x UI/UX Designer
+- 1x DevOps / Güvenlik
+- 1x Growth / Pazarlama
+- 1x Klinik Danışman (part-time)
+
+---
+
+## 🎯 İLK 90 GÜN — AKSIYON PLANI
+
+### Hafta 1-2: Temel Kurulum
+
+- [ ] Domain ve hosting kurulumu
+- [ ] Supabase proje kurulumu + şema
+- [ ] Next.js monorepo başlatma
+- [ ] Auth sistemi (Supabase Auth)
+- [ ] Design sistemi + UI komponentleri
+
+### Hafta 3-4: AI Chat Core
+
+- [ ] OpenAI GPT-4o entegrasyonu
+- [ ] Terapi protokol prompt sistemi (CBT/DBT/ACT)
+- [ ] Streaming chat arayüzü
+- [ ] Onboarding değerlendirme seansı
+- [ ] PHQ-9 / GAD-7 test akışı
+
+### Hafta 5-6: Kişisel Hafıza & Deneyim
+
+- [ ] pgvector seans hafızası
+- [ ] Kişisel terapi planı oluşturma
+- [ ] Günlük mood log + trend grafik
+- [ ] Dashboard (streak, ruh hali, öneriler)
+- [ ] Kriz tespit sistemi
+
+### Hafta 7-8: Ödeme & Lansman
+
+- [ ] Stripe abonelik entegrasyonu
+- [ ] Fiyatlandırma sayfası
+- [ ] Landing page + SEO meta
+- [ ] Beta kullanıcı waitlist kampanyası
+- [ ] Product Hunt + sosyal medya lansmanı
+
+### Hafta 9-12: Sesli Mod Başlangıcı
+
+- [ ] VAPI.ai entegrasyonu
+- [ ] ElevenLabs terapist sesi
+- [ ] Sesli seans UI
+- [ ] Kullanıcı geri bildirimi analiz & iyileştirme
+
+---
+
+## 📊 HEDEF METRİKLER
+
+| Metrik                  | 3 Ay | 6 Ay | 12 Ay | 24 Ay |
+| ----------------------- | ---- | ---- | ----- | ----- |
+| Kayıtlı Kullanıcı       | 1K   | 15K  | 100K  | 1M    |
+| Ücretli Kullanıcı       | 100  | 2K   | 20K   | 200K  |
+| MRR                     | $3K  | $60K | $700K | $7M   |
+| Desteklenen Dil         | 2    | 5    | 20    | 50    |
+| Ülke                    | 1    | 3    | 15    | 50    |
+| NPS                     | 55   | 65   | 72    | 78    |
+| Ort. Seans/Kullanıcı/Ay | 4    | 8    | 12    | 16    |
+
+---
+
+## 🚀 REKABET AVANTAJI
+
+| Rakip          | Modeli          | Bizim Farkımız                            |
+| -------------- | --------------- | ----------------------------------------- |
+| BetterHelp     | İnsan psikolog  | 7/24, anlık, çok daha uygun fiyat         |
+| Woebot         | Sadece CBT chat | 3 mod (ses/metin/video), çok daha derin   |
+| Calm/Headspace | Meditasyon      | Gerçek terapi protokolleri                |
+| Replika        | Muhabbet AI     | Klinik protokoller, gerçek terapi desteği |
+| Wysa           | Sınırlı chat    | Sesli + görüntülü + geniş dil             |
+
+**Benzersiz Pozisyon**: Dünyanın **tek** sesli + metin + görüntülü, tam otomatik, klinik protokol tabanlı Full-AI terapi platformu.
+
+---
+
+_Son güncelleme: Mart 2026 | MindBridge AI — Zihinleri Köprüleyen Platform_
