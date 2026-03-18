@@ -16,7 +16,15 @@ const port = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
 
 // ─── ROOT (Basit Hoşgeldin) ─────────────────────────
 app.get('/', (req, res) => {
@@ -379,14 +387,16 @@ app.post('/analyze-emotion', async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Bu görüntüdeki kişinin duygusal durumunu, jest ve mimiklerini ayrıntılı analiz et.
-Yüz görünmüyorsa yuz_var:false döndür, diğer alanları null yap.
-Yalnızca geçerli JSON döndür, başka hiçbir şey ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gülümseme_tipi":"gerçek|sosyal|yok","gülümseme_gerceklik":true,"bas_egme":false,"bas_sallama_ritmi":"aktif|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false},"genel_vucut_dili":"açık|nötr|kapalı","nefes_ritmi":"hızlı|normal|ağır","guven":85,"yuz_var":true,"timestamp":0}`
+                        text: `Görüntüdeki kişinin yüzünü ve beden dilini dikkatlice analiz et. Gerçek duyguyu nesnel olarak belirle — varsayılan olarak "sakin" yazma, gördüğünü yaz.
+
+Kural: Yüz görünmüyorsa veya görüntü çok karanlıksa yalnızca {"yuz_var":false} döndür.
+
+Yalnızca geçerli JSON döndür, başka metin ekleme:
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false},"genel_vucut_dili":"açık|nötr|kapalı","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' }
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'high' }
                     }
                 ]
             }],
