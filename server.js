@@ -595,11 +595,44 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
         kurallar.push('[#6 NEFES_EGZERSIZI_BASLAT] Kullanıcı yüksek kaygıda (endişeli/korkmuş), nefesi hızlanmış/yüzeysel/tutuyor. Hemen 4-7-8 nefes tekniği: "Seninle birlikte nefes alalım mı? Dört say nefes al, yedi say tut, sekiz say ver. Başlayalım..."');
     }
 
-    // ── NESNE FARKINDALĞI ───────────────────────────────────
-    if (ortam?.nesneler?.length > 0 && !ortam.tehlike_var) {
-        const ilginc = ortam.nesneler.filter(n => !['bardak', 'telefon', 'masa', 'sandalye', 'koltuk'].includes(n.toLowerCase()));
-        if (ilginc.length > 0)
-            kurallar.push(`Kullanıcının elinde/yakınında şunlar görünüyor: ${ilginc.join(', ')}. Eğer konuşmayla bağlantılıysa doğal şekilde değinebilirsin.`);
+    // ── DAVRANIŞSAL NESNE ANALİZİ (psikolojik sinyal) ──────
+    const nesneKat = ortam?.nesne_kategorisi || 'yok';
+    const nesneAdı = ortam?.el_nesnesi || '';
+    const nesneAmacı = ortam?.nesne_amac_tahmini || '';
+    const elAktivite = jestler?.el_aktivitesi || ortam?.el_aktivitesi || '';
+
+    if (nesneKat === 'sigara') {
+        kurallar.push(`Kullanıcı şu an ${nesneAdı} içiyor (${nesneAmacı}). Bu seans sırasında sigara/e-sigara içmek yüksek stres veya kaygının fiziksel ifadesi olabilir. Doğal şekilde sor: "Şu an biraz gergin görünüyorsun, nasılsın?" — doğrudan sigara hakkında yorum yapma.`);
+    }
+
+    if (nesneKat === 'alkol') {
+        if (elAktivite === 'içki_içiyor') {
+            kurallar.push(`Kullanıcı seans sırasında alkol tüketiyor: ${nesneAdı}. Bu duygusal kaçınma veya yüksek stres sinyali. Yargılamadan nazikçe sor: "Şu an nasıl hissediyorsun?" — alkol hakkında doğrudan konuşma, duyguya odaklan.`);
+        } else {
+            kurallar.push(`Yakında alkol var: ${nesneAdı}. Bilgi olarak tut, gerekirse konuşmaya dahil et.`);
+        }
+    }
+
+    if (nesneKat === 'ilac') {
+        kurallar.push(`⚠️ Dikkat: Kullanıcının elinde/yakınında ${nesneAdı} var. Eğer ruh hali düşükse veya konuşma endişe vericiyse çok dikkatli ol. Reçeteli ilaç normaldir ama bağlamı değerlendir.`);
+    }
+
+    if (nesneKat === 'yiyecek') {
+        if (duygu === 'üzgün' || duygu === 'endişeli') {
+            kurallar.push(`Kullanıcı ${nesneAdı} yiyor ve duygusal durumu ${duygu}. Duygusal yeme sinyali olabilir. Konuşmaya zorla dahil etme, sadece fark et.`);
+        }
+    }
+
+    if (nesneKat === 'stres_nesnesi') {
+        kurallar.push(`Kullanıcının elinde stres nesnesi var: ${nesneAdı}. Bu bilinçsiz kaygı veya gerginlik sinyali. Yoğunluğu fark et, yavaşla.`);
+    }
+
+    if (nesneKat === 'ayna') {
+        kurallar.push(`Kullanıcı aynaya bakıyor. Öz-eleştiri, beden imgesi veya kimlik konuları gündemde olabilir. Dikkatli ol.`);
+    }
+
+    if (elAktivite === 'tırnak_yiyor' || elAktivite === 'saç_çekiyor') {
+        kurallar.push(`Kullanıcı ${elAktivite === 'tırnak_yiyor' ? 'tırnak yiyor' : 'saçını çekiyor'} — yüksek kaygı veya stres sinyali. Tempo düşür, rahatlatıcı konuşma yap.`);
     }
 
     return kurallar.join(' ');
@@ -1993,21 +2026,36 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
 - Yanak kası + dudak köşesi = gerçek gülümseme (mutlu)
 
 ── NESNE TESPİTİ (ÇOK ÖNEMLİ) ──
-Görüntüde elle tutulan veya yakında duran nesneleri tespit et.
+Görüntüde elle tutulan veya yakında duran her nesneyi tespit et. Mümkün olduğu kadar spesifik ol.
 
-el_nesnesi: Elde veya vücuda çok yakın nesneyi yaz. Örnek: "kalem", "makas", "bıçak", "bardak", "iğne", "jilet", "tel", "ip", "cam parçası", "tarak", "kaşık", "yok"
+el_nesnesi: Tam nesne adını yaz. Örnekler:
+  SİGARA: "sigara", "elektronik sigara", "vape", "pipo", "puro", "iqos", "nargile"
+  ALKOL: "bira", "şarap", "rakı", "viski", "votka", "alkollü içecek", "şişe"
+  İLAÇ: "ilaç kutusu", "hap", "şırınga", "ilaç şişesi", "uyuşturucu"
+  YIYECEK: "çikolata", "cips", "fast food", "tatlı", "yiyecek"
+  KESICI: "bıçak", "makas", "jilet", "cam parçası", "neşter", "tırnak makası"
+  DELICI: "iğne", "çivi", "vida", "kalem ucu", "pergel"
+  BAĞLAYICI: "ip", "tel", "kablo", "kemer", "kordon"
+  YAZMA: "kalem", "kurşun kalem", "marker", "tükenmez"
+  TEKNOLOJİ: "telefon", "tablet", "kulaklık", "laptop", "oyun konsolu"
+  STRES: "stres topu", "fidget spinner", "boncuk", "tesbih", "küçük nesne"
+  AYNA: "ayna", "kompakt ayna"
+  DİĞER: gördüğünü tam adıyla yaz
+
+nesne_kategorisi: "sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok"
 
 nesne_risk_seviyesi:
-- "yuksek": Doğrudan tehlikeli — bıçak, makas, iğne, jilet, cam parçası, ip, tel
-- "orta": Tehlikeli değil ama zarar verilmek için kullanılabilir — kalem, tarak, kaşık, çatal, kurşun kalem
-- "dusuk": Günlük nesne, risk yok — telefon, bardak, kitap, yiyecek
+- "yuksek": Doğrudan kendine zarar aracı — bıçak, jilet, iğne, makas, ip, tel, cam, şırınga
+- "orta": Zarar için kullanılabilir ama günlük nesne — kalem, kurşun kalem, tırnak makası, pergel, maket bıçağı
+- "davranissal": Zarar vermez ama psikolojik sinyal — sigara, alkol, ilaç, yiyecek, ayna
+- "dusuk": Nötr — telefon, kitap, bardak, yastık
 - "yok": Elde nesne yok
 
-zarar_sinyali: Nesne cilde temas ediyor mu, baskı uygulanıyor mu, tekrarlı hareket var mı? → true/false
+zarar_sinyali: Nesne cilde temas ediyor, baskı uygulanıyor veya tekrarlı hareket var mı? → true/false
 tehlike_var: nesne_risk_seviyesi "yuksek" ise → true
 
-el_aktivitesi: "nesne_tutuyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|boşta"
-nesne_amac_tahmini: Nesnenin bu anda ne için kullanıldığına dair kısa yorum. Örn: "kalem yazı yazıyor", "kalem cilde sürülüyor", "makas açık tutuluyor"
+el_aktivitesi: "nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"
+nesne_amac_tahmini: Nesnenin şu anki kullanım amacı hakkında kısa yorum. Spesifik ol. Örn: "sigara içiyor", "elektronik sigara çekiyor", "bira yudumlıyor", "kalem parmaklarında döndürüyor"
 
 ── GÜVEN SKORU ──
 - Net görüntü → 75-95
@@ -2017,7 +2065,7 @@ nesne_amac_tahmini: Nesnenin bu anda ne için kullanıldığına dair kısa yoru
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","el_nesnesi":"yok","nesne_risk_seviyesi":"yok","nesne_amac_tahmini":"","zarar_sinyali":false,"tehlike_var":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","el_nesnesi":"yok","nesne_kategorisi":"sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok","nesne_risk_seviyesi":"yuksek|orta|davranissal|dusuk|yok","nesne_amac_tahmini":"","zarar_sinyali":false,"tehlike_var":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
