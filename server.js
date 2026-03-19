@@ -736,6 +736,7 @@ Duygu trendi: ${emotionState?.trend || 'stabil'}
   "soru_toleransi": "düşük|orta|yüksek",
   "basarili_mudahaleler": ["nefes", "sokratik_soru"],
   "degerler_haritasi": ["aile", "özgürlük", "başarı"],
+  "ozel_isimler": {"patron": "Ahmet", "sevgili": "Ayşe"},
   "haftalik_gorev": "verildiyse görevi yaz, verilmediyse boş string",
   "ozet": "1 cümle kişilik özeti"
 }
@@ -751,6 +752,9 @@ Sadece JSON döndür.`
         try {
             const raw = profilGuncelleme.choices[0].message.content.trim().replace(/```json|```/g, '');
             const parsed = JSON.parse(raw);
+            // #15 — Özel İsimler Hafızası: isimler birleştirme
+            const ozelIsimler = { ...(mevcutProfil.ozel_isimler || {}), ...(parsed.ozel_isimler || {}) };
+
             // Mevcut profille birleştir
             yeniProfil = {
                 ...mevcutProfil,
@@ -759,6 +763,7 @@ Sadece JSON döndür.`
                 savunma_mekanizmalari: [...new Set([...(mevcutProfil.savunma_mekanizmalari || []), ...(parsed.savunma_mekanizmalari || [])])],
                 basarili_mudahaleler: [...new Set([...(mevcutProfil.basarili_mudahaleler || []), ...(parsed.basarili_mudahaleler || [])])],
                 degerler_haritasi: [...new Set([...(mevcutProfil.degerler_haritasi || []), ...(parsed.degerler_haritasi || [])])],
+                ozel_isimler: ozelIsimler,
                 guncelleme_tarihi: new Date().toISOString()
             };
         } catch { /* parse hatası → mevcut profil korunur */ }
@@ -1142,15 +1147,32 @@ app.post('/api/chat/completions', async (req, res) => {
         const userMemory = await getMemory(userId);
         const enrichedMessages = [...messages];
 
+        // #15 — Özel İsimler Hafızasını inject et
+        let isimInjection = '';
+        try {
+            const { data: profileRow } = await supabase.from('memories').select('user_profile').eq('user_id', userId).single();
+            const ozelIsimler = profileRow?.user_profile?.ozel_isimler || {};
+            if (Object.keys(ozelIsimler).length > 0) {
+                const isimStr = Object.entries(ozelIsimler).map(([k, v]) => `${k}: ${v}`).join(', ');
+                isimInjection = `\n\n[KULLANICININ YAKIN KİŞİLERİ]: ${isimStr}. Bu isimleri sohbette doğal şekilde kullan, kişisel bağlantı kur.`;
+            }
+        } catch { /* profil yükleme başarısız */ }
+
         const systemIdx = enrichedMessages.findIndex(m => m.role === 'system');
         if (userMemory) {
-            const memoryInjection = `\n\n[BU KULLANICI HAKKINDAKİ HAFIZA]:\n${userMemory}\n\nBu bilgileri doğal şekilde kullan, asla "seni hatırlıyorum" diyerek açıkça belirtme.`;
+            const memoryInjection = `\n\n[BU KULLANICI HAKKINDAKİ HAFIZA]:\n${userMemory}\n\nBu bilgileri doğal şekilde kullan, asla "seni hatırlıyorum" diyerek açıkça belirtme.${isimInjection}`;
             if (systemIdx !== -1) {
                 enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + memoryInjection };
             } else {
                 enrichedMessages.unshift({ role: 'system', content: memoryInjection });
             }
-            console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}`);
+            console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}${isimInjection ? ' + isimler' : ''}`);
+        } else if (isimInjection) {
+            if (systemIdx !== -1) {
+                enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + isimInjection };
+            } else {
+                enrichedMessages.unshift({ role: 'system', content: isimInjection });
+            }
         }
 
         // userId eşleşmezse activeSessionUserId ile de dene
