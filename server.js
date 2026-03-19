@@ -391,8 +391,10 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
         if (tempoTrend === 'artıyor' && konusmaTempo > 3)
             kurallar.push('Kullanıcı çok hızlı konuşuyor — kaygı veya acelesi var. Nazikçe yavaşlat: "Bir nefes alalım mı?"');
 
-        if (transcriptData.sesMonotonluk && (dominantDuygu === 'üzgün' || dominantDuygu === 'yorgun'))
-            kurallar.push('Kullanıcının sesi monoton ve düz — içinde ağırlık/boşluk sinyali. "Sesin çok düz, içinde bir ağırlık var gibi hissediyorum" diyebilirsin. Depresyon sinyali olabilir, dikkatli ol.');
+        if (transcriptData.sesMonotonluk && (dominantDuygu === 'üzgün' || dominantDuygu === 'yorgun')) {
+            const depresyonUyarı = dominantDuygu === 'üzgün' && transcriptData.sesMonotonluk ? 'Depresyon sinyali olabilir. ' : '';
+            kurallar.push(`[#7 SES MONOTONLUĞU] Sesi monoton ve düz — içinde ağırlık/boşluk sinyali. ${depresyonUyarı}"Sesin çok düz, içinde bir ağırlık var gibi hissediyorum" diyebilirsin. Yavaş konuş, destekleyici kal.`);
+        }
 
         // ── HUME AI PROSODY INJECT ──
         if (hume_scores && hume_scores.top_emotions) {
