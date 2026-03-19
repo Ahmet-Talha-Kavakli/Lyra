@@ -2069,11 +2069,11 @@ Yalnızca geçerli JSON döndür:
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'auto' }
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'high' }
                     }
                 ]
             }],
-            max_tokens: 600
+            max_tokens: 800
         });
 
         let result = { duygu: 'sakin', guven: 0, yuz_var: false };

@@ -1324,15 +1324,13 @@
             else if (avgBr < 200) filterStr = 'brightness(0.85)';
             else                  filterStr = 'brightness(0.6) contrast(1.1)';
 
-            // Canvas'ı yüz bölgesine crop et: 480x312 (üst %65)
-            // GPT-4o için 512px altı = low detail = tek geçiş, daha tutarlı
-            const outW = 480;
-            const outH = 312;
+            // Tam frame — nesne/el tespiti için crop yapma, tüm ekran lazım
+            const outW = 512;
+            const outH = 384;
             hiddenCanvas.width  = outW;
             hiddenCanvas.height = outH;
             ctx.filter = filterStr;
-            // Kaynak: video'nun üst %65'i (0,0,640,312) → hedef: (0,0,480,312)
-            ctx.drawImage(userVideo, 0, 0, 640, 312, 0, 0, outW, outH);
+            ctx.drawImage(userVideo, 0, 0, 640, 480, 0, 0, outW, outH);
             ctx.filter = 'none';
 
             // Histogram — sadece çok karanlıkta
