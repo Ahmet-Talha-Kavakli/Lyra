@@ -147,7 +147,7 @@ const buildLayer4Rules = (lastSegment, sonAnaliz, gecmis) => {
 };
 
 // L5: Sessizlik & Ritim
-const buildLayer5Rules = (silenceDuration, sessizlikTipi) => {
+const buildLayer5Rules = (silenceDuration, sessizlikTipi, dominantDuygu) => {
     if (!silenceDuration || silenceDuration < 8) return '';
     const kurallar = [];
 
@@ -160,12 +160,19 @@ const buildLayer5Rules = (silenceDuration, sessizlikTipi) => {
         kurallar.push('[#10 RAHAT SESSİZLİK] Sağlıklı bir sessizlik kalitesi. Kullanıcı kendisinde rahat — baskı yapma.');
     } else if (sessizlikTipi === 'bloke') {
         kurallar.push('[#10 BLOKELİ SESSİZLİK] Kullanıcı tıkanmış hissediyor — zarar riski olabilir. "Bedenine sor, ne yaşamak istiyor" tekniği uygula.');
+        // #16 — REHBERLİ GÖRSELLEŞTIRME: bloke durumda görselleştirme teklif et
+        kurallar.push('[#16 VİZUALİZASYON] <call>visualizationStart()</call> Bloke durumda olduğu için rehberli görselleştirme teklif et: "Şu an seni bir görselleştirme rehberine almak ister misin? Zihnini biraz hızlandırmaya çalışabiliriz."');
     }
 
     if (silenceDuration >= 25)
         kurallar.push('Çok uzun sessizlik (25+ saniye). Nazikçe açılmasını sağla: "Şu an ne hissediyorsun, söylemek zor mu?"');
     else if (silenceDuration >= 8 && !kurallar.length)
         kurallar.push('Sessizlik (8+ saniye). "Hazır olduğunda devam edebiliriz, acele yok." de.');
+
+    // #16 — Kaygı/endişe durumunda görselleştirme
+    if ((dominantDuygu === 'endişeli' || dominantDuygu === 'korkmuş') && silenceDuration >= 12) {
+        kurallar.push('[#16 VİZUALİZASYON - KAYGı] <call>visualizationStart()</call> Yüksek kaygı + uzun sessizlik → rehberli görselleştirme öner: "Seni sakinleştirici bir deneyime davet etmek istiyorum. İsteğe bağlı."');
+    }
 
     return kurallar.join(' ');
 };
@@ -229,6 +236,11 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
         const gunFarki = Math.round((Date.now() - ilkTarih) / (1000*60*60*24));
         if (gunFarki >= 14 && trendi.slice(-2).every(t => t !== 'kötüleşiyor'))
             kurallar.push(`Kullanıcı ${gunFarki} gündür Lyra ile çalışıyor ve genel seyir iyi. Bunu fark et: "Son haftalarda gerçekten bir şeyler değişiyor, görüyorum."`);
+    }
+
+    // #17 — DÜŞÜNCE KAYDI (CBT): Mutlak/olumsuz düşünce tespit edildiğinde
+    if (sonAnaliz?.duygu && ['üzgün','korkmuş','endişeli','sinirli'].includes(sonAnaliz.duygu) && patternMemory.absolute_words_detected) {
+        kurallar.push('[#17 CBT] <call>openCBT()</call> Mutlak düşünceler ("asla", "hiç", "her zaman") tespit edildi. Kullanıcıya düşünce kaydı tekniği öner: "Aklındaki şu düşünceyi biraz daha derinlemesine bakalım mı? Kanıtlarını ve alternatif görüşlerini not etmek ister misin?"');
     }
 
     return kurallar.join(' ');
@@ -1193,7 +1205,7 @@ app.post('/api/chat/completions', async (req, res) => {
             const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz, gecmis);
 
             // L5: Sessizlik
-            const l5 = buildLayer5Rules(transcriptState?.silenceDuration, transcriptState?.sessizlikTipi);
+            const l5 = buildLayer5Rules(transcriptState?.silenceDuration, transcriptState?.sessizlikTipi, son_analiz?.duygu);
 
             // L6: Seanslar arası pattern
             let l6 = '';
@@ -1555,6 +1567,279 @@ app.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, async (re
     } catch (err) {
         console.error('[HUME] Hata:', err.message);
         res.json({ hume_scores: null });
+    }
+});
+
+// ─── #17: DÜŞÜNCE KAYDI (CBT — Bilişsel Davranışçı Terapi) ─────────
+app.post('/record-thought', async (req, res) => {
+    try {
+        const { userId, automatic_thought, evidence_for, evidence_against, realistic_response } = req.body;
+        if (!userId || !automatic_thought) {
+            return res.json({ error: 'userId ve automatic_thought gerekli' });
+        }
+
+        // Supabase'e CBT kaydı ekle (thought_records tablosu)
+        const { data, error } = await supabase.from('thought_records').insert([{
+            user_id: userId,
+            automatic_thought: automatic_thought,
+            evidence_for: evidence_for || '',
+            evidence_against: evidence_against || '',
+            realistic_response: realistic_response || '',
+            recorded_at: new Date().toISOString()
+        }]);
+
+        if (error) {
+            console.error('[CBT] Supabase hata:', error.message);
+            return res.json({ error: error.message });
+        }
+
+        // Son eklenen kaydı döndür
+        console.log(`[#17 CBT] Düşünce kaydedildi: "${automatic_thought.substring(0,50)}..."`);
+        res.json({ success: true, record: data?.[0] || {} });
+    } catch (err) {
+        console.error('[#17 CBT] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── #17: DÜŞÜNCE KAYITLARINI GETIR ─────────────────────────────────
+app.get('/thought-records/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { data, error } = await supabase
+            .from('thought_records')
+            .select('*')
+            .eq('user_id', userId)
+            .order('recorded_at', { ascending: false })
+            .limit(20);
+
+        if (error) {
+            console.error('[CBT] Supabase hata:', error.message);
+            return res.json({ records: [] });
+        }
+
+        console.log(`[#17 CBT] ${data?.length || 0} düşünce kaydı döndürüldü`);
+        res.json({ records: data || [] });
+    } catch (err) {
+        console.error('[#17 CBT] Hata:', err.message);
+        res.json({ records: [] });
+    }
+});
+
+// ─── #18: DEĞERLER KEŞFI (Values Discovery) ─────────────────────────
+app.post('/discover-values', async (req, res) => {
+    try {
+        const { userId, selectedValues } = req.body;
+        if (!userId || !Array.isArray(selectedValues)) {
+            return res.json({ error: 'userId ve selectedValues gerekli' });
+        }
+
+        // Supabase'e değerler kaydet
+        const { data, error } = await supabase.from('user_values').insert([{
+            user_id: userId,
+            values: selectedValues,
+            discovered_at: new Date().toISOString()
+        }]);
+
+        if (error) {
+            console.error('[#18 VALUES] Supabase hata:', error.message);
+            return res.json({ error: error.message });
+        }
+
+        // Profili güncelle: values_discovered = true
+        await supabase.from('user_profile')
+            .update({ values_discovered: true })
+            .eq('user_id', userId);
+
+        console.log(`[#18 VALUES] ${selectedValues.length} değer kaydedildi: ${selectedValues.slice(0,3).join(', ')}`);
+        res.json({ success: true, values_saved: selectedValues.length });
+    } catch (err) {
+        console.error('[#18 VALUES] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── #18: KULLANICININ DEĞERLERINI GETIR ────────────────────────────
+app.get('/user-values/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { data, error } = await supabase
+            .from('user_values')
+            .select('*')
+            .eq('user_id', userId)
+            .order('discovered_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error) {
+            return res.json({ values: [] });
+        }
+
+        res.json({ values: data?.values || [] });
+    } catch (err) {
+        res.json({ values: [] });
+    }
+});
+
+// ─── #19: HAFTALIK MİNİ GÖREVLER (Homework) ──────────────────────────
+app.post('/assign-homework', async (req, res) => {
+    try {
+        const { userId, sessionId, dominantEmotion, homework } = req.body;
+        if (!userId || !homework) {
+            return res.json({ error: 'userId ve homework gerekli' });
+        }
+
+        const homeworkTask = {
+            title: homework.title || 'Mini Görev',
+            description: homework.description || '',
+            due_date: new Date(Date.now() + 7*24*60*60*1000).toISOString(), // 7 gün
+            emotion_context: dominantEmotion,
+            difficulty: homework.difficulty || 'orta',
+            completed: false
+        };
+
+        const { data, error } = await supabase.from('homework_tasks').insert([{
+            user_id: userId,
+            session_id: sessionId,
+            task: homeworkTask,
+            assigned_at: new Date().toISOString()
+        }]);
+
+        if (error) {
+            console.error('[#19 HW] Supabase hata:', error.message);
+            return res.json({ error: error.message });
+        }
+
+        console.log(`[#19 HW] Görev atandı: "${homeworkTask.title}"`);
+        res.json({ success: true, homework: homeworkTask });
+    } catch (err) {
+        console.error('[#19 HW] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── #19: HAFTA GÖREVLERINI GETIR ────────────────────────────────────
+app.get('/homework/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { data, error } = await supabase
+            .from('homework_tasks')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('completed', false)
+            .order('assigned_at', { ascending: false })
+            .limit(5);
+
+        if (error) {
+            return res.json({ tasks: [] });
+        }
+
+        console.log(`[#19 HW] ${data?.length || 0} görev döndürüldü`);
+        res.json({ tasks: data || [] });
+    } catch (err) {
+        res.json({ tasks: [] });
+    }
+});
+
+// ─── #19: GÖREVI TAMAMLA ─────────────────────────────────────────────
+app.post('/complete-homework/:taskId', async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const { error } = await supabase.from('homework_tasks')
+            .update({ completed: true, completed_at: new Date().toISOString() })
+            .eq('id', taskId);
+
+        if (error) {
+            return res.json({ error: error.message });
+        }
+
+        console.log(`[#19 HW] Görev tamamlandı: ${taskId}`);
+        res.json({ success: true });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
+// ─── #20: KRİZ SONRASI PROTOKOL (24-Hour Check-in) ──────────────────
+app.post('/log-crisis', async (req, res) => {
+    try {
+        const { userId, severity, description, triggerTopic } = req.body;
+        if (!userId) return res.json({ error: 'userId gerekli' });
+
+        const crisis_record = {
+            severity: severity || 'orta', // düşük/orta/yüksek/çok_yüksek
+            description: description || 'Kriz tespit edildi',
+            trigger_topic: triggerTopic,
+            detected_at: new Date().toISOString(),
+            followup_scheduled: true,
+            followup_due: new Date(Date.now() + 24*60*60*1000).toISOString() // 24 saat sonra
+        };
+
+        const { error } = await supabase.from('crisis_logs').insert([{
+            user_id: userId,
+            crisis_data: crisis_record
+        }]);
+
+        if (error) {
+            console.error('[#20 CRISIS] Supabase hata:', error.message);
+            return res.json({ error: error.message });
+        }
+
+        console.log(`[#20 CRISIS] Kriz kaydedildi (${severity}): ${description?.substring(0,40)}`);
+        res.json({ success: true, followup_due: crisis_record.followup_due });
+    } catch (err) {
+        console.error('[#20 CRISIS] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── #20: KRİZ TAKIBI ÖNEMLİ (Cron Job'ta kullanılır) ─────────────────
+app.get('/crisis-followups-due/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const now = new Date().toISOString();
+
+        const { data, error } = await supabase.from('crisis_logs')
+            .select('*')
+            .eq('user_id', userId)
+            .lte('crisis_data->followup_due', now)
+            .eq('crisis_data->followup_done', false)
+            .order('crisis_data->detected_at', { ascending: false });
+
+        if (error) {
+            return res.json({ followups: [] });
+        }
+
+        console.log(`[#20 CRISIS] ${data?.length || 0} takip gerekli`);
+        res.json({ followups: data || [] });
+    } catch (err) {
+        res.json({ followups: [] });
+    }
+});
+
+// ─── #20: KRİZ TAKIP TAMAMLA ──────────────────────────────────────────
+app.post('/complete-crisis-followup/:crisisId', async (req, res) => {
+    try {
+        const { crisisId } = req.params;
+        const { followupResponse } = req.body;
+
+        const { data: crisisData, error: fetchErr } = await supabase
+            .from('crisis_logs').select('*').eq('id', crisisId).single();
+
+        if (fetchErr || !crisisData) return res.json({ error: 'Kriz kaydı bulunamadı' });
+
+        const updatedCrisis = { ...crisisData.crisis_data, followup_done: true, followup_response: followupResponse || '' };
+
+        const { error } = await supabase.from('crisis_logs')
+            .update({ crisis_data: updatedCrisis })
+            .eq('id', crisisId);
+
+        if (error) return res.json({ error: error.message });
+
+        console.log(`[#20 CRISIS] Takip tamamlandı: ${crisisId}`);
+        res.json({ success: true });
+    } catch (err) {
+        res.json({ error: err.message });
     }
 });
 

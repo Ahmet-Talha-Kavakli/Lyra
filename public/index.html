@@ -122,6 +122,132 @@
         }
         #nefes-kapat:hover { color: rgba(255,255,255,0.5); }
 
+        /* ── REHBERLİ GÖRSELLEŞTIRME OVERLAY ── */
+        #visualization-overlay {
+            display: none; position: fixed; inset: 0;
+            background: linear-gradient(135deg, rgba(20,15,30,0.95), rgba(30,20,40,0.95)); z-index: 9000;
+            flex-direction: column; align-items: center; justify-content: center; gap: 32px;
+        }
+        #visualization-overlay.active { display: flex; }
+        #visualization-canvas {
+            width: 220px; height: 220px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(200,169,110,0.2), rgba(20,15,30,0.8));
+            box-shadow: 0 0 40px rgba(200,169,110,0.15), inset 0 0 40px rgba(200,169,110,0.1);
+            display: flex; align-items: center; justify-content: center;
+        }
+        #visualization-inner {
+            width: 140px; height: 140px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(232,201,154,0.3), transparent);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 48px; font-weight: 200; color: var(--accent);
+        }
+        #visualization-text {
+            font-size: 14px; letter-spacing: 0.2em;
+            text-transform: uppercase; color: var(--text-color);
+            text-align: center; max-width: 360px;
+        }
+        #visualization-kapat {
+            margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.25);
+            cursor: pointer; letter-spacing: 0.12em; text-transform: uppercase;
+        }
+        #visualization-kapat:hover { color: rgba(255,255,255,0.5); }
+        @keyframes breathPulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.6; }
+        }
+        #visualization-inner { animation: breathPulse 4s ease-in-out infinite; }
+
+        /* ── #17: DÜŞÜNCE KAYDI (CBT) MODAL ── */
+        #cbt-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.92); z-index: 8500;
+            flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        #cbt-modal.active { display: flex; }
+        #cbt-card {
+            background: var(--panel-bg); border: 1px solid var(--border);
+            border-radius: 16px; padding: 32px; max-width: 480px;
+            max-height: 80vh; overflow-y: auto;
+        }
+        #cbt-card h3 { font-size: 18px; margin: 0 0 24px; font-weight: 400; }
+        .cbt-field {
+            margin-bottom: 20px; display: flex; flex-direction: column;
+        }
+        .cbt-field label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+            color: rgba(255,255,255,0.5); margin-bottom: 8px; }
+        .cbt-field textarea, .cbt-field input {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px; color: var(--text-color);
+            font-family: 'Outfit', sans-serif; font-size: 14px;
+        }
+        .cbt-field textarea:focus, .cbt-field input:focus {
+            outline: none; border-color: var(--primary); background: rgba(200,169,110,0.05);
+        }
+        .cbt-field textarea { min-height: 80px; resize: vertical; }
+        #cbt-submit, #cbt-cancel {
+            padding: 12px 24px; border: none; border-radius: 8px;
+            font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
+            cursor: pointer; margin-top: 16px;
+        }
+        #cbt-submit {
+            background: var(--primary); color: var(--bg);
+            font-weight: 600; margin-right: 12px;
+        }
+        #cbt-submit:hover { background: var(--accent); }
+        #cbt-cancel {
+            background: rgba(255,255,255,0.1); color: var(--text-color);
+        }
+        #cbt-cancel:hover { background: rgba(255,255,255,0.15); }
+        .cbt-buttons { display: flex; justify-content: flex-end; margin-top: 24px; }
+
+        /* ── #18: DEĞERLER KEŞFI MODAL ── */
+        #values-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.92); z-index: 8500;
+            flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        #values-modal.active { display: flex; }
+        #values-card {
+            background: var(--panel-bg); border: 1px solid var(--border);
+            border-radius: 16px; padding: 32px; max-width: 520px;
+            max-height: 80vh; overflow-y: auto;
+        }
+        #values-card h3 { font-size: 18px; margin: 0 0 12px; font-weight: 400; }
+        #values-card p { font-size: 13px; color: rgba(255,255,255,0.6); margin: 0 0 24px; }
+        .values-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px; margin-bottom: 24px;
+        }
+        .value-btn {
+            padding: 12px; border: 2px solid var(--border);
+            border-radius: 8px; background: rgba(255,255,255,0.05);
+            color: var(--text-color); font-size: 13px; cursor: pointer;
+            transition: all 0.2s; text-align: center; font-family: 'Outfit', sans-serif;
+        }
+        .value-btn:hover { border-color: var(--primary); background: rgba(200,169,110,0.1); }
+        .value-btn.selected {
+            background: var(--primary); color: var(--bg); border-color: var(--primary);
+            font-weight: 600;
+        }
+        #values-submit, #values-skip {
+            padding: 12px 24px; border: none; border-radius: 8px;
+            font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;
+            cursor: pointer;
+        }
+        #values-submit {
+            background: var(--primary); color: var(--bg);
+            font-weight: 600; margin-right: 12px;
+        }
+        #values-submit:hover { background: var(--accent); }
+        #values-skip {
+            background: rgba(255,255,255,0.1); color: var(--text-color);
+        }
+        #values-skip:hover { background: rgba(255,255,255,0.15); }
+        .values-buttons { display: flex; justify-content: flex-end; margin-top: 24px; gap: 12px; }
+
         /* ── ACİL YARDIM BUTONU ── */
         #acil-btn {
             position: fixed; bottom: 20px; right: 20px;
@@ -694,6 +820,15 @@
         <div id="nefes-kapat" onclick="kapat478()">Kapat</div>
     </div>
 
+    <!-- REHBERLİ GÖRSELLEŞTIRME OVERLAY -->
+    <div id="visualization-overlay">
+        <div id="visualization-canvas">
+            <div id="visualization-inner">✨</div>
+        </div>
+        <div id="visualization-text">Rahat et ve bu ışığa odaklan. Tüm gerilim uzaklaşıyor...</div>
+        <div id="visualization-kapat" onclick="kapatVisualization()">Kapat</div>
+    </div>
+
     <!-- SEANS PROGRESS BAR (#16) -->
     <div id="seans-progress-wrap">
         <div id="seans-progress-bar"></div>
@@ -701,6 +836,46 @@
 
     <!-- TOAST BİLDİRİM CONTAINER (#36) -->
     <div id="toast-container"></div>
+
+    <!-- #17: DÜŞÜNCE KAYDI (CBT) MODAL -->
+    <div id="cbt-modal">
+        <div id="cbt-card">
+            <h3>💭 Düşünce Kaydı</h3>
+            <div class="cbt-field">
+                <label>Otomatik Düşünce</label>
+                <textarea id="cbt-thought" placeholder="Örn: Ben asla başaramayacağım..."></textarea>
+            </div>
+            <div class="cbt-field">
+                <label>Bunu Destekleyen Kanıtlar</label>
+                <textarea id="cbt-evidence-for" placeholder="Bu düşünceyi destekleyen şeyler neler?"></textarea>
+            </div>
+            <div class="cbt-field">
+                <label>Bunu Zorlayan Kanıtlar</label>
+                <textarea id="cbt-evidence-against" placeholder="Ama bunun aksini gösteren şeyler neler?"></textarea>
+            </div>
+            <div class="cbt-field">
+                <label>Gerçekçi Cevap</label>
+                <textarea id="cbt-response" placeholder="Daha dengeli bir şekilde ne düşünebilirdim?"></textarea>
+            </div>
+            <div class="cbt-buttons">
+                <button id="cbt-submit" onclick="kaydeDusunce()">Kaydet</button>
+                <button id="cbt-cancel" onclick="kapatCBT()">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- #18: DEĞERLER KEŞFI MODAL -->
+    <div id="values-modal">
+        <div id="values-card">
+            <h3>✨ Seni Neyin Mutlu Ediyor?</h3>
+            <p>Aşağıdaki değerlerden sana en uygun olanları seç. Bunlar hayatında neyin önemli olduğunu gösterir.</p>
+            <div class="values-grid" id="values-grid"></div>
+            <div class="values-buttons">
+                <button id="values-submit" onclick="kaydetDegerler()">Kaydet</button>
+                <button id="values-skip" onclick="atlaValues()">Şimdi Değil</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ACİL YARDIM BUTONU -->
     <div id="acil-btn" onclick="acilAc()" title="Acil Yardım">🆘</div>
@@ -2006,6 +2181,10 @@
                 if (txt.includes('gözlerini kapat') || txt.includes('güvenli bir yerde hayal')) {
                     baslat_vizual();
                 }
+                // #16 — REHBERLİ GÖRSELLEŞTIRME TRIGGER
+                if (txt.includes('<call>visualizationstart()</call>') || txt.includes('görselleştir')) {
+                    baslat_vizualization();
+                }
             }
         });
 
@@ -2036,6 +2215,153 @@
         function kapat478() {
             clearTimeout(nefes478Timer);
             document.getElementById('nefes-overlay').classList.remove('active');
+        }
+
+        // ── REHBERLİ GÖRSELLEŞTIRME ──────────────────────────
+        let visualizationTimer = null;
+        const VISUALIZATION_SEQUENCES = [
+            { color: 'rgba(200,169,110,0.4)', text: '✨ Işığı hisset...', emote: '✨' },
+            { color: 'rgba(100,200,150,0.3)', text: '🌊 Sakin dalgaları gör...', emote: '🌊' },
+            { color: 'rgba(150,180,220,0.3)', text: '☁️ Bulutlardan yukarı uç...', emote: '☁️' },
+            { color: 'rgba(200,150,200,0.3)', text: '🌙 Ay ışığında yüzüyor...', emote: '🌙' },
+        ];
+        let vizIndex = 0;
+        function baslat_vizualization() {
+            const overlay = document.getElementById('visualization-overlay');
+            const canvas = document.getElementById('visualization-canvas');
+            const inner = document.getElementById('visualization-inner');
+            const text = document.getElementById('visualization-text');
+            overlay.classList.add('active');
+            vizIndex = 0;
+            function changScene() {
+                const seq = VISUALIZATION_SEQUENCES[vizIndex % VISUALIZATION_SEQUENCES.length];
+                canvas.style.background = `radial-gradient(circle, ${seq.color}, rgba(20,15,30,0.8))`;
+                inner.textContent = seq.emote;
+                text.textContent = seq.text;
+                vizIndex++;
+                visualizationTimer = setTimeout(changScene, 4000);
+            }
+            changScene();
+        }
+        function kapatVisualization() {
+            clearTimeout(visualizationTimer);
+            document.getElementById('visualization-overlay').classList.remove('active');
+        }
+
+        // ── #17: DÜŞÜNCE KAYDI (CBT) ────────────────────────
+        function aciCBT() {
+            document.getElementById('cbt-modal').classList.add('active');
+            // Formu temizle
+            document.getElementById('cbt-thought').value = '';
+            document.getElementById('cbt-evidence-for').value = '';
+            document.getElementById('cbt-evidence-against').value = '';
+            document.getElementById('cbt-response').value = '';
+        }
+        function kapatCBT() {
+            document.getElementById('cbt-modal').classList.remove('active');
+        }
+        async function kaydeDusunce() {
+            const thought = document.getElementById('cbt-thought').value.trim();
+            if (!thought) {
+                alert('Lütfen otomatik düşünceyi yazın');
+                return;
+            }
+            try {
+                const res = await fetch('/record-thought', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: persistentUserId,
+                        automatic_thought: thought,
+                        evidence_for: document.getElementById('cbt-evidence-for').value.trim(),
+                        evidence_against: document.getElementById('cbt-evidence-against').value.trim(),
+                        realistic_response: document.getElementById('cbt-response').value.trim()
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    console.log('[#17 CBT] Düşünce kaydedildi');
+                    kapatCBT();
+                    toast('✓ Düşünce kaydedildi', 2000);
+                } else {
+                    toast('Hata: ' + (data.error || 'Bilinmeyen hata'), 2000);
+                }
+            } catch (err) {
+                console.error('[#17 CBT] Hata:', err);
+                toast('Bağlantı hatası', 2000);
+            }
+        }
+
+        // ── #18: DEĞERLER KEŞFI (Values Discovery) ──────────
+        const VALUES_LIST = [
+            '❤️ Sevgi & Yakınlık',
+            '🎯 Başarı & Başarı',
+            '😄 Neşe & Eğlence',
+            '🧘 İç Barış & Sakinlik',
+            '📚 Öğrenme & Büyüme',
+            '🌍 Katkı & Anlamı Oluş',
+            '⚡ Özgürlük & Bağımsızlık',
+            '👨‍👩‍👧 Aile & Bağlantı',
+            '🏆 Saygı & Tanınma',
+            '🌱 Sağlık & Wellness',
+            '🎨 Yaratıcılık & Kendini İfade',
+            '🙏 Dürüstlük & Ahlak'
+        ];
+        let selectedValuesUI = [];
+
+        function acaValues() {
+            selectedValuesUI = [];
+            const grid = document.getElementById('values-grid');
+            grid.innerHTML = '';
+            VALUES_LIST.forEach((val, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'value-btn';
+                btn.textContent = val;
+                btn.onclick = () => toggleValue(idx, btn);
+                grid.appendChild(btn);
+            });
+            document.getElementById('values-modal').classList.add('active');
+        }
+        function toggleValue(idx, btn) {
+            if (selectedValuesUI.includes(idx)) {
+                selectedValuesUI = selectedValuesUI.filter(i => i !== idx);
+                btn.classList.remove('selected');
+            } else {
+                selectedValuesUI.push(idx);
+                btn.classList.add('selected');
+            }
+        }
+        async function kaydetDegerler() {
+            if (selectedValuesUI.length === 0) {
+                alert('Lütfen en az 1 değer seç');
+                return;
+            }
+            const selectedTexts = selectedValuesUI.map(i => VALUES_LIST[i]);
+            try {
+                const res = await fetch('/discover-values', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: persistentUserId,
+                        selectedValues: selectedTexts
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    console.log('[#18 VALUES] Değerler kaydedildi');
+                    atlaValues();
+                    toast('✓ Değerlerin kaydedildi', 2000);
+                } else {
+                    toast('Hata: ' + (data.error || 'Bilinmeyen'), 2000);
+                }
+            } catch (err) {
+                console.error('[#18 VALUES] Hata:', err);
+                toast('Bağlantı hatası', 2000);
+            }
+        }
+        function atlaValues() {
+            document.getElementById('values-modal').classList.remove('active');
+            selectedValuesUI = [];
         }
 
         // ── ACİL YARDIM ─────────────────────────────────────
