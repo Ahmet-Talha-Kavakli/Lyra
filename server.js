@@ -2434,6 +2434,22 @@ app.post('/seed-knowledge', async (req, res) => {
             { source_type: 'wiki', title: 'Attachment Theory - Wikipedia', author: 'Wikipedia Contributors', url: 'https://en.wikipedia.org/wiki/Attachment_theory', summary: 'John Bowlby\'nin bağlanma teorisi, bağlanma stilleri', content: 'Güvenli, kaygılı, kaçınan bağlanma. Çocukluk deneyimleri, ilişkiler, terapi.', category: 'relationships', subcategory: 'attachment', tags: ['wiki', 'attachment', 'relationships', 'theory'], credibility_score: 0.88, relevance_score: 0.86 },
             { source_type: 'wiki', title: 'Emotion Regulation - Wikipedia', author: 'Wikipedia Contributors', url: 'https://en.wikipedia.org/wiki/Emotion_regulation', summary: 'Duygu düzenleme stratejileri, kaçınma, sıkıştırma, yeniden değerlendirme', content: 'Uyumlu ve uyumsuz stratejiler, DBT becerileri, bilişsel yeniden yapılandırma.', category: 'general', subcategory: 'emotion-regulation', tags: ['wiki', 'emotion', 'regulation', 'psychology'], credibility_score: 0.86, relevance_score: 0.84 },
             { source_type: 'wiki', title: 'Mindfulness - Wikipedia', author: 'Wikipedia Contributors', url: 'https://en.wikipedia.org/wiki/Mindfulness', summary: 'Mindfulness tanımı, meditasyon, uygulamalar, araştırma', content: 'Budizm kökenleri, seküler uygulamalar, MBSR, faydalı, bilimsel kanıt.', category: 'general', subcategory: 'mindfulness', tags: ['wiki', 'mindfulness', 'meditation', 'education'], credibility_score: 0.85, relevance_score: 0.82 },
+
+            // ═══ İNSAN ANALİZİ & BİLİNÇALTI PSİKOLOJİ ═══
+            { source_type: 'book', title: 'Thinking, Fast and Slow', author: 'Daniel Kahneman', url: 'https://www.kahneman.com/', summary: 'İnsan karar verme, önyargılar, bilinçaltı düşünce', content: 'Nobel ödüllü psikolog. İki sistem: hızlı (otomatik/bilinçaltı) vs yavaş (mantıksal). Bilişsel önyargılar, heuristics, insan davranışı.', category: 'human-analysis', subcategory: 'decision-making', tags: ['psychology', 'bias', 'subconscious', 'decision-making'], credibility_score: 0.96, relevance_score: 0.94 },
+            { source_type: 'book', title: 'Influence: The Psychology of Persuasion', author: 'Robert Cialdini', url: 'https://www.influenceatwork.com/', summary: 'İnsanları etkileyen bilinçaltı faktörler ve ikna mekanizmaları', content: '6 ilke: Karşılıklılık, tutarlılık, sosyal kanıt, otorite, sevgi, kıtlık. Bilinçaltı etkiler, satış, manipülasyon teknikleri.', category: 'human-analysis', subcategory: 'persuasion', tags: ['influence', 'persuasion', 'psychology', 'subconscious'], credibility_score: 0.94, relevance_score: 0.92 },
+            { source_type: 'book', title: 'Predictably Irrational', author: 'Dan Ariely', url: 'https://danariely.com/', summary: 'İnsan davranışı mantığı: neden hep aynı hataları yaparız?', content: 'Sistematik olarak mantıksız kararlar verişimiz. Anchor effects, sunk cost, loss aversion. Ekonomi + psikoloji. Bilinçaltı motifler.', category: 'human-analysis', subcategory: 'irrational-behavior', tags: ['psychology', 'behavior', 'bias', 'economics'], credibility_score: 0.93, relevance_score: 0.91 },
+            { source_type: 'book', title: 'The Interpretation of Dreams', author: 'Sigmund Freud', url: 'https://en.wikipedia.org/wiki/The_Interpretation_of_Dreams', summary: 'Rüyalar ve bilinçaltı arzuları açığa çıkaran kural motoru', content: 'Freud\'ün klasik eseri. Rüyalar bilinçaltı istemlerin göstergesi. Sembolik anlam, latent content, manifest content. Bilinçaltı analizi temeleri.', category: 'human-analysis', subcategory: 'dreams-unconscious', tags: ['freud', 'dreams', 'unconscious', 'psychology'], credibility_score: 0.89, relevance_score: 0.87 },
+            { source_type: 'book', title: 'Man and His Symbols', author: 'Carl Jung', url: 'https://en.wikipedia.org/wiki/Man_and_His_Symbols', summary: 'Jung\'un semboller, arketiper, kolektif bilinçaltı teorisi', content: 'Kollektif bilinçaltı, arketiper (gölge, anima, akela). Sembollerin evrensel anlamı. Rüyalar, mitoloji, psikolojik gelişim.', category: 'human-analysis', subcategory: 'archetypes', tags: ['jung', 'archetypes', 'unconscious', 'symbols'], credibility_score: 0.91, relevance_score: 0.89 },
+            { source_type: 'book', title: 'Mindset: The New Psychology of Success', author: 'Carol Dweck', url: 'https://mindsetonline.com/', summary: 'Sabit vs Büyüme Zihniyeti: İnsan potansiyeli ve inançlar', content: 'Sabit zihniyeti vs büyüme zihniyeti. İnançlar davranışı belirler. Başarı, motivasyon, potansiyel açığa çıkarma. Bilinçaltı inançların etkisi.', category: 'human-analysis', subcategory: 'beliefs', tags: ['mindset', 'psychology', 'growth', 'success'], credibility_score: 0.93, relevance_score: 0.91 },
+            { source_type: 'book', title: 'Incognito: The Secret Lives of the Brain', author: 'David Eagleman', url: 'https://www.davidaglemanm.com/', summary: 'Bilinçaltı beyin: Bilincin dışında neler oluyor?', content: 'Beynin %99\'u bilinçsiz çalışır. Algı, karar verme, davranış çoğunlukla bilinçaltında oluşur. Nörobiyoloji, farkındalık, kontrol illüzyonu.', category: 'human-analysis', subcategory: 'neuroscience', tags: ['brain', 'unconscious', 'consciousness', 'neuroscience'], credibility_score: 0.94, relevance_score: 0.92 },
+            { source_type: 'article', title: 'Unconscious Processes in Therapy and Daily Life', author: 'Journal of Consciousness Studies', url: 'https://pubmed.ncbi.nlm.nih.gov/', summary: 'Bilinçaltı süreçler: terapi, karar verme, davranış', content: 'Priming, implicit associations, automatic processes. Terapi sırasında bilinçaltı direnci. Farkındalık ve değişim mekanizmaları.', category: 'human-analysis', subcategory: 'research', tags: ['research', 'unconscious', 'therapy', 'psychology'], credibility_score: 0.92, relevance_score: 0.90 },
+            { source_type: 'article', title: 'Cognitive Biases in Human Decision Making', author: 'Psychological Review', url: 'https://pubmed.ncbi.nlm.nih.gov/', summary: '20+ bilişsel önyargı: İnsan düşünce hataları', content: 'Confirmation bias, availability heuristic, anchoring, sunk cost fallacy, availability cascade, backfire effect. Kararlar nasıl çarpıtılır.', category: 'human-analysis', subcategory: 'biases', tags: ['research', 'bias', 'cognition', 'psychology'], credibility_score: 0.93, relevance_score: 0.91 },
+            { source_type: 'technique', title: 'Free Association Technique', author: 'Psychoanalytic Tradition', url: 'https://en.wikipedia.org/wiki/Free_association', summary: 'Bilinçaltı düşünceleri çıkartma: kontrol edilmeyen söz', content: 'Freud\'ün klasik tekniği. Filtresiz konuşma = bilinçaltı ortaya çıkar. Travma, baskılı duygular, gizli motivler. Terapide kullanım.', category: 'human-analysis', subcategory: 'technique', tags: ['freud', 'technique', 'unconscious', 'therapy'], credibility_score: 0.90, relevance_score: 0.88 },
+            { source_type: 'technique', title: 'Shadow Work - Jung Method', author: 'Jungian Psychology', url: 'https://en.wikipedia.org/wiki/Shadow_(psychology)', summary: 'Gölge Self: Olumsuz kişiliği tanıma ve entegre etme', content: 'Jung\'ün gölge konsepti. Bastırılmış, reddedilen kişilik yönleri. Farkındalık, kabul, entegrasyon. Kendini tanıma yöntemi.', category: 'human-analysis', subcategory: 'jungian', tags: ['jung', 'shadow', 'self-awareness', 'integration'], credibility_score: 0.89, relevance_score: 0.87 },
+            { source_type: 'technique', title: 'Implicit Association Test (IAT)', author: 'Greenwald & Banaji', url: 'https://implicit.harvard.edu/', summary: 'Bilinçaltı önyargıları ölçme: Gizli İnsan Önyargıları', content: 'Ceplerle, ırk, cinsiyet hakkında açık olmayan tutumları ölçer. Bilinçaltı bias\'ı ortaya çıkarır. Farkındalık için tool.', category: 'human-analysis', subcategory: 'assessment', tags: ['test', 'unconscious', 'bias', 'assessment'], credibility_score: 0.91, relevance_score: 0.89 },
+            { source_type: 'wiki', title: 'Cognitive Biases - Wikipedia', author: 'Wikipedia Contributors', url: 'https://en.wikipedia.org/wiki/Cognitive_bias', summary: '50+ bilişsel önyargı: Kapsamlı liste ve açıklamalar', content: 'Confirmation bias, availability bias, anchoring, dunning-kruger, sunk cost, false consensus. Her bias açıklanmış.', category: 'human-analysis', subcategory: 'education', tags: ['wiki', 'bias', 'cognition', 'education'], credibility_score: 0.87, relevance_score: 0.85 },
+            { source_type: 'wiki', title: 'Unconscious Mind - Wikipedia', author: 'Wikipedia Contributors', url: 'https://en.wikipedia.org/wiki/Unconscious_mind', summary: 'Bilinçaltı zihin: Tarih, teori, araştırma', content: 'Freud, Jung, modern nörobiyoloji. Bilinçaltı süreçler, implicit memory, automaticity. Terapi teorisinin temelleri.', category: 'human-analysis', subcategory: 'education', tags: ['wiki', 'unconscious', 'psychology', 'education'], credibility_score: 0.86, relevance_score: 0.84 },
         ];
 
         // Embedding oluştur ve kaydet
@@ -2581,17 +2597,112 @@ async function autonomousSourceDiscovery() {
     try {
         console.log('[AGENT] Günlük kaynak keşfi başladı (02:00)');
 
-        // Simüle: Gerçek uygulamada external API'lerden çekerdik
-        // Google Scholar, Psychology Today, Medium vb.
-        // Şu an example sources ekliyoruz
+        const newSources = [];
 
-        const newSources = [
-            { source_type: 'article', title: 'Latest Research on Anxiety', author: 'Neuroscience Journal', url: 'https://example.com/', summary: 'Son araştırma bulguları', content: 'Yeni bulunmuş kaynaklar', category: 'anxiety', subcategory: 'research', tags: ['research', 'latest'], credibility_score: 0.88, relevance_score: 0.85 }
-        ];
+        // 1. Medium RSS'den psikoloji yazılarını çek
+        try {
+            const Parser = (await import('rss-parser')).default;
+            const parser = new Parser();
+            const mediumFeed = await parser.parseURL('https://medium.com/feed/tag/psychology');
+            const mediumArticles = mediumFeed.items.slice(0, 3).map(item => ({
+                source_type: 'article',
+                title: item.title.substring(0, 100),
+                author: item.creator || 'Medium',
+                url: item.link,
+                summary: item.contentSnippet?.substring(0, 200) || item.title,
+                content: item.content?.substring(0, 500) || item.contentSnippet?.substring(0, 500) || item.title,
+                category: 'general',
+                subcategory: 'article',
+                tags: ['medium', 'psychology', 'article', 'latest'],
+                credibility_score: 0.82,
+                relevance_score: 0.80
+            }));
+            newSources.push(...mediumArticles);
+            console.log(`[AGENT] Medium RSS: ${mediumArticles.length} makale bulundu`);
+        } catch (err) {
+            console.warn('[AGENT] Medium RSS hatası:', err.message);
+        }
 
+        // 2. Psychology Today RSS'den yazıları çek
+        try {
+            const Parser = (await import('rss-parser')).default;
+            const parser = new Parser();
+            const ptFeed = await parser.parseURL('https://www.psychologytoday.com/basics/rss.xml');
+            const ptArticles = ptFeed.items.slice(0, 3).map(item => ({
+                source_type: 'article',
+                title: item.title.substring(0, 100),
+                author: item.creator || 'Psychology Today',
+                url: item.link,
+                summary: item.contentSnippet?.substring(0, 200) || item.title,
+                content: item.content?.substring(0, 500) || item.contentSnippet?.substring(0, 500) || item.title,
+                category: 'general',
+                subcategory: 'expert-article',
+                tags: ['psychology-today', 'expert', 'article', 'latest'],
+                credibility_score: 0.89,
+                relevance_score: 0.85
+            }));
+            newSources.push(...ptArticles);
+            console.log(`[AGENT] Psychology Today RSS: ${ptArticles.length} makale bulundu`);
+        } catch (err) {
+            console.warn('[AGENT] Psychology Today RSS hatası:', err.message);
+        }
+
+        // 3. Google Scholar API'den (SearchAPI)
+        try {
+            if (process.env.SEARCHAPI_KEY) {
+                const axios = (await import('axios')).default;
+                const scholarResp = await axios.get('https://www.searchapi.io/api/v1/search', {
+                    params: {
+                        engine: 'google_scholar',
+                        q: 'psychology anxiety therapy',
+                        api_key: process.env.SEARCHAPI_KEY
+                    }
+                });
+
+                const scholarArticles = (scholarResp.data.organic_results || []).slice(0, 3).map(item => ({
+                    source_type: 'research',
+                    title: item.title.substring(0, 100),
+                    author: item.publication || 'Google Scholar',
+                    url: item.link || 'https://scholar.google.com',
+                    summary: item.snippet?.substring(0, 200) || item.title,
+                    content: item.snippet?.substring(0, 500) || item.title,
+                    category: 'general',
+                    subcategory: 'research',
+                    tags: ['google-scholar', 'research', 'latest'],
+                    credibility_score: 0.90,
+                    relevance_score: 0.85
+                }));
+                newSources.push(...scholarArticles);
+                console.log(`[AGENT] Google Scholar: ${scholarArticles.length} araştırma bulundu`);
+            } else {
+                console.log('[AGENT] SearchAPI key bulunamadı, Google Scholar atlandı');
+            }
+        } catch (err) {
+            console.warn('[AGENT] Google Scholar API hatası:', err.message);
+        }
+
+        // Embedding oluştur ve kaydet
         let addedCount = 0;
         for (const source of newSources) {
             try {
+                // Duplicate check
+                let existing = null;
+                try {
+                    const { data } = await supabase
+                        .from('knowledge_sources')
+                        .select('id')
+                        .eq('title', source.title)
+                        .single();
+                    existing = data;
+                } catch (e) {
+                    // Duplicate yok
+                }
+
+                if (existing) {
+                    console.log(`[AGENT] Duplicate: "${source.title}" atlandı`);
+                    continue;
+                }
+
                 const embResponse = await openai.embeddings.create({
                     model: 'text-embedding-ada-002',
                     input: `${source.title} ${source.summary}`.substring(0, 2000)
@@ -2613,13 +2724,16 @@ async function autonomousSourceDiscovery() {
                     is_active: true
                 }]);
 
-                if (!error) addedCount++;
+                if (!error) {
+                    addedCount++;
+                    console.log(`[AGENT] ✅ Eklendi: "${source.title}"`);
+                }
             } catch (err) {
-                console.warn('[AGENT] Embedding hatası:', err.message);
+                console.warn(`[AGENT] "${source.title}" hatası:`, err.message);
             }
         }
 
-        console.log(`[AGENT] ✅ ${addedCount} yeni kaynak eklendi (günlük keşif)`);
+        console.log(`[AGENT] ✅ ${addedCount}/${newSources.length} yeni kaynak eklendi (günlük keşif)`);
     } catch (err) {
         console.error('[AGENT] Günlük keşif hatası:', err.message);
     }
