@@ -415,8 +415,7 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
     }
 
     // İLERLEME ZAMAN ÇİZELGESİ
-    const sessionHistory = patternMemory.session_history || [];
-    if (sessionHistory.length >= 3) {
+    if (sessionHistory && sessionHistory.length >= 3) {
         const ilkTarih = new Date(sessionHistory[0].tarih);
         const gunFarki = Math.round((Date.now() - ilkTarih) / (1000*60*60*24));
         if (gunFarki >= 14 && trendi.slice(-2).every(t => t !== 'kötüleşiyor'))
