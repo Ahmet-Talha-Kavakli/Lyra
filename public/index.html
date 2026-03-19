@@ -1340,8 +1340,21 @@
             const lightWarn = document.getElementById('light-warning');
             if (lightWarn) lightWarn.style.display = avgBr < 40 ? 'block' : 'none';
 
-            const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
-            console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr}`);
+            const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+            console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr} base64len:${base64?.length}`);
+            // DEBUG: İlk analizde görüntüyü console'da göster
+            if (!window._imgDebugDone) {
+                window._imgDebugDone = true;
+                console.log('%c[IMG-DEBUG] Kamera görüntüsü:', 'color:cyan');
+                console.log(`data:image/jpeg;base64,${base64.substring(0, 100)}...`);
+                // Görüntüyü img tag olarak göster
+                const img = new Image();
+                img.src = `data:image/jpeg;base64,${base64}`;
+                img.style = 'width:200px;border:2px solid red;position:fixed;top:10px;right:10px;z-index:9999';
+                img.title = 'DEBUG - GPT\'ye giden görüntü';
+                document.body.appendChild(img);
+                setTimeout(() => img.remove(), 8000);
+            }
             return { base64, avgBrightness: avgBr };
         }
 
@@ -1396,6 +1409,7 @@
         }
 
         async function analyzeEmotion() {
+            console.log('[ANALYZE-EMOTION] CALLED - cameraActive:', cameraActive, 'mediapipeReady:', mediapipeReady);
             if (!cameraActive || !camStream) { scheduleNextAnalysis(); return; }
             if (!userVideo || userVideo.readyState < 2) { scheduleNextAnalysis(); return; }
             try {
@@ -1407,19 +1421,26 @@
 
                     // [YENİ] MediaPipe landmark çalıştır
                     let landmarkFeatures = null;
+                    console.log('[LANDMARK-ATTEMPT] mediapipeReady:', mediapipeReady, 'faceLandmarker:', !!faceLandmarker, 'videoReady:', userVideo.readyState);
                     if (mediapipeReady && faceLandmarker && userVideo.readyState >= 2) {
                         try {
                             const mpResult = faceLandmarker.detectForVideo(userVideo, Date.now());
                             lastLandmarkResult = mpResult;
+                            console.log('[LANDMARK-DEBUG] Detected:', mpResult.faceLandmarks?.length > 0 ? 'YES' : 'NO');
                             if (mpResult.faceLandmarks && mpResult.faceLandmarks.length > 0) {
                                 landmarkFeatures = extractLandmarkFeatures(
                                     mpResult.faceLandmarks[0],
                                     mpResult.faceBlendshapes
                                 );
+                                console.log('[LANDMARK-FEATURES] Extracted:', landmarkFeatures ? 'SUCCESS' : 'FAILED', Object.keys(landmarkFeatures || {}).slice(0, 5));
+                            } else {
+                                console.log('[LANDMARK-DEBUG] No landmarks detected in result');
                             }
                         } catch (mpErr) {
                             console.warn('[MEDİAPİPE] Video detect hatası:', mpErr.message);
                         }
+                    } else {
+                        console.log('[LANDMARK-DEBUG] Conditions:', { mediapipeReady, faceLandmarker: !!faceLandmarker, videoReady: userVideo?.readyState });
                     }
 
                     const resp = await fetch('/analyze-emotion', {
