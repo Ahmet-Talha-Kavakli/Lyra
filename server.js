@@ -1844,24 +1844,84 @@ const upload = multer({
 // ── MEDİAPİPE LANDMARK CONTEXT BUILDER ──
 const buildLandmarkContext = (lm) => {
     if (!lm) return '';
-    const s = [];
-    if (lm.brow_down_left > 0.4 || lm.brow_down_right > 0.4)
-        s.push('KAŞLAR AŞAĞI ÇATIK: güçlü kaş kasılması');
+
+    const signals = [];
+    let emotionScore = {};
+
+    // Kaş analizi
+    if (lm.brow_down_left > 0.5 || lm.brow_down_right > 0.5) {
+        signals.push('🤨 KAŞLAR BELIRGIN ÇATIKç: Öfke/sinir/konsantrasyon');
+        emotionScore['anger'] = (emotionScore['anger'] || 0) + 0.3;
+        emotionScore['anxiety'] = (emotionScore['anxiety'] || 0) + 0.2;
+    }
+
+    // Göz açıklığı
     const eyeAvg = (lm.eye_openness_left + lm.eye_openness_right) / 2;
-    if (eyeAvg < 0.25) s.push('GÖZLER NEREDEYSE KAPALI: aşırı yorgunluk/gözyaşı');
-    else if (eyeAvg > 0.85) s.push('Gözler çok geniş açık: şaşkınlık/korku');
-    if (lm.mouth_openness > 0.35) s.push('Ağız açık: şaşkınlık/korku/ağlama');
-    else if (lm.mouth_openness < 0.03) s.push('Ağız sıkı kapalı: gerilim');
-    if (lm.lip_corner_pull > 0.5 && lm.cheek_raise > 0.3)
-        s.push('Gerçek gülümseme (Duchenne): dudak köşesi + yanak kası aktif');
-    else if (lm.lip_corner_pull > 0.4 && lm.cheek_raise < 0.15)
-        s.push('Sosyal/zorunlu gülümseme: yanak kası pasif');
-    if (lm.jaw_drop > 0.65) s.push('Çene belirgin düşük: şok/ağlama');
-    if (Math.abs(lm.head_tilt) > 0.04)
-        s.push(`Baş ${lm.head_tilt > 0 ? 'sola' : 'sağa'} eğik — beden dili sinyali`);
-    if (lm.nose_wrinkle > 0.3) s.push('Burun kıvırma: tiksinme/rahatsızlık');
-    if (!s.length) return '';
-    return `\n\nMEDİAPİPE LANDMARK ANALİZİ (piksel geometrisi — GPT görüntü analizinden daha güvenilir):\n${s.join('\n')}\nÇelişki varsa landmark verilerine öncelik ver.`;
+    if (eyeAvg < 0.2) {
+        signals.push('😴 GÖZLER KAPALI: Çok ağır yorgunluk, uyku deprivation');
+        emotionScore['sadness'] = (emotionScore['sadness'] || 0) + 0.25;
+    } else if (eyeAvg < 0.35) {
+        signals.push('😔 GÖZLER YARALI AÇIK: Hafif yorgunluk/melankolik/üzüntü');
+        emotionScore['sadness'] = (emotionScore['sadness'] || 0) + 0.15;
+    } else if (eyeAvg > 0.8) {
+        signals.push('😲 GÖZLER GENIŞ AÇIK: Şok/korku/inanmamışlık');
+        emotionScore['fear'] = (emotionScore['fear'] || 0) + 0.3;
+        emotionScore['surprise'] = (emotionScore['surprise'] || 0) + 0.25;
+    }
+
+    // Ağız analizi
+    if (lm.mouth_openness > 0.4) {
+        signals.push('😮 AĞIZ AÇIK: Şok/korku/ağlama başlangıcı');
+        emotionScore['fear'] = (emotionScore['fear'] || 0) + 0.2;
+        emotionScore['sadness'] = (emotionScore['sadness'] || 0) + 0.15;
+    } else if (lm.mouth_openness < 0.02) {
+        signals.push('😠 AĞIZ KAPALI/SIKI: Kontrole çalışma/bastırma/determinasyon');
+        emotionScore['anger'] = (emotionScore['anger'] || 0) + 0.2;
+        emotionScore['determination'] = (emotionScore['determination'] || 0) + 0.2;
+    }
+
+    // Gülümseme analizi
+    if (lm.lip_corner_pull > 0.6 && lm.cheek_raise > 0.4) {
+        signals.push('😊 GERÇEKEKLİ GÜLÜMSEME: Joyeux authentique (Duchenne gülümsemesi)');
+        emotionScore['joy'] = (emotionScore['joy'] || 0) + 0.35;
+    } else if (lm.lip_corner_pull > 0.4 && lm.cheek_raise < 0.1) {
+        signals.push('😐 ZORUNLU GÜLÜMSEME: Sosyal, içinde boşluk hissediyor');
+        emotionScore['sadness'] = (emotionScore['sadness'] || 0) + 0.1;
+    }
+
+    // Çene analizi
+    if (lm.jaw_drop > 0.7) {
+        signals.push('😢 ÇENEċ DÜŞÜK: Ağlama/şok/travma tepkisi');
+        emotionScore['sadness'] = (emotionScore['sadness'] || 0) + 0.3;
+        emotionScore['fear'] = (emotionScore['fear'] || 0) + 0.15;
+    }
+
+    // Baş hareketi
+    if (Math.abs(lm.head_tilt) > 0.06) {
+        const dir = lm.head_tilt > 0 ? 'sola' : 'sağa';
+        signals.push(`🔄 BAŞ EĞİKçL İ (${dir}): Şüphe/merak/savunma/sorgulanma`);
+        emotionScore['uncertainty'] = (emotionScore['uncertainty'] || 0) + 0.15;
+    }
+
+    // Burun kıvırma
+    if (lm.nose_wrinkle > 0.35) {
+        signals.push('😒 BURUN KIVRMA: Tiksinme/iğrenme/hoşlanmama');
+        emotionScore['disgust'] = (emotionScore['disgust'] || 0) + 0.3;
+    }
+
+    // Kaş indirme (endişe)
+    if ((lm.brow_down_left > 0.3 || lm.brow_down_right > 0.3) && eyeAvg > 0.4) {
+        signals.push('😟 KAŞ-GÖZ KOMBİNASYONU: Endişe/kaygı/stres');
+        emotionScore['anxiety'] = (emotionScore['anxiety'] || 0) + 0.25;
+    }
+
+    if (signals.length === 0) return '';
+
+    // En yüksek duyguyu bul
+    const topEmotion = Object.entries(emotionScore)
+        .sort((a, b) => b[1] - a[1])[0];
+
+    return `\n\n🔍 MEDİAPİPE FACIAL LANDMARK ANALİZİ (GERÇEKLİ ZAMAN, KAMERAYI İNCELEME):\n${signals.join('\n')}\n\n💡 PREDICTED EMOTION: ${topEmotion ? topEmotion[0].toUpperCase() : 'neutral'} (confidence: ${topEmotion ? (topEmotion[1] * 100).toFixed(0) : 0}%)\n\n⚠️ KURAL: Landmark analizi GPT-4o görüntü analizinden DAHAvü GÜVENİLİR. Çelişki varsa landmarks'a öncelik ver.`;
 };
 
 app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
@@ -1901,6 +1961,19 @@ ORTAM OLAYI:
 - Arka planda başka biri var mı? arkaplan_kisi:true/false
 - Kişinin yüzü/postu ani değişti mi? ani_degisim:true/false
 - Ortamda gerilim/hareket var mı? ortam_gerilimi:"yok|var|belirsiz"
+
+⭐ LANDMARK VERİSİ UYARISI:
+Eğer yukarıda "MEDİAPİPE FACIAL LANDMARK ANALİZİ" varsa, bu ÖNEMLİ:
+- Bu landmark tarafından tahmin edilen duygular YÜKSEKTİR: O duygulara %30-50 daha fazla ağırlık ver
+- Örn. Landmark "anxiety" dedi ama GPT görüntüde nötr gördüyse → YINE DE anxiety kat kat daha güçlü
+- Landmark'lar GPT-4o vision'dan GAY GÜVENİLİRDİR çünkü:
+  * Karanlık ortamlarda çalışır
+  * Matematiksel (hile yapılamaz)
+  * 30 FPS real-time
+  * Facial action units (Ekman)'a dayalı
+
+SONUÇ FORMÜLÜ:
+final_emotion = 0.65 * landmark_emotion + 0.35 * gpt_vision_emotion
 
 ${buildLandmarkContext(landmarks)}
 
@@ -2860,6 +2933,29 @@ try {
 } catch (err) {
     console.error('[CRON] Zamanlandırma hatası:', err.message);
 }
+
+// Test Landmark Analysis
+app.get('/test-landmarks', async (req, res) => {
+    const testLandmarks = {
+        brow_down_left: 0.6,
+        brow_down_right: 0.5,
+        eye_openness_left: 0.3,
+        eye_openness_right: 0.25,
+        mouth_openness: 0.15,
+        lip_corner_pull: 0.2,
+        cheek_raise: 0.05,
+        jaw_drop: 0.1,
+        head_tilt: 0.02,
+        nose_wrinkle: 0.15,
+        ear: 0.27
+    };
+
+    const context = buildLandmarkContext(testLandmarks);
+    res.json({
+        landmarks: testLandmarks,
+        analysis: context
+    });
+});
 
 // Bilgi Bankası Durumu Endpoint
 app.get('/knowledge-stats', async (req, res) => {
