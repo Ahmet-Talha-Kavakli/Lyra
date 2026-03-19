@@ -171,28 +171,47 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
 const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
-    const { duygu, yogunluk, enerji, jestler, guven } = sonAnaliz;
+    const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
 
+    // ── TEHLİKE PROTOKOLÜ (en yüksek öncelik) ──────────────
+    if (ortam?.tehlike_var === true) {
+        const nesne = ortam.tehlikeli_nesne || 'tehlikeli nesne';
+        kurallar.push(`KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında "${nesne}" tespit edildi. Hemen nazikçe sor: "Şu an elinde bir şey var,괜찮아mısın?" Sakin kal, yargılama, güvenliğini önce sorgula.`);
+    }
+
+    // ── GÖRME FARKINDALĞI — Lyra görebildiğini bilsin ──────
+    if (gorunum_ozeti && guven > 70) {
+        kurallar.push(`Kullanıcının görünümü: "${gorunum_ozeti}". Kullanıcı sana "beni görüyor musun", "nasıl görünüyorum", "mutlu muyum" gibi bir şey sorarsa bu bilgiyi kullanarak doğal şekilde cevap ver. Asla "göremiyorum" deme.`);
+    }
+
+    // ── DUYGU KURALLARI ─────────────────────────────────────
     if (duygu === 'korkmuş' && guven > 80 && jestler?.gozyasi_izi === true)
         kurallar.push('Kullanıcı korkmuş ve gözyaşı izi var. Önce güven ver, hiç soru sorma. Sessiz, kısa, destekleyici cümleler kur.');
 
     if (duygu === 'sinirli' || duygu === 'iğnelenmiş' || duygu === 'küçümseyen')
-        kurallar.push('Kullanıcı sinirli/rahatsız görünüyor. Önce duyguyu doğrula: "Seni bir şey rahatsız ediyor gibi, söylemek ister misin?" — çözüm önerme, tavsiye verme.');
+        kurallar.push(`Kullanıcı sinirli/rahatsız görünüyor (guven: ${guven}). Önce duyguyu doğrula: "Seni bir şey rahatsız ediyor gibi, söylemek ister misin?" — çözüm önerme, tavsiye verme.`);
 
     if (duygu === 'sinirli' && jestler?.cene_gerginligi === 'yüksek')
-        kurallar.push('Yüksek çene gerginliği var — ciddi öfke sinyali. Sakin kal, yavaş konuş, zemine in.');
+        kurallar.push('Yüksek çene gerginliği — ciddi öfke sinyali. Sakin kal, yavaş konuş, zemine in.');
 
     if (duygu === 'yorgun' && jestler?.goz_kirpma_hizi === 'yavaş' && enerji === 'yorgun')
-        kurallar.push('Kullanıcı çok yorgun. Seansı kısalt, konuyu değiştirme, enerjik sorular sorma.');
+        kurallar.push('Kullanıcı çok yorgun. Seansı kısalt, enerjik sorular sorma.');
 
     if (duygu === 'üzgün' && jestler?.genel_vucut_dili === 'kapalı')
-        kurallar.push('Kullanıcı üzgün ve kapalı beden dili sergiliyor. Daha az soru, daha çok yansıtma ve empati.');
+        kurallar.push('Kullanıcı üzgün ve kapalı beden dili. Daha az soru, daha çok yansıtma ve empati.');
 
     if (jestler?.gozyasi_izi === true)
         kurallar.push('Gözyaşı izi tespit edildi. Çok dikkatli ol, sessizlik ver, yargılama.');
 
     if (yogunluk === 'yüksek' && jestler?.kas_catma === true)
         kurallar.push('Yüksek yoğunluk ve kaş çatma. Yavaş konuş, kısa cümleler kur.');
+
+    // ── NESNE FARKINDALĞI ───────────────────────────────────
+    if (ortam?.nesneler?.length > 0 && !ortam.tehlike_var) {
+        const ilginc = ortam.nesneler.filter(n => !['bardak', 'telefon', 'masa', 'sandalye', 'koltuk'].includes(n.toLowerCase()));
+        if (ilginc.length > 0)
+            kurallar.push(`Kullanıcının elinde/yakınında şunlar görünüyor: ${ilginc.join(', ')}. Eğer konuşmayla bağlantılıysa doğal şekilde değinebilirsin.`);
+    }
 
     return kurallar.join(' ');
 };
@@ -506,9 +525,12 @@ app.post('/api/chat/completions', async (req, res) => {
             console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}`);
         }
 
-        const userState = userEmotions.get(userId);
+        // userId eşleşmezse activeSessionUserId ile de dene
+        const userState = userEmotions.get(userId) || userEmotions.get(activeSessionUserId);
+        console.log(`[KURAL MOTORU] userState var mı: ${!!userState} | userEmotions boyutu: ${userEmotions.size} | userId: ${userId}`);
         if (userState) {
             const { son_analiz, trend, dominant_duygu, aktif_sinyal, gecmis, yogunluk_ort } = userState;
+            console.log(`[KURAL MOTORU] son_analiz: ${son_analiz?.duygu} | yogunluk: ${son_analiz?.yogunluk} | guven: ${son_analiz?.guven}`);
 
             const l1 = buildLayer1Rules(son_analiz, aktif_sinyal);
             const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || []);
@@ -585,18 +607,23 @@ app.post('/analyze-emotion', async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Sen deneyimli bir klinik psikolog ve yüz ifadesi uzmanısın. Görüntüdeki kişinin yüzünü ve beden dilini mikro-ifadeler dahil son derece dikkatli analiz et.
+                        text: `Sen deneyimli bir klinik psikolog, yüz ifadesi uzmanı ve çevre analisti olarak çalışıyorsun. Görüntüdeki kişiyi VE ortamı aynı anda analiz et.
 
-KRİTİK KURALLAR:
+BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 1. "sakin" ancak gerçekten hiçbir duygu belirtisi yoksa yaz. Şüphe durumunda en belirgin duyguyu seç.
-2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin işareti.
-3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun işareti.
-4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş işareti.
-5. Yüz görünmüyorsa veya görüntü çok karanlıksa SADECE {"yuz_var":false} döndür.
-6. guven değeri: gerçekten emin olduğunda 80+, tahmin ise 50-70 yaz.
+2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin.
+3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun.
+4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş.
+5. Yüz görünmüyorsa SADECE {"yuz_var":false} döndür.
+6. guven: emin olduğunda 80+, tahmin ise 50-70.
+
+BÖLÜM 2 — ORTAM & NESNE ANALİZİ:
+Kişinin elinde veya yakınında görünen nesneleri tespit et.
+KRİTİK: Kesici/tehlikeli alet (bıçak, makas, cam, iğne vb.) varsa tehlike_var:true yaz.
+Ortam: ev, ofis, dışarı, araba gibi mekan bilgisini yaz.
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan"},"genel_vucut_dili":"açık|nötr|kapalı","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem","bardak"],"tehlike_var":false,"tehlikeli_nesne":""},"gorunum_ozeti":"kısa bir cümle ile kişinin genel görünümü","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
