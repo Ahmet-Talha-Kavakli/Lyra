@@ -49,6 +49,128 @@ const calculateTrend = (gecmis) => {
     return 'stabil';
 };
 
+// ─── HIPOTEZ MOTORU (Davranış Tahmini) ──────────────────────────────
+const buildHypothesis = (userId, currentTopic, currentDuygu, patternMemory, gecmis) => {
+    if (!patternMemory || !currentTopic) {
+        return {
+            predicted_emotion: currentDuygu,
+            confidence: 0.3,
+            probable_trigger: 'veri yetersiz',
+            suggested_intervention: 'gözlemle ve duygu analizi yap',
+            intervention_timing: 'devam_et',
+            reasoning: 'Yeterli geçmiş verisi yok, pattern öğrenilemiyor'
+        };
+    }
+
+    const tetKonular = patternMemory.tetikleyici_konular || {};
+    const konuData = tetKonular[currentTopic] || {};
+    const konuDuygular = konuData.duygu || [];
+    const hit = konuData.hit || 0;
+
+    // 1. KONU → DUYGU PREDICTION
+    let predictedEmotion = currentDuygu;
+    let confidence = 0.4;
+
+    if (konuDuygular.length > 0) {
+        // En sık duygu nedir?
+        const duyguFreq = {};
+        konuDuygular.forEach(d => { duyguFreq[d] = (duyguFreq[d] || 0) + 1; });
+        const siralanmis = Object.entries(duyguFreq).sort(([,a],[,b]) => b - a);
+        predictedEmotion = siralanmis[0][0];
+        confidence = (siralanmis[0][1] / konuDuygular.length) * 0.95; // max 0.95
+    }
+
+    // 2. TREND ANALİZİ
+    const trendi = patternMemory.seans_trendi || [];
+    let riskSkoru = 0;
+    let trendYonu = 'stabil';
+
+    if (trendi.length >= 3) {
+        const son3 = trendi.slice(-3);
+        if (son3.every(t => t === 'kötüleşiyor')) {
+            riskSkoru = 0.8;
+            trendYonu = 'kötüleşiyor';
+        } else if (son3[son3.length - 1] === 'kötüleşiyor') {
+            riskSkoru = 0.6;
+            trendYonu = 'kötüleşiyor';
+        } else if (son3.every(t => t === 'iyileşiyor')) {
+            riskSkoru = 0.1;
+            trendYonu = 'iyileşiyor';
+        }
+    }
+
+    // 3. DÖNGÜ TESPITI (Aynı konu aynı duyguya yol açıyor mu?)
+    let isLoop = false;
+    let loopStrength = 0;
+    if (hit >= 3 && predictedEmotion === gecmis?.[gecmis.length - 1]?.duygu) {
+        isLoop = true;
+        loopStrength = Math.min(hit / 5, 1); // 0-1
+        riskSkoru = Math.max(riskSkoru, 0.5 + loopStrength * 0.3);
+    }
+
+    // 4. YOĞUNLUK DEĞİŞİMİ
+    const sonYogunluk = yogunlukToNum(currentDuygu === 'şaşkın' ? 'orta' :
+                                       ['yüksek', 'öfkeli', 'panikleme'].includes(currentDuygu) ? 'yüksek' : 'orta');
+    const ortalamaYogunluk = gecmis?.length > 0
+        ? gecmis.map(a => yogunlukToNum(a.yogunluk)).reduce((s,v) => s+v, 0) / gecmis.length
+        : 60;
+
+    if (sonYogunluk > ortalamaYogunluk + 20) {
+        riskSkoru = Math.max(riskSkoru, 0.7);
+    }
+
+    // 5. MÜDAHALe STRATEJİSİ SEÇIMI
+    let suggestedIntervention = 'gözlemle';
+    let interventionTiming = 'devam_et';
+
+    if (riskSkoru >= 0.7) {
+        // Yüksek risk: hemen müdahale
+        if (['endişeli', 'korkmuş', 'panik'].includes(predictedEmotion)) {
+            suggestedIntervention = 'nefes_egzersizi_4_7_8';
+            interventionTiming = 'şimdi';
+        } else if (['öfkeli', 'sinirli'].includes(predictedEmotion)) {
+            suggestedIntervention = 'kontrol_analizi';
+            interventionTiming = 'şimdi';
+        } else if (predictedEmotion === 'üzgün') {
+            suggestedIntervention = 'vizualizasyon';
+            interventionTiming = 'şimdi';
+        }
+    } else if (riskSkoru >= 0.5) {
+        // Orta risk: 2-3 cümle sonra müdahale
+        if (isLoop) {
+            suggestedIntervention = 'döngü_kır_farklı_soru';
+            interventionTiming = '2_3_cumle';
+        } else {
+            suggestedIntervention = 'empati_ve_doğrulama';
+            interventionTiming = 'devam_et';
+        }
+    }
+
+    // 6. AÇIKLAMA OLUŞTUR
+    let reasoning = `Konu "${currentTopic}" → duygu "${predictedEmotion}" (${Math.round(confidence*100)}% emin)`;
+    if (hit >= 2) {
+        reasoning += `. Geçmiş ${hit} seansda bu konuda aynı duygular görüldü.`;
+    }
+    if (trendYonu === 'kötüleşiyor') {
+        reasoning += ` Trend kötüleşiyor, risk yüksek.`;
+    }
+    if (isLoop) {
+        reasoning += ` Döngü tespit: aynı konu aynı duyguya yol açıyor.`;
+    }
+
+    return {
+        predicted_emotion: predictedEmotion,
+        confidence: Math.round(confidence * 100) / 100,
+        probable_trigger: currentTopic,
+        risk_score: Math.round(riskSkoru * 100) / 100,
+        is_loop: isLoop,
+        trend: trendYonu,
+        suggested_intervention: suggestedIntervention,
+        intervention_timing: interventionTiming,
+        reasoning: reasoning
+    };
+};
+
 const getAktifSinyaller = (jestler) => {
     if (!jestler) return [];
     const sinyaller = [];
@@ -1271,7 +1393,100 @@ app.post('/api/chat/completions', async (req, res) => {
     }
 });
 
-// ─── KRİZ SONRASI KONTROL (Cron) ──────────────────────────
+// ─── HIPOTEZ MOTORU (Davranış Tahmini) ────────────────────────────────
+app.post('/hypothesis', async (req, res) => {
+    try {
+        const { userId, currentTopic, currentDuygu, sessionId } = req.body;
+        if (!userId || !currentTopic) {
+            return res.json({ error: 'userId ve currentTopic gerekli' });
+        }
+
+        // Pattern memory ve history getir
+        const { data: memRow } = await supabase
+            .from('user_profile')
+            .select('pattern_memory')
+            .eq('user_id', userId)
+            .single();
+
+        const patternMemory = memRow?.pattern_memory || {};
+
+        // Son 10 duygu analizi getir
+        const { data: emotionHistory } = await supabase
+            .from('emotion_logs')
+            .select('duygu, yogunluk')
+            .eq('user_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(10);
+
+        const gecmis = emotionHistory || [];
+
+        // Hipotez yap
+        const hypothesis = buildHypothesis(userId, currentTopic, currentDuygu, patternMemory, gecmis);
+
+        // Emotion log'a kaydet (fire-and-forget)
+        if (sessionId) {
+            supabase.from('emotion_logs')
+                .update({
+                    hypothesis_data: hypothesis,
+                    hypothesis_id: crypto.randomUUID()
+                })
+                .eq('session_id', sessionId)
+                .then(() => {});
+        }
+
+        console.log(`[HYPOTHESIS] Konu: ${currentTopic} | Tahmin: ${hypothesis.predicted_emotion} (${Math.round(hypothesis.confidence*100)}%) | Risk: ${hypothesis.risk_score} | Müdahale: ${hypothesis.suggested_intervention}`);
+        res.json({ hypothesis });
+    } catch (err) {
+        console.error('[HYPOTHESIS] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── HIPOTEZ DOĞRULUĞU TRACKING ────────────────────────────────────────
+app.post('/hypothesis-accuracy', async (req, res) => {
+    try {
+        const { userId, predicted_emotion, actual_emotion, confidence } = req.body;
+        if (!userId || !predicted_emotion || !actual_emotion) {
+            return res.json({ error: 'userId, predicted_emotion, actual_emotion gerekli' });
+        }
+
+        const was_correct = predicted_emotion.toLowerCase() === actual_emotion.toLowerCase();
+
+        const { error } = await supabase.from('hypothesis_accuracy').insert([{
+            user_id: userId,
+            predicted_emotion,
+            actual_emotion,
+            confidence: confidence || 0.5,
+            was_correct,
+            created_at: new Date().toISOString()
+        }]);
+
+        if (error) {
+            console.error('[HYPOTHESIS ACCURACY] Supabase hata:', error.message);
+            return res.json({ error: error.message });
+        }
+
+        // Accuracy hesapla (son 10)
+        const { data: recentAccuracy } = await supabase
+            .from('hypothesis_accuracy')
+            .select('was_correct')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        const accuracy = recentAccuracy
+            ? (recentAccuracy.filter(a => a.was_correct).length / recentAccuracy.length * 100).toFixed(1)
+            : 0;
+
+        console.log(`[HYPOTHESIS ACCURACY] ${predicted_emotion} vs ${actual_emotion}: ${was_correct ? '✓' : '✗'} | Genel: ${accuracy}%`);
+        res.json({ success: true, was_correct, accuracy });
+    } catch (err) {
+        console.error('[HYPOTHESIS ACCURACY] Hata:', err.message);
+        res.json({ error: err.message });
+    }
+});
+
+// ─── KRİZ SONRASI KONTROL + PATTERN LEARNING (Cron) ──────────────────
 app.get('/cron-checkin', async (req, res) => {
     try {
         const onceki24h = new Date(Date.now() - 24*60*60*1000).toISOString();
@@ -1283,7 +1498,64 @@ app.get('/cron-checkin', async (req, res) => {
 
         const kontrol = (krizKayitlari || []).filter(k => k.kriz_log?.tarih);
         console.log(`[CRON] ${kontrol.length} kriz kaydı kontrol edildi.`);
-        res.json({ kontrol_edilen: kontrol.length, tarih: new Date().toISOString() });
+
+        // PATTERN LEARNING: Tüm kullanıcılar için
+        const { data: users } = await supabase.from('user_profile').select('user_id');
+        let patternUpdated = 0;
+
+        for (const user of users || []) {
+            const userId = user.user_id;
+            // Son 10 seansı oku
+            const { data: emotions } = await supabase
+                .from('emotion_logs')
+                .select('konu, duygu, yogunluk')
+                .eq('user_id', userId)
+                .order('timestamp', { ascending: false })
+                .limit(10);
+
+            if (!emotions || emotions.length < 2) continue;
+
+            // Konu → duygu frequency mapping
+            const topicEmotions = {};
+            const trends = [];
+            let prevYogunluk = null;
+
+            emotions.reverse().forEach((e, idx) => {
+                if (e.konu) {
+                    if (!topicEmotions[e.konu]) {
+                        topicEmotions[e.konu] = { duygu: [], hit: 0, yogunluk: [] };
+                    }
+                    topicEmotions[e.konu].duygu.push(e.duygu);
+                    topicEmotions[e.konu].hit += 1;
+                    topicEmotions[e.konu].yogunluk.push(yogunlukToNum(e.yogunluk));
+                }
+
+                // Trend: yogunluk arttı mı?
+                if (prevYogunluk !== null) {
+                    const currentYog = yogunlukToNum(e.yogunluk);
+                    if (currentYog > prevYogunluk + 10) trends.push('kötüleşiyor');
+                    else if (currentYog < prevYogunluk - 10) trends.push('iyileşiyor');
+                    else trends.push('stabil');
+                }
+                prevYogunluk = yogunlukToNum(e.yogunluk);
+            });
+
+            // Pattern memory güncelle
+            const updatedPattern = {
+                tetikleyici_konular: topicEmotions,
+                seans_trendi: trends,
+                updated_at: new Date().toISOString()
+            };
+
+            await supabase.from('user_profile')
+                .update({ pattern_memory: updatedPattern })
+                .eq('user_id', userId);
+
+            patternUpdated++;
+        }
+
+        console.log(`[CRON] ${patternUpdated} kullanıcı için pattern learning tamamlandı.`);
+        res.json({ kontrol_edilen: kontrol.length, patterns_learned: patternUpdated, tarih: new Date().toISOString() });
     } catch (e) {
         console.error('[CRON] Hata:', e.message);
         res.status(500).json({ error: e.message });

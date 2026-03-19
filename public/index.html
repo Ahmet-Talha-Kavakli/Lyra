@@ -1924,6 +1924,36 @@
                         hume_scores: lastHumeScores
                     })
                 }).catch(() => {});
+
+                // HIPOTEZ MOTORU: Konunun ne duyguya yol açacağını tahmin et
+                const extractedTopic = lastUserMessage?.split(' ').slice(0, 3).join(' ') || 'genel';
+                fetch('/hypothesis', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: persistentUserId,
+                        currentTopic: extractedTopic,
+                        currentDuygu: son_analiz?.duygu || 'sakin',
+                        sessionId
+                    })
+                }).then(r => r.json())
+                  .then(data => {
+                      if (data.hypothesis) {
+                          const h = data.hypothesis;
+                          console.log(`[HYPOTHESIS] Tahmin: ${h.predicted_emotion} (${Math.round(h.confidence*100)}%) | Risk: ${h.risk_score}`);
+
+                          // Risk yüksekse önceden müdahale et
+                          if (h.risk_score >= 0.7 && h.intervention_timing === 'şimdi') {
+                              if (h.suggested_intervention.includes('nefes')) {
+                                  // Nefes öner (silently, konuşma devam ediyor ise)
+                                  console.log('[HYPOTHESIS] Nefes intervention önerildi');
+                              } else if (h.suggested_intervention.includes('kontrol')) {
+                                  console.log('[HYPOTHESIS] Kontrol analizi önerildi');
+                              }
+                          }
+                      }
+                  })
+                  .catch(() => {});
             }, 5000);
         });
 
