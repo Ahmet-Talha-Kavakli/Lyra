@@ -471,8 +471,11 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         const assistantSatir = satirlar.filter(s => s.startsWith('assistant:')).length;
         const userSatir = satirlar.filter(s => s.startsWith('user:')).length;
         const toplamSatir = assistantSatir + userSatir;
-        if (toplamSatir > 8 && assistantSatir / toplamSatir > 0.33)
-            kurallar.push('DİKKAT: Bu seansta çok fazla konuşuyorsun. Şimdi kısa cevap ver veya sadece soru sor, kullanıcıyı konuştur.');
+        const assistantOrani = toplamSatir > 0 ? assistantSatir / toplamSatir : 0;
+        if (toplamSatir > 8 && assistantOrani > 0.45) {
+            const sayi = Math.round(assistantOrani * 100);
+            kurallar.push(`[#8 KONUŞMA DENGESİ] Bu seansta %${sayi} konuşuyorsun — çok fazla! Şimdi kısa cevap ver, kullanıcıyı daha fazla konuştur. Dinle, soru sor, açılmasını sağla.`);
+        }
 
         // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti
         const absKelimeler = ['asla', 'hep böyle', 'her zaman böyle', 'hiç kimse', 'kimse beni', 'hiçbir zaman', 'tamamen mahvoldum', 'hiçbir şey işe yaramıyor', 'her şey berbat'];
