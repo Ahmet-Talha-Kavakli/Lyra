@@ -807,19 +807,28 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'high' }
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'auto' }
                     }
                 ]
             }],
-            max_tokens: 200
+            max_tokens: 600
         });
 
         let result = { duygu: 'sakin', guven: 0, yuz_var: false };
         try {
-            const raw = response.choices[0].message.content.trim().replace(/```json|```/g, '');
+            let raw = response.choices[0].message.content.trim().replace(/```json|```/g, '');
+            // Truncate olan JSON'ı düzelt: ilk { ile son } arasını al
+            const jsonStart = raw.indexOf('{');
+            const jsonEnd = raw.lastIndexOf('}');
+            if (jsonStart !== -1 && jsonEnd !== -1) {
+                raw = raw.slice(jsonStart, jsonEnd + 1);
+            }
             result = JSON.parse(raw);
             result.timestamp = Date.now();
-        } catch { /* parse hatası → fallback */ }
+            console.log(`[DUYGU PARSE] OK: ${result.duygu} yuz:${result.yuz_var} guven:${result.guven}`);
+        } catch (parseErr) {
+            console.warn('[DUYGU PARSE] Hata:', parseErr.message, '| raw:', response.choices[0]?.message?.content?.slice(0, 100));
+        }
 
         if (userId && result.yuz_var) {
             // userEmotions Map'i güncelle (gecmis: tam analiz objesi, jestler dahil)
