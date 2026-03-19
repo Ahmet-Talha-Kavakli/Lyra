@@ -2902,6 +2902,363 @@ app.get('/knowledge-stats', async (req, res) => {
     }
 });
 
+// ─── İNSAN ANALİZİ MOTORU (Bilinçaltı Tetikleyicileri) ────────────────────────
+// Kullanıcının gizli motivleri, önyargıları, tetikleyicileri tespit et
+
+async function analyzeHumanBehavior(userId, transcript, emotions) {
+    try {
+        // Geçmiş seanslardan patterns çek
+        const { data: sessions } = await supabase
+            .from('emotion_logs')
+            .select('transcript, emotion_intensity, dominant_emotion')
+            .eq('user_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(10);
+
+        if (!sessions || sessions.length === 0) return null;
+
+        // Şu anki emotion
+        const currentEmotion = emotions?.dominant || 'unknown';
+        const currentIntensity = emotions?.intensity || 0.5;
+
+        // 1️⃣ TETIKLEYICI TESPITI
+        const triggers = {};
+        sessions.forEach(s => {
+            const words = (s.transcript || '').toLowerCase().split(/\s+/);
+            const emotion = s.dominant_emotion;
+            words.forEach(word => {
+                if (word.length > 3) {
+                    triggers[word] = triggers[word] || { count: 0, emotions: {} };
+                    triggers[word].count++;
+                    triggers[word].emotions[emotion] = (triggers[word].emotions[emotion] || 0) + 1;
+                }
+            });
+        });
+
+        // En sık tetikleyicileri bul
+        const topTriggers = Object.entries(triggers)
+            .filter(([word, data]) => data.count >= 2)
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 5)
+            .map(([word, data]) => ({
+                trigger: word,
+                frequency: data.count,
+                associated_emotions: data.emotions
+            }));
+
+        // 2️⃣ DUYGUSAL TRENDLER
+        const emotionTrend = {};
+        sessions.forEach(s => {
+            const emotion = s.dominant_emotion;
+            emotionTrend[emotion] = (emotionTrend[emotion] || 0) + 1;
+        });
+        const dominantPattern = Object.entries(emotionTrend)
+            .sort((a, b) => b[1] - a[1])[0];
+
+        // 3️⃣ BİLİNÇALTI ÖNYARGILARı
+        const biases = [];
+
+        // All-or-nothing (tüm ya da hiç)
+        if (transcript?.includes('hep') || transcript?.includes('asla')) {
+            biases.push({
+                type: 'all-or-nothing',
+                indicator: 'Uç ifadeler kullanıyor',
+                pattern: 'Gri alanları görmüyor',
+                suggestion: 'Ara yollar var. Nuansa bakalım.'
+            });
+        }
+
+        // Catastrophizing (felaketleştirme)
+        if (transcript?.includes('berbat') || transcript?.includes('olmaz') ||
+            transcript?.includes('imkansız')) {
+            biases.push({
+                type: 'catastrophizing',
+                indicator: 'Negatif projeksiyonlar',
+                pattern: 'Kötü senaryoları abartıyor',
+                suggestion: 'Gerçekçi sonuçlar neler olabilir?'
+            });
+        }
+
+        // Personalization (kişiselleştirme)
+        if (transcript?.includes('benim hata') || transcript?.includes('benim suçum')) {
+            biases.push({
+                type: 'personalization',
+                indicator: 'Aşırı sorumluluk hissi',
+                pattern: 'Kontrol etmediği şeylerden sorumlu hissediyor',
+                suggestion: 'Hangi kısım senin kontrolünde?'
+            });
+        }
+
+        // Mind reading (okuma)
+        if (transcript?.includes('biliyorum ki') || transcript?.includes('kesin') ||
+            transcript?.includes('düşünüyor')) {
+            biases.push({
+                type: 'mind-reading',
+                indicator: 'Diğerlerinin düşüncelerini biliyor sanıyor',
+                pattern: 'Kanıt olmadan varsayımlarda bulunuyor',
+                suggestion: 'Bunu nasıl biliyorsun? Gerçeği kontrol et.'
+            });
+        }
+
+        // 4️⃣ DEĞER-DAVRANILIŞ ÇATIŞMASI
+        const { data: profile } = await supabase
+            .from('user_profile')
+            .select('pattern_memory')
+            .eq('user_id', userId)
+            .single();
+
+        let valueConflict = null;
+        if (profile?.pattern_memory?.values) {
+            const values = profile.pattern_memory.values;
+            // Eğer değer "sağlık" ama davranış "uyumuyor"...
+            if (values.includes('health') && currentIntensity > 0.7) {
+                valueConflict = {
+                    stated_value: 'Sağlık önemli',
+                    observed_behavior: 'Ama stresli/endişeli',
+                    gap: 'Değerler ile davranışlar uyumlu değil',
+                    insight: 'Bu alanda çatışma var. Uyumlaştırmak ister misin?'
+                };
+            }
+        }
+
+        // 5️⃣ KAÇINMA DÖNGÜLERI
+        const avoidancePatterns = [];
+        if (currentIntensity > 0.6 && transcript?.length < 100) {
+            avoidancePatterns.push({
+                pattern: 'Kısacık cevaplar + yüksek duygu',
+                meaning: 'Konudan kaçıyor olabilir',
+                intervention: 'Daha derine gidelim mi? Rahatsız edici ne?'
+            });
+        }
+
+        return {
+            top_triggers: topTriggers,
+            dominant_emotion_pattern: dominantPattern ? dominantPattern[0] : null,
+            cognitive_biases: biases,
+            value_behavior_conflict: valueConflict,
+            avoidance_patterns: avoidancePatterns,
+            analysis_timestamp: new Date().toISOString()
+        };
+
+    } catch (err) {
+        console.error('[HUMAN-ANALYSIS] Hata:', err.message);
+        return null;
+    }
+}
+
+// Endpoint: İnsan analizi sonuçları
+app.post('/analyze-human-behavior', async (req, res) => {
+    try {
+        const { userId, transcript, emotions } = req.body;
+
+        if (!userId || !transcript) {
+            return res.status(400).json({ error: 'userId ve transcript gerekli' });
+        }
+
+        const analysis = await analyzeHumanBehavior(userId, transcript, emotions);
+
+        // Fire-and-forget: analytics'e kaydet
+        if (analysis) {
+            supabase.from('behavior_analysis').insert([{
+                user_id: userId,
+                analysis_data: analysis,
+                created_at: new Date().toISOString()
+            }]).catch(() => {});
+        }
+
+        res.json({ success: true, analysis });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── ANALYTICS: KAYNAK ETKİSİ ANALİZİ ────────────────────────────────────────
+// Hangi kaynaklar kullanıcıya yardımcı oluyor?
+
+app.get('/analytics/source-effectiveness/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        // Kullanılan kaynaklar + feedback
+        const { data: usageLogs } = await supabase
+            .from('knowledge_usage_logs')
+            .select('knowledge_id, was_helpful, used_context, used_at')
+            .eq('user_id', userId)
+            .order('used_at', { ascending: false })
+            .limit(100);
+
+        if (!usageLogs || usageLogs.length === 0) {
+            return res.json({ message: 'Henüz kaynak kullanım verisi yok', data: {} });
+        }
+
+        // Kaynakları getir
+        const knowledgeIds = [...new Set(usageLogs.map(l => l.knowledge_id))];
+        const { data: sources } = await supabase
+            .from('knowledge_sources')
+            .select('id, title, category, source_type')
+            .in('id', knowledgeIds);
+
+        // Effectiveness hesapla
+        const sourceStats = {};
+        usageLogs.forEach(log => {
+            const source = sources?.find(s => s.id === log.knowledge_id);
+            if (!source) return;
+
+            const key = source.id;
+            if (!sourceStats[key]) {
+                sourceStats[key] = {
+                    id: source.id,
+                    title: source.title,
+                    category: source.category,
+                    type: source.source_type,
+                    used_count: 0,
+                    helpful_count: 0,
+                    not_helpful_count: 0,
+                    effectiveness: 0
+                };
+            }
+
+            sourceStats[key].used_count++;
+            if (log.was_helpful === true) sourceStats[key].helpful_count++;
+            else if (log.was_helpful === false) sourceStats[key].not_helpful_count++;
+        });
+
+        // Effectiveness % hesapla
+        Object.values(sourceStats).forEach(stat => {
+            stat.effectiveness = stat.used_count > 0
+                ? (stat.helpful_count / stat.used_count * 100).toFixed(1)
+                : 0;
+        });
+
+        // Sırala
+        const sorted = Object.values(sourceStats)
+            .sort((a, b) => b.used_count - a.used_count);
+
+        // Top performers
+        const topByEffectiveness = [...sorted]
+            .filter(s => s.used_count >= 2)
+            .sort((a, b) => parseFloat(b.effectiveness) - parseFloat(a.effectiveness))
+            .slice(0, 5);
+
+        // Summary
+        const summary = {
+            total_sources_used: Object.keys(sourceStats).length,
+            total_uses: usageLogs.length,
+            helpful_total: usageLogs.filter(l => l.was_helpful === true).length,
+            effectiveness_overall: usageLogs.length > 0
+                ? ((usageLogs.filter(l => l.was_helpful === true).length / usageLogs.length) * 100).toFixed(1)
+                : 0,
+            by_category: {},
+            top_performers: topByEffectiveness
+        };
+
+        // Kategoriye göre
+        sorted.forEach(stat => {
+            if (!summary.by_category[stat.category]) {
+                summary.by_category[stat.category] = {
+                    count: 0,
+                    helpful: 0,
+                    effectiveness: 0
+                };
+            }
+            summary.by_category[stat.category].count += stat.used_count;
+            summary.by_category[stat.category].helpful += stat.helpful_count;
+        });
+
+        Object.keys(summary.by_category).forEach(cat => {
+            const data = summary.by_category[cat];
+            data.effectiveness = data.count > 0
+                ? (data.helpful / data.count * 100).toFixed(1)
+                : 0;
+        });
+
+        res.json({
+            summary,
+            all_sources: sorted
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── ANALYTICS: USER BEHAVIOR TIMELINE ───────────────────────────────────────
+
+app.get('/analytics/behavior-timeline/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { days = 30 } = req.query;
+
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - parseInt(days));
+
+        // Seans geçmişi
+        const { data: sessions } = await supabase
+            .from('emotion_logs')
+            .select('timestamp, dominant_emotion, emotion_intensity')
+            .eq('user_id', userId)
+            .gte('timestamp', sinceDate.toISOString())
+            .order('timestamp', { ascending: true });
+
+        if (!sessions || sessions.length === 0) {
+            return res.json({ message: `Son ${days} günde seans yok`, timeline: [] });
+        }
+
+        // Timeline oluştur
+        const timeline = sessions.map(s => ({
+            date: new Date(s.timestamp).toLocaleDateString('tr-TR'),
+            emotion: s.dominant_emotion,
+            intensity: s.emotion_intensity,
+            timestamp: s.timestamp
+        }));
+
+        // Trend analizi
+        const emotionTrend = {};
+        sessions.forEach(s => {
+            const emotion = s.dominant_emotion;
+            emotionTrend[emotion] = (emotionTrend[emotion] || 0) + 1;
+        });
+
+        // Intensity trend
+        const avgIntensity = (sessions.reduce((sum, s) => sum + (s.emotion_intensity || 0), 0) / sessions.length).toFixed(2);
+
+        res.json({
+            period_days: days,
+            session_count: sessions.length,
+            emotion_distribution: emotionTrend,
+            average_intensity: avgIntensity,
+            timeline
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── ANALYTICS: RECOMMENDATION EFFECTIVENESS ─────────────────────────────────
+
+app.post('/analytics/rate-recommendation', async (req, res) => {
+    try {
+        const { userId, knowledgeId, wasHelpful, context } = req.body;
+
+        if (!userId || !knowledgeId) {
+            return res.status(400).json({ error: 'userId ve knowledgeId gerekli' });
+        }
+
+        await supabase.from('knowledge_usage_logs').insert([{
+            user_id: userId,
+            knowledge_id: knowledgeId,
+            was_helpful: wasHelpful === true,
+            used_context: context || 'Rating provided',
+            used_at: new Date().toISOString()
+        }]);
+
+        res.json({ success: true, message: 'Feedback kaydedildi' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Test endpoint — Cron jobs'ları manuel çalıştırma
 app.get('/cron-test/:job', async (req, res) => {
     const { job } = req.params;
