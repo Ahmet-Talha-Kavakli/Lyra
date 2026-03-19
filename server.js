@@ -149,15 +149,25 @@ const buildLayer4Rules = (lastSegment, sonAnaliz, gecmis) => {
 // L5: Sessizlik & Ritim
 const buildLayer5Rules = (silenceDuration, sessizlikTipi) => {
     if (!silenceDuration || silenceDuration < 8) return '';
-    if (sessizlikTipi === 'donmus')
-        return 'Kullanıcı donmuş/bloke bir sessizlikte. "Şu an kelimeler gelmiyorsa, o da tamam. Seninleyim." de, hiç baskı yapma.';
-    if (sessizlikTipi === 'dusunceli' && silenceDuration < 20)
-        return 'Kullanıcı düşünüyor gibi görünüyor — rahat bir sessizlik. Bozma, sabırla bekle.';
+    const kurallar = [];
+
+    // #10 SESSIZLIK KALİTESİ ANALİZİ
+    if (sessizlikTipi === 'donmus') {
+        kurallar.push('[#10 DONMUŞ SESSİZLİK] Kullanıcı donmuş/bloke durumda. Hiçbir baskı yapma. "Şu an kelimeler gelmiyorsa, o da tamam. Seninleyim." de, sabırlı bekle.');
+    } else if (sessizlikTipi === 'dusunceli' && silenceDuration < 20) {
+        kurallar.push('[#10 DÜŞÜNCELI SESSİZLİK] Kullanıcı rahat düşünüyor — bu iyi bir sessizlik. Bozma, sabırla bekle, kendi hızında konuşmasını sağla.');
+    } else if (sessizlikTipi === 'rahat') {
+        kurallar.push('[#10 RAHAT SESSİZLİK] Sağlıklı bir sessizlik kalitesi. Kullanıcı kendisinde rahat — baskı yapma.');
+    } else if (sessizlikTipi === 'bloke') {
+        kurallar.push('[#10 BLOKELİ SESSİZLİK] Kullanıcı tıkanmış hissediyor — zarar riski olabilir. "Bedenine sor, ne yaşamak istiyor" tekniği uygula.');
+    }
+
     if (silenceDuration >= 25)
-        return 'Çok uzun sessizlik. Nazikçe sor: "Şu an ne hissediyorsun, söylemek zor mu?"';
-    if (silenceDuration >= 8)
-        return 'Kullanıcı sessiz. "Hazır olduğunda devam edebiliriz, acele yok." de.';
-    return '';
+        kurallar.push('Çok uzun sessizlik (25+ saniye). Nazikçe açılmasını sağla: "Şu an ne hissediyorsun, söylemek zor mu?"');
+    else if (silenceDuration >= 8 && !kurallar.length)
+        kurallar.push('Sessizlik (8+ saniye). "Hazır olduğunda devam edebiliriz, acele yok." de.');
+
+    return kurallar.join(' ');
 };
 
 // L6: Seanslar Arası Pattern
