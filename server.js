@@ -327,6 +327,8 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId) => {
         kurallar.push('Kullanıcı çok yorgun — göz kapakları belirgin şekilde düşük. "Bugün çok yorgun görünüyorsun, hafif konuşalım" de, ağır konulara girme.');
     if (jestler?.goz_kapagi_agirlik === 'hafif_agir' && yogunluk !== 'yüksek')
         kurallar.push('Kullanıcı yorgun ama konuşabilir durumda. Enerji gerektiren egzersizler verme, tempo düşük tut.');
+    if (sonAnaliz?.yuz_soluklugu === true && (duygu === 'yorgun' || enerji === 'yorgun'))
+        kurallar.push('Yüz soluk ve enerjisiz görünüyor — aşırı yorgunluk, uyku eksikliği veya hastalık sinyali. "Son zamanlarda iyi uyuyabiliyor musun?" diye sor, dinlendirici konulara geç.');
 
     // ── NEFES EGZERSİZİ MODU ────────────────────────────────
     const nefesGerekli = (duygu === 'endişeli' || duygu === 'korkmuş') &&
@@ -1238,7 +1240,8 @@ BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 5. HAYALET YÜZ MODU: Görüntü karanlık, bulanık, grenli veya aşırı parlak olsa bile — siluet, saç çizgisi, omuz, göz yuvası gölgesi, ten tonu izi, herhangi bir insan şekli görünüyorsa yuz_var:true YAZ. Tahmin et, çıkarım yap. guven:40-55 ver.
 6. Görüntü TAMAMEN siyah piksel veya boş bir ekran değilse yuz_var:true yaz. Şüphe durumunda her zaman true. Sadece %100 insan olmayan bir görüntüde yuz_var:false döndür.
 7. YORGUNLUK & UYKU: goz_kapagi_agirlik ekle — "normal|hafif_agir|belirgin_agir". Göz kapakları düşükse belirgin_agir.
-8. guven: net görüntü=80+, karanlık/bulanık=40-65, siluet/hayalet=40-52. ASLA 40 altına düşürme.
+8. TEN TONU SOLUKLUGU: yuz_soluklugu true ise soluk/ölü görünüyor. Yorgunluk, hastalık veya stres sinyali.
+9. guven: net görüntü=80+, karanlık/bulanık=40-65, siluet/hayalet=40-52. ASLA 40 altına düşürme.
 
 BÖLÜM 2 — ORTAM & NESNE & OLAY ANALİZİ:
 - Elinde/yakınında görünen nesneleri tespit et.
@@ -1256,7 +1259,7 @@ ORTAM OLAYI:
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
@@ -1318,7 +1321,8 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
                     jestler: result.jestler || null,
                     trend: guncel.trend,
                     guven: result.guven,
-                    mediapipe_landmarks: landmarks || null
+                    mediapipe_landmarks: landmarks || null,
+                    yuz_soluklugu: result.yuz_soluklugu || false
                 }).then(({ error }) => {
                     if (error) console.error('[EMOTION LOG] Insert hatası:', error.message);
                 });
