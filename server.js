@@ -1971,7 +1971,7 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
         if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-4.1',
             messages: [{
                 role: 'user',
                 content: [
