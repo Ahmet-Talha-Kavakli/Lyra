@@ -786,8 +786,9 @@ BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin.
 3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun.
 4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş.
-5. Yüz görünmüyorsa SADECE {"yuz_var":false} döndür.
-6. guven: emin olduğunda 80+, tahmin ise 50-70.
+5. Görüntü karanlık bile olsa insan silueti/şekli varsa analiz et, yuz_var:true yaz ve guven:40-60 ver.
+6. Sadece tamamen boş/siyah ekran veya yüz hiç yoksa yuz_var:false döndür.
+7. guven: net görüntü=80+, karanlık/belirsiz=40-65, tahmin=50-70.
 
 BÖLÜM 2 — ORTAM & NESNE & OLAY ANALİZİ:
 - Elinde/yakınında görünen nesneleri tespit et.
