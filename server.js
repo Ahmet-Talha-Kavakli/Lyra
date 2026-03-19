@@ -1961,17 +1961,10 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
     try {
         const { imageBase64, userId, sessionId, landmarks } = req.body;
 
-        // DEBUG: Landmark'lar alındı mı?
-        if (landmarks) {
-            console.log('[LANDMARK-RECEIVED] Keys:', Object.keys(landmarks));
-        } else {
-            console.log('[LANDMARK-RECEIVED] NULL - Frontend göndermiyor!');
-        }
-
         if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-4.1',
+            model: 'gpt-4o-mini',
             messages: [{
                 role: 'user',
                 content: [

@@ -1244,7 +1244,7 @@
         const cameraOffMsg     = document.getElementById('camera-off-msg');
 
         // Adaptif interval
-        let adaptifInterval = 4000;
+        let adaptifInterval = 6000;
         let sonDuygu = null;
         let ardiArdina = 0;
         let emotionTimer = null;
@@ -1341,29 +1341,15 @@
             if (lightWarn) lightWarn.style.display = avgBr < 40 ? 'block' : 'none';
 
             const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-            console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr} base64len:${base64?.length}`);
-            // DEBUG: İlk analizde görüntüyü console'da göster
-            if (!window._imgDebugDone) {
-                window._imgDebugDone = true;
-                console.log('%c[IMG-DEBUG] Kamera görüntüsü:', 'color:cyan');
-                console.log(`data:image/jpeg;base64,${base64.substring(0, 100)}...`);
-                // Görüntüyü img tag olarak göster
-                const img = new Image();
-                img.src = `data:image/jpeg;base64,${base64}`;
-                img.style = 'width:200px;border:2px solid red;position:fixed;top:10px;right:10px;z-index:9999';
-                img.title = 'DEBUG - GPT\'ye giden görüntü';
-                document.body.appendChild(img);
-                setTimeout(() => img.remove(), 8000);
-            }
             return { base64, avgBrightness: avgBr };
         }
 
         function getBaseInterval(duygu) {
-            if (['korkmuş', 'sinirli'].includes(duygu))               return 1500;
-            if (['endişeli', 'üzgün', 'iğnelenmiş'].includes(duygu)) return 2000;
-            if (['yorgun', 'şaşırmış'].includes(duygu))              return 2500;
-            if (['sakin', 'mutlu'].includes(duygu))                   return 3000;
-            return 2000;
+            if (['korkmuş', 'sinirli'].includes(duygu))               return 5000;
+            if (['endişeli', 'üzgün', 'iğnelenmiş'].includes(duygu)) return 6000;
+            if (['yorgun', 'şaşırmış'].includes(duygu))              return 7000;
+            if (['sakin', 'mutlu'].includes(duygu))                   return 8000;
+            return 6000;
         }
 
         function scheduleNextAnalysis() {
@@ -1409,61 +1395,45 @@
         }
 
         async function analyzeEmotion() {
-            console.log('[ANALYZE-EMOTION] CALLED - cameraActive:', cameraActive, 'mediapipeReady:', mediapipeReady);
             if (!cameraActive || !camStream) { scheduleNextAnalysis(); return; }
             if (!userVideo || userVideo.readyState < 2) { scheduleNextAnalysis(); return; }
             try {
-                let result = null;
-                // Max 3 deneme — yüz bulunamazsa veya güven <40 ise tekrar dene
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    if (attempt > 0) await new Promise(r => setTimeout(r, 450));
-                    const { base64 } = await captureAndPreprocess();
+                const { base64 } = await captureAndPreprocess();
 
-                    // [YENİ] MediaPipe landmark çalıştır
-                    let landmarkFeatures = null;
-                    console.log('[LANDMARK-ATTEMPT] mediapipeReady:', mediapipeReady, 'faceLandmarker:', !!faceLandmarker, 'videoReady:', userVideo.readyState);
-                    if (mediapipeReady && faceLandmarker && userVideo.readyState >= 2) {
-                        try {
-                            const mpResult = faceLandmarker.detectForVideo(userVideo, Date.now());
-                            lastLandmarkResult = mpResult;
-                            console.log('[LANDMARK-DEBUG] Detected:', mpResult.faceLandmarks?.length > 0 ? 'YES' : 'NO');
-                            if (mpResult.faceLandmarks && mpResult.faceLandmarks.length > 0) {
-                                landmarkFeatures = extractLandmarkFeatures(
-                                    mpResult.faceLandmarks[0],
-                                    mpResult.faceBlendshapes
-                                );
-                                console.log('[LANDMARK-FEATURES] Extracted:', landmarkFeatures ? 'SUCCESS' : 'FAILED', Object.keys(landmarkFeatures || {}).slice(0, 5));
-                            } else {
-                                console.log('[LANDMARK-DEBUG] No landmarks detected in result');
-                            }
-                        } catch (mpErr) {
-                            console.warn('[MEDİAPİPE] Video detect hatası:', mpErr.message);
+                // MediaPipe landmark çalıştır (tek seferlik, retry yok)
+                let landmarkFeatures = null;
+                if (mediapipeReady && faceLandmarker && userVideo.readyState >= 2) {
+                    try {
+                        const mpResult = faceLandmarker.detectForVideo(userVideo, Date.now());
+                        lastLandmarkResult = mpResult;
+                        if (mpResult.faceLandmarks && mpResult.faceLandmarks.length > 0) {
+                            landmarkFeatures = extractLandmarkFeatures(
+                                mpResult.faceLandmarks[0],
+                                mpResult.faceBlendshapes
+                            );
                         }
-                    } else {
-                        console.log('[LANDMARK-DEBUG] Conditions:', { mediapipeReady, faceLandmarker: !!faceLandmarker, videoReady: userVideo?.readyState });
+                    } catch (mpErr) {
+                        console.warn('[MEDİAPİPE] Detect hatası:', mpErr.message);
                     }
-
-                    const resp = await fetch('/analyze-emotion', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null, landmarks: landmarkFeatures })
-                    });
-                    result = await resp.json();
-                    if (result.yuz_var && result.guven >= 40) break;
-                    console.log(`[DUYGU] Deneme ${attempt+1} başarısız (yuz:${result.yuz_var} guven:${result.guven})${attempt < 2 ? ', tekrar...' : ''}`);
                 }
+
+                const resp = await fetch('/analyze-emotion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null, landmarks: landmarkFeatures })
+                });
+                const result = await resp.json();
 
                 if (!result?.yuz_var) { scheduleNextAnalysis(); return; }
 
                 currentEmotionState = result.duygu;
 
-                // #11 — AVATAR DUYGU YANSIMASI: Kullanıcının duygusu avatarı etkiler
-                // Lyra aktif konuşmuyorsa, kullanıcının duygusuyla empatik idle animasyon oynat
+                // Avatar duygu yansıması
                 if (!isCallActive || (currentAction && currentAction._clip?.name === (animationsMap['Idle']?._clip?.name || 'Idle'))) {
                     if (result.duygu === 'üzgün' && result.yogunluk !== 'düşük') {
                         playAnimation('Sad');
                     } else if (result.duygu === 'sinirli' && result.yogunluk === 'yüksek') {
-                        setTimeout(() => playAnimation('Sad'), 500); // sakin yansıma
+                        setTimeout(() => playAnimation('Sad'), 500);
                     }
                 }
 
@@ -1474,11 +1444,11 @@
                     else sessizlikTipi = 'normal';
                 }
 
-                // Adaptif interval güncelle — max 4sn
+                // Adaptif interval — min 5sn, max 10sn (kredi tasarrufu)
                 const base = getBaseInterval(result.duygu);
                 if (result.duygu === sonDuygu) {
                     ardiArdina++;
-                    if (ardiArdina >= 4) adaptifInterval = Math.min(base * 1.5, 4000);
+                    if (ardiArdina >= 3) adaptifInterval = Math.min(base * 2, 10000);
                     else adaptifInterval = base;
                 } else {
                     ardiArdina = 0;
