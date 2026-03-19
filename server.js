@@ -2623,26 +2623,40 @@ async function autonomousSourceDiscovery() {
             console.warn('[AGENT] Medium RSS hatası:', err.message);
         }
 
-        // 2. Psychology Today RSS'den yazıları çek
+        // 2. Psychology Today RSS'den yazıları çek (alternative feeds)
         try {
             const Parser = (await import('rss-parser')).default;
             const parser = new Parser();
-            const ptFeed = await parser.parseURL('https://www.psychologytoday.com/basics/rss.xml');
-            const ptArticles = ptFeed.items.slice(0, 3).map(item => ({
-                source_type: 'article',
-                title: item.title.substring(0, 100),
-                author: item.creator || 'Psychology Today',
-                url: item.link,
-                summary: item.contentSnippet?.substring(0, 200) || item.title,
-                content: item.content?.substring(0, 500) || item.contentSnippet?.substring(0, 500) || item.title,
-                category: 'general',
-                subcategory: 'expert-article',
-                tags: ['psychology-today', 'expert', 'article', 'latest'],
-                credibility_score: 0.89,
-                relevance_score: 0.85
-            }));
-            newSources.push(...ptArticles);
-            console.log(`[AGENT] Psychology Today RSS: ${ptArticles.length} makale bulundu`);
+            const feeds = [
+                'https://www.psychologytoday.com/basics/rss.xml',
+                'https://feeds.psychologytoday.com/home'
+            ];
+
+            for (const feedUrl of feeds) {
+                try {
+                    const ptFeed = await parser.parseURL(feedUrl);
+                    if (ptFeed.items && ptFeed.items.length > 0) {
+                        const ptArticles = ptFeed.items.slice(0, 3).map(item => ({
+                            source_type: 'article',
+                            title: item.title?.substring(0, 100) || 'Psychology Today Article',
+                            author: item.creator || 'Psychology Today',
+                            url: item.link || 'https://www.psychologytoday.com',
+                            summary: item.contentSnippet?.substring(0, 200) || item.title || 'Psychology article',
+                            content: item.content?.substring(0, 500) || item.contentSnippet?.substring(0, 500) || item.title || 'Content',
+                            category: 'general',
+                            subcategory: 'expert-article',
+                            tags: ['psychology-today', 'expert', 'article', 'latest'],
+                            credibility_score: 0.89,
+                            relevance_score: 0.85
+                        }));
+                        newSources.push(...ptArticles);
+                        console.log(`[AGENT] Psychology Today RSS: ${ptArticles.length} makale bulundu`);
+                        break; // İlk başarılı feed'i kullan
+                    }
+                } catch (feedErr) {
+                    // Sonraki feed'i dene
+                }
+            }
         } catch (err) {
             console.warn('[AGENT] Psychology Today RSS hatası:', err.message);
         }
