@@ -114,7 +114,7 @@ const detectAvoidance = (transcript) => {
 const OLUMLU_KELIMELER = ['iyiyim', 'iyi', 'tamam', 'sorun yok', 'normalim', 'mutluyum', 'güzel', 'harika', 'fena değil', "i'm fine", 'fine', 'okay', 'good'];
 const OLUMSUZ_KAMERA_DUYGULAR = ['üzgün', 'endişeli', 'korkmuş', 'sinirli', 'yorgun'];
 
-const buildLayer4Rules = (lastSegment, sonAnaliz) => {
+const buildLayer4Rules = (lastSegment, sonAnaliz, gecmis) => {
     if (!lastSegment || !sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
     const segLower = lastSegment.toLowerCase();
@@ -125,6 +125,17 @@ const buildLayer4Rules = (lastSegment, sonAnaliz) => {
 
     if (sozluOlumlu && kameraOlumsuz && sonAnaliz.guven > 65)
         kurallar.push(`Kullanıcı olumlu kelimeler söylüyor ama yüzü "${sonAnaliz.duygu}" ifadesi gösteriyor. Nazikçe sorgula: "Bunu söylerken sesin biraz farklıydı, gerçekten nasılsın?"`);
+
+    // #2 — YALAN/ÇELİŞKİ GÜÇLENDİRME: Son 5 frame %60+ olumsuz + "iyiyim" söylemesi
+    if (gecmis && gecmis.length >= 5 && sozluOlumlu) {
+        const son5 = gecmis.slice(-5);
+        const olusuzSayi = son5.filter(a => OLUMSUZ_KAMERA_DUYGULAR.includes(a.duygu)).length;
+        const olusuzOrani = olusuzSayi / son5.length;
+        if (olusuzOrani >= 0.6) {
+            const duygular = son5.map(a => a.duygu).join(' → ');
+            kurallar.push(`[#2 SÖZYÜZ ÇELİŞKİSİ] Son 5 frame'de %${Math.round(olusuzOrani*100)} olumsuz (${duygular}), ama sen "iyiyim" diyorsun. Çelişki sinyali. Nazikçe: "Bunu söylerken yüzün farklı bir hikaye anlatıyor. Gerçekten nasılsın?"`);
+        }
+    }
 
     if (sozluOlumlu && sonAnaliz.genel_vucut_dili === 'kapalı' && sonAnaliz.jestler?.goz_temasi === 'düşük')
         kurallar.push('Kullanıcı olumlu konuşuyor ama beden dili kapalı ve göz teması düşük. "Biraz daha anlatır mısın bunu?" diye sor.');
@@ -1093,7 +1104,7 @@ app.post('/api/chat/completions', async (req, res) => {
             const l3 = buildLayer3Rules(userMemory, son_analiz, userId);
 
             // L4: Söz-yüz çelişkisi
-            const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz);
+            const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz, gecmis);
 
             // L5: Sessizlik
             const l5 = buildLayer5Rules(transcriptState?.silenceDuration, transcriptState?.sessizlikTipi);
