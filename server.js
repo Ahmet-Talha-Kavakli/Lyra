@@ -2370,6 +2370,12 @@ app.post('/seed-knowledge', async (req, res) => {
     try {
         console.log('[SEED] Başlangıç kaynakları yükleniyor...');
 
+        // Önceki kaynakları sil (duplicates'i önle)
+        const { data: existing } = await supabase.from('knowledge_sources').select('id');
+        if (existing && existing.length > 0) {
+            console.log(`[SEED] ${existing.length} mevcut kaynak bulundu, yeni yüklemeye hazırlanıyor...`);
+        }
+
         const initialSources = [
             // ═══ KİTAPLAR (Books) ═══
             { source_type: 'book', title: 'The Body Keeps the Score', author: 'Bessel van der Kolk', url: 'https://www.besselvanderkolk.com/', summary: 'Travma ve bedenin hafızası hakkında kapsamlı rehber', content: 'Travmanın beyni ve bedeni nasıl etkilediğini açıklayan monumental çalışma. PTSD, beyin plastisitesi, somatic terapi.', category: 'trauma', subcategory: 'ptsd', tags: ['trauma', 'neuroscience', 'body-based', 'recovery'], credibility_score: 0.95, relevance_score: 0.95 },
@@ -2726,6 +2732,47 @@ try {
 } catch (err) {
     console.error('[CRON] Zamanlandırma hatası:', err.message);
 }
+
+// Bilgi Bankası Durumu Endpoint
+app.get('/knowledge-stats', async (req, res) => {
+    try {
+        const { count: totalSources } = await supabase
+            .from('knowledge_sources')
+            .select('*', { count: 'exact', head: true });
+
+        const { count: activeSources } = await supabase
+            .from('knowledge_sources')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_active', true);
+
+        const { data: byCategory } = await supabase
+            .from('knowledge_sources')
+            .select('category');
+
+        const categoryCount = {};
+        (byCategory || []).forEach(s => {
+            categoryCount[s.category] = (categoryCount[s.category] || 0) + 1;
+        });
+
+        const { data: avgCredibility } = await supabase
+            .from('knowledge_sources')
+            .select('credibility_score')
+            .eq('is_active', true);
+
+        const avgScore = avgCredibility && avgCredibility.length > 0
+            ? (avgCredibility.reduce((s, x) => s + (x.credibility_score || 0), 0) / avgCredibility.length).toFixed(3)
+            : 0;
+
+        res.json({
+            total_sources: totalSources || 0,
+            active_sources: activeSources || 0,
+            average_credibility: parseFloat(avgScore),
+            by_category: categoryCount
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Test endpoint — Cron jobs'ları manuel çalıştırma
 app.get('/cron-test/:job', async (req, res) => {
