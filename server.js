@@ -49,6 +49,69 @@ const calculateTrend = (gecmis) => {
     return 'stabil';
 };
 
+// ─── RAG: BILGI BANKASI — INSIGHT ÇIKARIMI ──────────────────────────
+const extractKnowledge = async (transcript, emotion, duygu) => {
+    if (!transcript || transcript.length < 50) return [];
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{
+                role: 'user',
+                content: `Aşağıdaki terapi konuşmasından önemli "therapy insights" çıkar.
+JSON formatında 0-3 insight döndür.
+
+Insight tipleri:
+- breakthrough: "X ile Y arasında bağlantı buldum"
+- strategy: "X stratejisi bana yardım ediyor"
+- pattern: "Her zaman X olunca Y oluyor"
+- value: "Benim için X en önemli"
+- achievement: "X'i yaptım, kendimi iyi hissettim"
+
+Konuşma:
+"${transcript.substring(0, 500)}"
+
+JSON Array döndür (boş array olabilir):
+[
+  {
+    "type": "breakthrough" | "strategy" | "pattern" | "value" | "achievement",
+    "title": "Başlık (10-15 kelime)",
+    "content": "İçerik (1-2 cümle)",
+    "tags": ["tag1", "tag2"]
+  }
+]`
+            }],
+            temperature: 0.7,
+            max_tokens: 400
+        });
+
+        let insights = [];
+        try {
+            const text = response.choices[0].message.content || '[]';
+            // JSON extract
+            const jsonMatch = text.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                insights = JSON.parse(jsonMatch[0]);
+            }
+        } catch (e) {
+            console.warn('[RAG] JSON parse hatası:', e.message);
+        }
+
+        // Her insight'a emotion ve relevance ekle
+        insights = insights.map(i => ({
+            ...i,
+            emotion_context: duygu,
+            relevance_score: 0.75 + (Math.random() * 0.2) // 0.75-0.95
+        }));
+
+        console.log(`[RAG] ${insights.length} insight çıkarıldı`);
+        return insights;
+    } catch (err) {
+        console.error('[RAG] Extraction hata:', err.message);
+        return [];
+    }
+};
+
 // ─── HIPOTEZ MOTORU (Davranış Tahmini) ──────────────────────────────
 const buildHypothesis = (userId, currentTopic, currentDuygu, patternMemory, gecmis) => {
     if (!patternMemory || !currentTopic) {
@@ -1292,20 +1355,56 @@ app.post('/api/chat/completions', async (req, res) => {
             }
         } catch { /* profil yükleme başarısız */ }
 
+        // RAG — Bilgi Bankası Knowledge Injection
+        let knowledgeInjection = '';
+        try {
+            const lastUserMsg = messages?.[messages.length - 1]?.content || '';
+            if (lastUserMsg.length > 10) {
+                // Retrieve relevant knowledge
+                const response = await fetch(`http://localhost:${port}/retrieve-knowledge?userId=${userId}&query=${encodeURIComponent(lastUserMsg.substring(0, 100))}&limit=3`);
+                const { insights } = await response.json();
+
+                if (insights && insights.length > 0) {
+                    const insightTexts = insights.map((i, idx) => {
+                        const typeEmoji = {
+                            'breakthrough': '💡',
+                            'strategy': '🎯',
+                            'pattern': '🔄',
+                            'value': '⭐',
+                            'achievement': '🏆'
+                        }[i.type] || '📌';
+                        return `${typeEmoji} ${i.type.toUpperCase()} — "${i.title}"\n   ${i.content} (${new Date(i.source_session).toLocaleDateString('tr-TR')})`;
+                    }).join('\n\n');
+
+                    knowledgeInjection = `\n\n[KULLANICININ KİŞİSEL BILGI BANKASI]:\nBu insights'lar geçmiş seanslardan öğrenilen şeyler:\n\n${insightTexts}\n\nEğer yukarıdaki konulardan birini tekrar açarsa: Geçmişteki insight'ını hatırlat ("Daha önceki seansda fark ettiğimiz gibi..."), ilerlemeyi göster, stratejileri takviye et.`;
+                    console.log(`[RAG] ${insights.length} knowledge item inject edildi`);
+                }
+            }
+        } catch (e) {
+            console.warn('[RAG INJECTION] Hata:', e.message);
+        }
+
         const systemIdx = enrichedMessages.findIndex(m => m.role === 'system');
         if (userMemory) {
-            const memoryInjection = `\n\n[BU KULLANICI HAKKINDAKİ HAFIZA]:\n${userMemory}\n\nBu bilgileri doğal şekilde kullan, asla "seni hatırlıyorum" diyerek açıkça belirtme.${isimInjection}`;
-            if (systemIdx !== -1) {
-                enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + memoryInjection };
-            } else {
-                enrichedMessages.unshift({ role: 'system', content: memoryInjection });
+            let fullInjection = `\n\n[BU KULLANICI HAKKINDAKİ HAFIZA]:\n${userMemory}\n\nBu bilgileri doğal şekilde kullan, asla "seni hatırlıyorum" diyerek açıkça belirtme.${isimInjection}`;
+
+            // Knowledge bankası ekle
+            if (knowledgeInjection) {
+                fullInjection += knowledgeInjection;
             }
-            console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}${isimInjection ? ' + isimler' : ''}`);
-        } else if (isimInjection) {
+
             if (systemIdx !== -1) {
-                enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + isimInjection };
+                enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + fullInjection };
             } else {
-                enrichedMessages.unshift({ role: 'system', content: isimInjection });
+                enrichedMessages.unshift({ role: 'system', content: fullInjection });
+            }
+            console.log(`[CUSTOM LLM] 🧠 Hafıza inject edildi! userId: ${userId}${isimInjection ? ' + isimler' : ''}${knowledgeInjection ? ' + RAG' : ''}`);
+        } else if (isimInjection || knowledgeInjection) {
+            let combined = isimInjection + (knowledgeInjection || '');
+            if (systemIdx !== -1) {
+                enrichedMessages[systemIdx] = { ...enrichedMessages[systemIdx], content: enrichedMessages[systemIdx].content + combined };
+            } else {
+                enrichedMessages.unshift({ role: 'system', content: combined });
             }
         }
 
@@ -1483,6 +1582,155 @@ app.post('/hypothesis-accuracy', async (req, res) => {
     } catch (err) {
         console.error('[HYPOTHESIS ACCURACY] Hata:', err.message);
         res.json({ error: err.message });
+    }
+});
+
+// ─── RAG: INSIGHT KAYIT + EMBEDDING ─────────────────────────────────────
+app.post('/save-insight', async (req, res) => {
+    try {
+        const { userId, insights } = req.body;
+        if (!userId || !Array.isArray(insights) || insights.length === 0) {
+            return res.json({ error: 'userId ve insights array gerekli', saved: 0 });
+        }
+
+        let savedCount = 0;
+        for (const insight of insights) {
+            try {
+                // Embedding yap (ada-002)
+                const embeddingResp = await openai.embeddings.create({
+                    model: 'text-embedding-ada-002',
+                    input: `${insight.title}. ${insight.content}`
+                });
+
+                const embedding = embeddingResp.data[0].embedding;
+
+                // Supabase'e kaydet
+                const { error } = await supabase.from('knowledge_bank').insert([{
+                    user_id: userId,
+                    content_type: insight.type || 'insight',
+                    title: insight.title,
+                    content: insight.content,
+                    embedding: embedding,
+                    relevance_score: insight.relevance_score || 0.7,
+                    tags: insight.tags || [],
+                    emotion_context: insight.emotion_context || 'neutral',
+                    created_at: new Date().toISOString()
+                }]);
+
+                if (!error) {
+                    savedCount++;
+                }
+            } catch (e) {
+                console.warn(`[RAG] Insight kayıt hatası: ${e.message}`);
+            }
+        }
+
+        console.log(`[RAG] ${savedCount}/${insights.length} insight kaydedildi`);
+        res.json({ success: savedCount > 0, saved: savedCount, total: insights.length });
+    } catch (err) {
+        console.error('[RAG SAVE] Hata:', err.message);
+        res.json({ error: err.message, saved: 0 });
+    }
+});
+
+// ─── RAG: VECTOR SIMILARITY SEARCH ──────────────────────────────────────
+app.get('/retrieve-knowledge', async (req, res) => {
+    try {
+        const { userId, query, limit } = req.query;
+        if (!userId || !query) {
+            return res.json({ insights: [] });
+        }
+
+        const queryLimit = Math.min(parseInt(limit) || 3, 10);
+
+        // Query'yi embedding'e çevir
+        const queryEmbeddingResp = await openai.embeddings.create({
+            model: 'text-embedding-ada-002',
+            input: query
+        });
+
+        const queryEmbedding = queryEmbeddingResp.data[0].embedding;
+
+        // Vector similarity search (pgvector)
+        const { data: results } = await supabase.rpc('match_knowledge_bank', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.7,
+            match_count: queryLimit,
+            p_user_id: userId
+        }).then(d => ({ data: d || [], error: null }))
+          .catch(() => {
+              // Fallback: embedding olmadan doğrudan ara (vector index yoksa)
+              return supabase.from('knowledge_bank')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .like('content', `%${query}%`)
+                  .limit(queryLimit)
+                  .then(d => ({ data: d.data || [], error: null }));
+          });
+
+        // Response format
+        const insights = (results || []).map(item => ({
+            id: item.id,
+            title: item.title,
+            content: item.content,
+            type: item.content_type,
+            relevance: item.similarity || item.relevance_score || 0.7,
+            emotion: item.emotion_context,
+            source_session: item.created_at
+        }));
+
+        console.log(`[RAG] ${insights.length} insight döndürüldü (query: "${query}")`);
+        res.json({ insights, query });
+    } catch (err) {
+        console.error('[RAG RETRIEVE] Hata:', err.message);
+        res.json({ insights: [], error: err.message });
+    }
+});
+
+// ─── RAG: AUTO-EXTRACTION AT SESSION END ────────────────────────────────
+app.post('/end-session', async (req, res) => {
+    try {
+        const { userId, sessionId, transcript } = req.body;
+        if (!userId || !transcript || transcript.length < 100) {
+            return res.json({ insights_extracted: 0 });
+        }
+
+        // Get latest emotion analysis
+        const { data: lastEmotion } = await supabase
+            .from('emotion_logs')
+            .select('duygu')
+            .eq('user_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .single();
+
+        const lastDuygu = lastEmotion?.duygu || 'sakin';
+
+        // Extract knowledge automatically
+        const insights = await extractKnowledge(transcript, null, lastDuygu);
+
+        if (insights.length > 0) {
+            // Save insights with embedding
+            const saveResp = await fetch(`http://localhost:${port}/save-insight`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    insights: insights.map(i => ({
+                        ...i,
+                        type: i.type || 'insight'
+                    }))
+                })
+            });
+            const { saved } = await saveResp.json();
+            console.log(`[RAG END-SESSION] ${saved} insight extract ve kaydedildi`);
+            return res.json({ insights_extracted: saved, total: insights.length });
+        }
+
+        res.json({ insights_extracted: 0 });
+    } catch (err) {
+        console.error('[RAG END-SESSION] Hata:', err.message);
+        res.json({ error: err.message, insights_extracted: 0 });
     }
 });
 

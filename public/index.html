@@ -2014,13 +2014,29 @@
 
             if (fullConversation.length > 50) {
                 try {
+                    // Save memory
                     const res = await fetch('/save-local-memory', {
                         method:'POST',
                         headers:{'Content-Type':'application/json'},
                         body: JSON.stringify({ userId: persistentUserId, transcript: fullConversation })
                     });
                     console.log('[MEMORY] save response:', res.status);
-                } catch(e) { console.error("Memory save failed:", e); }
+
+                    // RAG: Auto-extract knowledge from session
+                    const ragRes = await fetch('/end-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: persistentUserId,
+                            sessionId,
+                            transcript: fullConversation
+                        })
+                    });
+                    const ragData = await ragRes.json();
+                    if (ragData.insights_extracted > 0) {
+                        console.log(`[RAG] ${ragData.insights_extracted} insight extracted and saved`);
+                    }
+                } catch(e) { console.error("Memory/RAG save failed:", e); }
             } else {
                 console.warn('[MEMORY] Transcript too short, not saving.');
             }
