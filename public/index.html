@@ -1110,10 +1110,28 @@
                 for (let attempt = 0; attempt < 3; attempt++) {
                     if (attempt > 0) await new Promise(r => setTimeout(r, 450));
                     const { base64 } = await captureAndPreprocess();
+
+                    // [YENİ] MediaPipe landmark çalıştır
+                    let landmarkFeatures = null;
+                    if (mediapipeReady && faceLandmarker && userVideo.readyState >= 2) {
+                        try {
+                            const mpResult = faceLandmarker.detectForVideo(userVideo, Date.now());
+                            lastLandmarkResult = mpResult;
+                            if (mpResult.faceLandmarks && mpResult.faceLandmarks.length > 0) {
+                                landmarkFeatures = extractLandmarkFeatures(
+                                    mpResult.faceLandmarks[0],
+                                    mpResult.faceBlendshapes
+                                );
+                            }
+                        } catch (mpErr) {
+                            console.warn('[MEDİAPİPE] Video detect hatası:', mpErr.message);
+                        }
+                    }
+
                     const resp = await fetch('/analyze-emotion', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null })
+                        body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null, landmarks: landmarkFeatures })
                     });
                     result = await resp.json();
                     if (result.yuz_var && result.guven >= 40) break;
@@ -1161,6 +1179,97 @@
 
         cameraToggleBtn.addEventListener('click', () => { cameraActive ? stopCamera() : startCamera(); });
 
+        // ── MEDİAPİPE YÜKLEME & BAŞLATMA ──
+        let faceLandmarker = null;
+        let mediapipeReady = false;
+        let lastLandmarkResult = null;
+
+        async function initMediaPipe() {
+            try {
+                const { FaceLandmarker, FilesetResolver } = await import(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm'
+                );
+                const filesetResolver = await FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                );
+                faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+                        delegate: 'GPU'
+                    },
+                    outputFaceBlendshapes: true,
+                    runningMode: 'VIDEO',
+                    numFaces: 1
+                });
+                mediapipeReady = true;
+                console.log('[MEDİAPİPE] FaceLandmarker hazır.');
+            } catch (err) {
+                console.warn('[MEDİAPİPE] Yüklenemedi, sadece GPT-4o vision ile devam:', err.message);
+                mediapipeReady = false;
+            }
+        }
+
+        // ── MEDİAPİPE LANDMARK ÖZELLİK ÇIKARIMI ──
+        const MP_IDX = {
+            L_BROW_INNER: 107, R_BROW_INNER: 336, L_BROW_MID: 105, R_BROW_MID: 334,
+            L_EYE_TOP: 159, L_EYE_BOT: 145, R_EYE_TOP: 386, R_EYE_BOT: 374,
+            MOUTH_TOP: 13, MOUTH_BOT: 14, MOUTH_L: 61, MOUTH_R: 291,
+            CHIN: 152, NOSE_TIP: 1, FOREHEAD: 10
+        };
+
+        function euclidean2D(a, b) {
+            return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+        }
+
+        function extractLandmarkFeatures(landmarks, blendshapes) {
+            if (!landmarks || landmarks.length === 0) return null;
+            const lm = landmarks;
+            try {
+                const browAngleLeft  = lm[MP_IDX.L_BROW_INNER].y - lm[MP_IDX.L_BROW_MID].y;
+                const browAngleRight = lm[MP_IDX.R_BROW_INNER].y - lm[MP_IDX.R_BROW_MID].y;
+                const eyeHeight_L = euclidean2D(lm[MP_IDX.L_EYE_TOP], lm[MP_IDX.L_EYE_BOT]);
+                const eyeHeight_R = euclidean2D(lm[MP_IDX.R_EYE_TOP], lm[MP_IDX.R_EYE_BOT]);
+                const mouthW = euclidean2D(lm[MP_IDX.MOUTH_L], lm[MP_IDX.MOUTH_R]);
+                const eyeRef = mouthW * 0.35 || 0.001;
+                const eyeOpenLeft  = eyeHeight_L / eyeRef;
+                const eyeOpenRight = eyeHeight_R / eyeRef;
+                const mouthH = euclidean2D(lm[MP_IDX.MOUTH_TOP], lm[MP_IDX.MOUTH_BOT]);
+                const faceH  = euclidean2D(lm[MP_IDX.FOREHEAD], lm[MP_IDX.CHIN]);
+                const headTilt = lm[33].y - lm[263].y;
+                const faceCenterX = (lm[MP_IDX.MOUTH_L].x + lm[MP_IDX.MOUTH_R].x) / 2;
+
+                let noseWrinkle = 0, cheekRaise = 0, lipCornerPull = 0, browDownL = 0, browDownR = 0;
+                if (blendshapes && blendshapes[0] && blendshapes[0].categories) {
+                    const bs = blendshapes[0].categories;
+                    const get = (name) => bs.find(c => c.categoryName === name)?.score ?? 0;
+                    noseWrinkle   = get('noseSneerLeft') + get('noseSneerRight');
+                    cheekRaise    = get('cheekSquintLeft') + get('cheekSquintRight');
+                    lipCornerPull = get('mouthSmileLeft') + get('mouthSmileRight');
+                    browDownL = get('browDownLeft');
+                    browDownR = get('browDownRight');
+                }
+
+                const EAR = (eyeOpenLeft + eyeOpenRight) / 2;
+                const r = v => Math.round(v * 1000) / 1000;
+
+                return {
+                    brow_angle_left: r(browAngleLeft), brow_angle_right: r(browAngleRight),
+                    brow_down_left: r(browDownL), brow_down_right: r(browDownR),
+                    eye_openness_left: r(eyeOpenLeft), eye_openness_right: r(eyeOpenRight),
+                    mouth_openness: r(mouthH / (mouthW || 0.001)),
+                    mouth_width_ratio: r(mouthW / (eyeRef * 2.86)),
+                    jaw_drop: r(euclidean2D(lm[MP_IDX.NOSE_TIP], lm[MP_IDX.CHIN]) / (faceH || 0.001)),
+                    head_tilt: r(headTilt),
+                    head_yaw: r(lm[MP_IDX.NOSE_TIP].x - faceCenterX),
+                    nose_wrinkle: r(noseWrinkle), cheek_raise: r(cheekRaise),
+                    lip_corner_pull: r(lipCornerPull), blink_detected: EAR < 0.2, ear: r(EAR)
+                };
+            } catch (err) {
+                console.warn('[MEDİAPİPE] Özellik çıkarım hatası:', err.message);
+                return null;
+            }
+        }
+
         // ── THREE.JS ──
         let scene, camera, renderer, composer, clock;
         let avatar, mixer, currentAction;
@@ -1199,6 +1308,9 @@
         ];
 
         function initScene() {
+            // MediaPipe'ı başlat
+            initMediaPipe();
+
             scene = new THREE.Scene();
 
             const panelLyra = document.getElementById('panel-lyra');
@@ -1604,6 +1716,7 @@
             statusEl.classList.add('listening');
             showToast('Lyra bağlandı — konuşmaya hazır');
             startSeansProgress();
+            startHumeCapture();
             talkBtn.textContent = "BAĞLANTIYI KES";
             talkBtn.classList.add('active');
             document.getElementById('mic-indicator').classList.add('active');
@@ -1632,7 +1745,8 @@
                         sesMonotonluk,
                         konusmaTempo: Math.round(konusmaTempo * 10) / 10,
                         tempoTrend,
-                        sessizlikTipi
+                        sessizlikTipi,
+                        hume_scores: lastHumeScores
                     })
                 }).catch(() => {});
             }, 5000);
@@ -1667,6 +1781,7 @@
             reconnectAttempts = 0;
             isCallActive = false;
             stopSeansProgress();
+            stopHumeCapture();
             statusEl.textContent = "SİSTEM HAZIR";
             statusEl.classList.remove('listening');
             talkBtn.textContent = "GÖRÜŞMEYİ BAŞLAT";
@@ -1863,6 +1978,7 @@
 
         vapiInstance.on('error', (err) => {
             console.error('[VAPI] Hata:', err);
+            stopHumeCapture();
 
             const errType = err?.error?.type || err?.type || '';
             const isEjection = errType === 'daily-error';
@@ -1925,6 +2041,54 @@
         // ── ACİL YARDIM ─────────────────────────────────────
         function acilAc()  { document.getElementById('acil-modal').classList.add('active'); }
         function acilKapat(){ document.getElementById('acil-modal').classList.remove('active'); }
+
+        // ── HUME AI SES YAKALAMA ──────────────────────────
+        let humeMediaRecorder = null;
+        let humeAudioStream = null;
+        let humeChunkTimer = null;
+        let lastHumeScores = null;
+
+        async function startHumeCapture() {
+            if (!persistentUserId) return;
+            try {
+                humeAudioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true },
+                    video: false
+                });
+                function recordChunk() {
+                    if (!humeAudioStream || !isCallActive) return;
+                    const chunks = [];
+                    humeMediaRecorder = new MediaRecorder(humeAudioStream, { mimeType: 'audio/webm;codecs=opus' });
+                    humeMediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+                    humeMediaRecorder.onstop = async () => {
+                        if (chunks.length && isCallActive) {
+                            const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+                            if (blob.size > 3000) {
+                                const fd = new FormData();
+                                fd.append('audio', blob, 'chunk.webm');
+                                fd.append('userId', persistentUserId);
+                                fetch('/analyze-hume-voice', { method: 'POST', body: fd })
+                                    .then(r => r.ok ? r.json() : null)
+                                    .then(data => { if (data?.hume_scores) lastHumeScores = data.hume_scores; })
+                                    .catch(() => {});
+                            }
+                        }
+                        if (isCallActive) humeChunkTimer = setTimeout(recordChunk, 100);
+                    };
+                    humeMediaRecorder.start();
+                    setTimeout(() => { if (humeMediaRecorder?.state === 'recording') humeMediaRecorder.stop(); }, 5000);
+                }
+                recordChunk();
+                console.log('[HUME] Ses yakalama başladı.');
+            } catch (err) { console.warn('[HUME] Mikrofon hatası:', err.message); }
+        }
+
+        function stopHumeCapture() {
+            clearTimeout(humeChunkTimer);
+            if (humeMediaRecorder?.state === 'recording') humeMediaRecorder.stop();
+            if (humeAudioStream) humeAudioStream.getTracks().forEach(t => t.stop());
+            humeAudioStream = null; humeMediaRecorder = null;
+        }
 
         // ── SEANS PROGRESS BAR (#16) ──────────────────────
         const SEANS_SURE_MS = 50 * 60 * 1000; // 50 dakika

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from 'express-rate-limit';
 import crypto from 'crypto';
+import multer from 'multer';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -356,7 +357,7 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
 
     // ── SES ZEKASI KURALLARI ────────────────────────────────
     if (transcriptData) {
-        const { sesTitreme, sesYogunlukOrt, tempoTrend, konusmaTempo } = transcriptData;
+        const { sesTitreme, sesYogunlukOrt, tempoTrend, konusmaTempo, hume_scores } = transcriptData;
 
         if (sesTitreme && (dominantDuygu === 'üzgün' || dominantDuygu === 'korkmuş'))
             kurallar.push('Kullanıcının sesi titriyor ve duygusal. "Sesin biraz titriyor,괜찮아mısın?" diyebilirsin. Ağlamak üzere olabilir, nazik ol.');
@@ -375,6 +376,37 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
 
         if (transcriptData.sesMonotonluk && (dominantDuygu === 'üzgün' || dominantDuygu === 'yorgun'))
             kurallar.push('Kullanıcının sesi monoton ve düz — içinde ağırlık/boşluk sinyali. "Sesin çok düz, içinde bir ağırlık var gibi hissediyorum" diyebilirsin. Depresyon sinyali olabilir, dikkatli ol.');
+
+        // ── HUME AI PROSODY INJECT ──
+        if (hume_scores && hume_scores.top_emotions) {
+            const { dominant, valence, arousal, top_emotions } = hume_scores;
+
+            // Valence çelişkisi: yüz olumsuz gösteriyor ama ses pozitif
+            if (valence > 0.3 && ['üzgün', 'korkmuş', 'endişeli', 'sinirli'].includes(dominantDuygu))
+                kurallar.push(`[HUME SES ÇELIŞKÜ] Ses analizi pozitif enerji gösteriyor (valence:${valence}) ama yüz "${dominantDuygu}". Duygusunu gizliyor olabilir. "Sesin bana positif enerji gösteriyor ama yüzün farklı duruyor, gerçekten iyimisin?"`);
+
+            // Arousal çelişkisi: yüz sakin gösteriyor ama ses enerjik
+            if (arousal > 0.4 && ['sakin', 'yorgun'].includes(dominantDuygu))
+                kurallar.push(`[HUME SES ENERJI] Ses enerjisi yüksek (arousal:${arousal}) ama yüz ${dominantDuygu}. Baskılanmış enerji olabilir. "Sende bir enerji var ama bunu söylemekte zorlanıyor gibisin."`);
+
+            // Top duygu-spesifik eğitim
+            const HUME_EMOTION_GUIDE = {
+                'Sadness': 'Seste derin üzüntü belirlendi. Tempo düşür, destekleyici kal. Çözüm önerme, dinle.',
+                'Fear': 'Seste korku/kaygı. "Burada güvendesin. Yavaşça anlat" de, sakinleştir.',
+                'Anger': 'Seste öfke. Öfkenin sebebini anlama, zemine in. Uzlaşmacı ol.',
+                'Anxiety': 'Seste kaygı/gerilim. Tempo düşür, nefes egzersizi öner, sakinleştir.',
+                'Shame': 'Seste utanç/mahcubiyet. "Bu hissi taşımak zor" de, yargılama.',
+                'Guilt': 'Seste suçluluk. "Kendini suçlamak yerine ne olduğuna bakalım" de.',
+                'Calmness': 'Ses rahat ve sakin. Derin/önemli konulara girebilirsin, kullanıcı hazır.',
+                'Distress': 'Seste yoğun sıkıntı. Kısa cümleler kur, aceleyle gitme.',
+                'Neutral': 'Ses nötr/kontrollü. Duygusunu aydınlatmak için açık sorular sor.',
+                'Contentment': 'Ses memnun/tatmin. İlerlemeyi fark et ve küçük ama samimi bir şekilde kutla.'
+            };
+
+            if (top_emotions.length > 0 && HUME_EMOTION_GUIDE[top_emotions[0].name]) {
+                kurallar.push(`[HUME — ${top_emotions[0].name} %${Math.round(top_emotions[0].score * 100)}]: ${HUME_EMOTION_GUIDE[top_emotions[0].name]}`);
+            }
+        }
     }
 
     const son5 = gecmis.slice(-5);
@@ -762,7 +794,7 @@ app.post('/log-error', async (req, res) => {
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
 app.post('/update-transcript', (req, res) => {
-    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk, sessizlikTipi } = req.body;
+    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk, sessizlikTipi, hume_scores } = req.body;
     if (!userId) return res.sendStatus(400);
     sessionTranscriptStore.set(userId, {
         fullTranscript: fullTranscript || '',
@@ -774,6 +806,7 @@ app.post('/update-transcript', (req, res) => {
         konusmaTempo: konusmaTempo || 0,
         tempoTrend: tempoTrend || 'stabil',
         sessizlikTipi: sessizlikTipi || 'normal',
+        hume_scores: hume_scores || null,
         updatedAt: Date.now()
     });
     res.sendStatus(200);
@@ -1143,9 +1176,49 @@ const emotionRateLimit = rateLimit({
     skip: (req) => !req.body?.userId // userId yoksa atla
 });
 
+// ── HUME SES YAKALAMA RATE LIMITER ──
+const humeRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    keyGenerator: (req) => req.body?.userId || req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ hume_scores: null });
+    },
+    skip: (req) => !req.body?.userId
+});
+
+// ── MULTER SES DOSYASI YÜKLEMESİ ──
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB max
+});
+
+// ── MEDİAPİPE LANDMARK CONTEXT BUILDER ──
+const buildLandmarkContext = (lm) => {
+    if (!lm) return '';
+    const s = [];
+    if (lm.brow_down_left > 0.4 || lm.brow_down_right > 0.4)
+        s.push('KAŞLAR AŞAĞI ÇATIK: güçlü kaş kasılması');
+    const eyeAvg = (lm.eye_openness_left + lm.eye_openness_right) / 2;
+    if (eyeAvg < 0.25) s.push('GÖZLER NEREDEYSE KAPALI: aşırı yorgunluk/gözyaşı');
+    else if (eyeAvg > 0.85) s.push('Gözler çok geniş açık: şaşkınlık/korku');
+    if (lm.mouth_openness > 0.35) s.push('Ağız açık: şaşkınlık/korku/ağlama');
+    else if (lm.mouth_openness < 0.03) s.push('Ağız sıkı kapalı: gerilim');
+    if (lm.lip_corner_pull > 0.5 && lm.cheek_raise > 0.3)
+        s.push('Gerçek gülümseme (Duchenne): dudak köşesi + yanak kası aktif');
+    else if (lm.lip_corner_pull > 0.4 && lm.cheek_raise < 0.15)
+        s.push('Sosyal/zorunlu gülümseme: yanak kası pasif');
+    if (lm.jaw_drop > 0.65) s.push('Çene belirgin düşük: şok/ağlama');
+    if (Math.abs(lm.head_tilt) > 0.04)
+        s.push(`Baş ${lm.head_tilt > 0 ? 'sola' : 'sağa'} eğik — beden dili sinyali`);
+    if (lm.nose_wrinkle > 0.3) s.push('Burun kıvırma: tiksinme/rahatsızlık');
+    if (!s.length) return '';
+    return `\n\nMEDİAPİPE LANDMARK ANALİZİ (piksel geometrisi — GPT görüntü analizinden daha güvenilir):\n${s.join('\n')}\nÇelişki varsa landmark verilerine öncelik ver.`;
+};
+
 app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
     try {
-        const { imageBase64, userId, sessionId } = req.body;
+        const { imageBase64, userId, sessionId, landmarks } = req.body;
         if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
 
         const response = await openai.chat.completions.create({
@@ -1179,6 +1252,8 @@ ORTAM OLAYI:
 - Arka planda başka biri var mı? arkaplan_kisi:true/false
 - Kişinin yüzü/postu ani değişti mi? ani_degisim:true/false
 - Ortamda gerilim/hareket var mı? ortam_gerilimi:"yok|var|belirsiz"
+
+${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
 {"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
@@ -1242,7 +1317,8 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
                     enerji: result.enerji,
                     jestler: result.jestler || null,
                     trend: guncel.trend,
-                    guven: result.guven
+                    guven: result.guven,
+                    mediapipe_landmarks: landmarks || null
                 }).then(({ error }) => {
                     if (error) console.error('[EMOTION LOG] Insert hatası:', error.message);
                 });
@@ -1253,6 +1329,116 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
     } catch (err) {
         console.error('[DUYGU] Hata:', err.message);
         res.json({ duygu: 'sakin', guven: 0, yuz_var: false });
+    }
+});
+
+// ─── HUME SES ANALİZİ (48 Duygu, Prosody) ────────────────────────
+app.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const buf = req.file?.buffer;
+
+        if (!buf || buf.length < 1000) {
+            return res.json({ hume_scores: null });
+        }
+
+        const HUME_API_KEY = process.env.HUME_API_KEY;
+        if (!HUME_API_KEY) {
+            console.warn('[HUME] API key yoksa, skip.');
+            return res.json({ hume_scores: null });
+        }
+
+        // FormData ile Hume'a gönder
+        const fd = new FormData();
+        fd.append('file', new Blob([buf], { type: req.file.mimetype }), 'audio.webm');
+        fd.append('models', JSON.stringify({ prosody: { granularity: 'utterance' } }));
+
+        const humeResp = await fetch('https://api.hume.ai/v0/stream/models', {
+            method: 'POST',
+            headers: { 'X-Hume-Api-Key': HUME_API_KEY },
+            body: fd,
+            signal: AbortSignal.timeout(8000)
+        });
+
+        if (!humeResp.ok) {
+            console.warn(`[HUME] API error: ${humeResp.status}`);
+            return res.json({ hume_scores: null });
+        }
+
+        const data = await humeResp.json();
+        const emotions = data?.prosody?.predictions?.[0]?.emotions || [];
+
+        if (!emotions.length) {
+            return res.json({ hume_scores: null });
+        }
+
+        // Top 10 duyguyu sırayla say
+        const sorted = [...emotions].sort((a, b) => b.score - a.score);
+
+        // Valence (pozitif - negatif): mutluluk, merak, memnuniyet vs üzüntü, korku, öfke
+        const posEmotions = ['Joy', 'Excitement', 'Contentment', 'Amusement', 'Pride', 'Love', 'Interest'];
+        const negEmotions = ['Sadness', 'Fear', 'Anger', 'Disgust', 'Anxiety', 'Shame', 'Guilt'];
+        const posScore = emotions
+            .filter(e => posEmotions.includes(e.name))
+            .reduce((s, e) => s + e.score, 0);
+        const negScore = emotions
+            .filter(e => negEmotions.includes(e.name))
+            .reduce((s, e) => s + e.score, 0);
+
+        // Arousal (enerji): Excitement, Anger, Fear, Surprise vs Calmness, Contentment
+        const highArousal = ['Excitement', 'Anger', 'Fear', 'Surprise'];
+        const arousScore = emotions
+            .filter(e => highArousal.includes(e.name))
+            .reduce((s, e) => s + e.score, 0);
+
+        const round = (v) => Math.round(v * 100) / 100;
+
+        const humeScores = {
+            top_emotions: sorted.slice(0, 10).map(e => ({
+                name: e.name,
+                score: round(e.score)
+            })),
+            all_scores: Object.fromEntries(
+                emotions.map(e => [e.name, round(e.score)])
+            ),
+            dominant: sorted[0]?.name || 'Neutral',
+            valence: round(posScore - negScore),           // -1.0 to +1.0
+            arousal: round(arousScore),                     // 0 to +1.0
+            analyzed_at: Date.now()
+        };
+
+        // Supabase emotion_logs'a hume_scores ekle (fire-and-forget)
+        if (userId) {
+            supabase
+                .from('emotion_logs')
+                .select('id')
+                .eq('user_id', userId)
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .single()
+                .then(({ data: row, error: selectErr }) => {
+                    if (selectErr) {
+                        console.warn('[HUME] Son emotion_log bulunamadı:', selectErr.message);
+                        return;
+                    }
+                    if (row?.id) {
+                        supabase
+                            .from('emotion_logs')
+                            .update({ hume_scores: humeScores })
+                            .eq('id', row.id)
+                            .then(({ error: updateErr }) => {
+                                if (updateErr) console.error('[HUME SAVE] Hata:', updateErr.message);
+                            });
+                    }
+                })
+                .catch(err => console.error('[HUME] Query error:', err.message));
+        }
+
+        console.log(`[HUME] ${humeScores.dominant} | valence:${humeScores.valence} | arousal:${humeScores.arousal}`);
+        res.json({ hume_scores: humeScores });
+    } catch (err) {
+        console.error('[HUME] Hata:', err.message);
+        res.json({ hume_scores: null });
     }
 });
 
