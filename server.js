@@ -1034,7 +1034,7 @@ app.post('/vapi-webhook', async (req, res) => {
 
 // ─── LOCAL MEMORY ENDPOINT ─────────────────────────────────
 app.post('/save-local-memory', async (req, res) => {
-    const { userId, transcript } = req.body;
+    const { userId, transcript, bodyLanguageData } = req.body;
 
     if (!userId || !transcript || transcript.length < 50) {
         return res.sendStatus(200);
@@ -1042,6 +1042,18 @@ app.post('/save-local-memory', async (req, res) => {
 
     console.log(`[LOCAL MEMORY] Özetleniyor... userId: ${userId}`);
     try {
+        // #4 — AÇIKLIK SKORU HESAPLA
+        let aciklikSkoru = 50; // baseline
+        if (bodyLanguageData) {
+            const { goz_temasi, omuz_durusu, genel_vucut_dili, gulume_tipi, bas_egme } = bodyLanguageData;
+            if (genel_vucut_dili === 'kapalı') aciklikSkoru -= 2;
+            if (goz_temasi === 'düşük') aciklikSkoru -= 1;
+            if (gulume_tipi === 'gerçek' || gulume_tipi === 'sosyal') aciklikSkoru += 2;
+            if (genel_vucut_dili === 'açık') aciklikSkoru += 2;
+            if (omuz_durusu === 'yüksek') aciklikSkoru += 1;
+        }
+        aciklikSkoru = Math.max(0, Math.min(100, aciklikSkoru)); // 0-100 arasında tut
+
         const summaryResponse = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
@@ -1055,8 +1067,9 @@ app.post('/save-local-memory', async (req, res) => {
         });
 
         const summary = summaryResponse.choices[0].message.content;
-        await saveMemory(userId, summary);
-        console.log(`[LOCAL MEMORY] ✅ Hafıza başarıyla kaydedildi!`);
+        const memoryWithScore = `${summary}\n\n[Bu Seansta Açıklık Skoru: ${aciklikSkoru}/100]`;
+        await saveMemory(userId, memoryWithScore);
+        console.log(`[LOCAL MEMORY] ✅ Hafıza başarıyla kaydedildi! (Açıklık: ${aciklikSkoru}/100)`);
         console.log(`[LOCAL MEMORY] Özet: ${summary.substring(0, 100)}...`);
     } catch (err) {
         console.error('[LOCAL MEMORY] ❌ Özetleme hatası:', err.message);
