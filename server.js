@@ -231,7 +231,7 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
     return kurallar.join(' ');
 };
 
-const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId) => {
+const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
     const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
@@ -316,11 +316,12 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId) => {
     if (jestler?.goz_yasi_birikimi === 'belirgin')
         kurallar.push('Belirgin göz yaşı birikimi — ağlamak üzere. Hiç soru sorma, sadece "Seninle buradayım, devam et" de.');
 
-    // ── AĞLAMA TESPİTİ ──────────────────────────────────────
+    // ── AĞLAMA TESPİTİ (#1) ──────────────────────────────────
     const aglayorMu = jestler?.goz_yasi_birikimi === 'belirgin' ||
         (jestler?.goz_yasi_birikimi === 'başlıyor' && jestler?.gozyasi_izi === true);
-    if (aglayorMu)
-        kurallar.push('Kullanıcı ağlıyor veya ağlamak üzere. Hiç soru sorma. Sadece kısa "Buradayım, devam et." de ve sessizlik ver.');
+    const aglamaSesi = transcriptData?.sesTitreme === true && (transcriptData?.konusmaTempo || 0) < 1.5;
+    if (aglayorMu || aglamaSesi)
+        kurallar.push('[#1 AĞLAMA TESPİTİ] Kullanıcı ağlıyor veya ağlamak üzere. HİÇ SORU SORMA. Sadece: "Seninle buradayım. Devam et." de, sessizlik ver. Yapıştırma, hızlı yanıt, çözüm önerme.');
 
     // ── YORGUNLUK & UYKU ────────────────────────────────────
     if (jestler?.goz_kapagi_agirlik === 'belirgin_agir' && enerji === 'yorgun')
@@ -1082,12 +1083,14 @@ app.post('/api/chat/completions', async (req, res) => {
             const { son_analiz, trend, dominant_duygu, aktif_sinyal, gecmis, yogunluk_ort } = userState;
             console.log(`[KURAL MOTORU] son_analiz: ${son_analiz?.duygu} | yogunluk: ${son_analiz?.yogunluk} | guven: ${son_analiz?.guven}`);
 
-            const l1 = buildLayer1Rules(son_analiz, aktif_sinyal, userId);
+            // Transcript verileri hepsi için gerekli
+            const transcriptState = sessionTranscriptStore.get(userId);
+
+            const l1 = buildLayer1Rules(son_analiz, aktif_sinyal, userId, transcriptState);
             const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || [], transcriptState);
             const l3 = buildLayer3Rules(userMemory, son_analiz, userId);
 
             // L4: Söz-yüz çelişkisi
-            const transcriptState = sessionTranscriptStore.get(userId);
             const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz);
 
             // L5: Sessizlik
