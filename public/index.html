@@ -1245,6 +1245,8 @@
 
         // Adaptif interval
         let adaptifInterval = 6000;
+        let tehlikeModu = false;        // Tehlike anında 1sn'ye düşer
+        let tehlikeModuSayac = 0;       // Kaç kere üst üste tehlike geldi
         let sonDuygu = null;
         let ardiArdina = 0;
         let emotionTimer = null;
@@ -1428,6 +1430,41 @@
 
                 currentEmotionState = result.duygu;
 
+                // ── TEHLİKE MODU: Riskli nesne veya zarar sinyali varsa analizi hızlandır ──
+                const riskSeviyesi = result.ortam?.nesne_risk_seviyesi || 'yok';
+                const zararSinyali = result.ortam?.zarar_sinyali === true;
+                const tehlikeVar = result.ortam?.tehlike_var === true;
+
+                if (tehlikeVar || riskSeviyesi === 'yuksek' || (riskSeviyesi === 'orta' && zararSinyali)) {
+                    tehlikeModuSayac++;
+                    tehlikeModu = true;
+                    adaptifInterval = 1000; // 1 saniyede bir analiz
+                    console.warn(`[TEHLİKE MODU] 🚨 nesne:${result.ortam?.el_nesnesi} risk:${riskSeviyesi} zarar:${zararSinyali} → 1sn analiz`);
+                } else if (riskSeviyesi === 'orta') {
+                    tehlikeModu = true;
+                    adaptifInterval = 2000; // 2 saniyede bir — dikkatli izle
+                    console.warn(`[DİKKAT MODU] ⚠️ nesne:${result.ortam?.el_nesnesi} → 2sn analiz`);
+                } else {
+                    // Tehlike geçti mi? 3 temiz analiz sonrası normal moda dön
+                    if (tehlikeModu) {
+                        tehlikeModuSayac = Math.max(0, tehlikeModuSayac - 1);
+                        if (tehlikeModuSayac === 0) {
+                            tehlikeModu = false;
+                            console.log('[TEHLİKE MODU] ✅ Tehlike geçti, normal moda dönüldü');
+                        }
+                    }
+                    // Normal adaptif interval
+                    const base = getBaseInterval(result.duygu);
+                    if (result.duygu === sonDuygu) {
+                        ardiArdina++;
+                        if (ardiArdina >= 3) adaptifInterval = Math.min(base * 2, 10000);
+                        else adaptifInterval = base;
+                    } else {
+                        ardiArdina = 0;
+                        adaptifInterval = base;
+                    }
+                }
+
                 // Avatar duygu yansıması
                 if (!isCallActive || (currentAction && currentAction._clip?.name === (animationsMap['Idle']?._clip?.name || 'Idle'))) {
                     if (result.duygu === 'üzgün' && result.yogunluk !== 'düşük') {
@@ -1444,18 +1481,8 @@
                     else sessizlikTipi = 'normal';
                 }
 
-                // Adaptif interval — min 5sn, max 10sn (kredi tasarrufu)
-                const base = getBaseInterval(result.duygu);
-                if (result.duygu === sonDuygu) {
-                    ardiArdina++;
-                    if (ardiArdina >= 3) adaptifInterval = Math.min(base * 2, 10000);
-                    else adaptifInterval = base;
-                } else {
-                    ardiArdina = 0;
-                    adaptifInterval = base;
-                }
                 sonDuygu = result.duygu;
-                console.log(`[DUYGU] ${result.duygu} | yogunluk:${result.yogunluk} | güven:${result.guven} | interval:${adaptifInterval}ms`);
+                console.log(`[DUYGU] ${result.duygu} | yogunluk:${result.yogunluk} | güven:${result.guven} | interval:${adaptifInterval}ms | nesne:${result.ortam?.el_nesnesi || 'yok'}`);
             } catch (err) {
                 console.warn('[DUYGU] Hata:', err.message);
             }

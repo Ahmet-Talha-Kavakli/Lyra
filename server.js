@@ -485,19 +485,27 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
 
     // ── TEHLİKE & ZARAR PROTOKOLÜ (en yüksek öncelik) ─────
-    if (ortam?.tehlike_var === true) {
-        const nesne = ortam.tehlikeli_nesne || 'tehlikeli nesne';
-        kurallar.push(`KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında "${nesne}" tespit edildi. Hemen nazikçe sor: "Şu an elinde bir şey var, iyi misin?" Sakin kal, yargılama, güvenliğini önce sorgula.`);
-        // Kriz log kaydet — fire and forget
-        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'tehlikeli_nesne', nesne }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    const nesne = ortam?.el_nesnesi || ortam?.tehlikeli_nesne || '';
+    const riskSeviyesi = ortam?.nesne_risk_seviyesi || 'yok';
+    const nesneAmac = ortam?.nesne_amac_tahmini || '';
+
+    if (ortam?.tehlike_var === true || riskSeviyesi === 'yuksek') {
+        kurallar.push(`🚨 KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında yüksek riskli nesne tespit edildi: "${nesne || 'tehlikeli nesne'}". ${nesneAmac ? `Amaç tahmini: ${nesneAmac}.` : ''} Hemen DOĞAL bir geçişle sor: "Şu an nasılsın, elinde bir şey var gibi gördüm." Sesi sakin tut, yargılama yapma, konuyu kapatma — güvenliği önce sorgula. Konuşmayı güvenli yöne çek.`);
+        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'yuksek_riskli_nesne', nesne, amac: nesneAmac }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    } else if (riskSeviyesi === 'orta') {
+        if (ortam?.zarar_sinyali === true) {
+            kurallar.push(`⚠️ ZARAR RİSKİ: Elinde "${nesne}" var ve cilde temas ediyor/baskı uyguluyor. ${nesneAmac ? `(${nesneAmac})` : ''} Hemen nazikçe müdahale et: "Şu an kendine iyi bakıyor musun? Seninle buradayım." Sakin kal, suçlama yapma.`);
+            if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'orta_risk_zarar_sinyali', nesne }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+        } else {
+            kurallar.push(`Kullanıcının elinde "${nesne}" var. ${nesneAmac ? `Şu an: ${nesneAmac}.` : ''} Şüpheli bir kullanım görürsen nazikçe konuşmaya dahil et, baskı yapma.`);
+        }
     }
 
-    if (ortam?.zarar_sinyali === true) {
+    if (ortam?.zarar_sinyali === true && riskSeviyesi === 'yok') {
         if (yogunluk === 'yüksek')
             kurallar.push('KRİZ: Kullanıcı kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninle buradayım." Sakin kal, suçlama yapma, güvenli alan yarat.');
         else
             kurallar.push('Kullanıcının hareketi dikkat çekici. Nazikçe sor: "Şu an kendine iyi bakıyor musun?" — baskı yapma, sadece fark ettiğini göster.');
-        // Kriz log kaydet
         if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'zarar_sinyali' }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     }
 
@@ -1970,30 +1978,46 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Sen bir yüz analizi sistemisin. Görüntüde bir insan yüzü var mı yok mu — bunu dürüstçe belirle.
+                        text: `Sen bir online terapi sisteminin görüntü analiz modülüsün. İki şeyi analiz et: yüz ifadesi ve elde/yakında görünen nesneler.
 
-YÜZ VAR MI KURALI (EN ÖNEMLİ):
-- Görüntüde NET olarak bir insan yüzü (göz, burun, ağız) görünmüyorsa → yuz_var: false, guven: 0
-- Kamera kapalı, karanlık, el kapatmış, nesne var → yuz_var: false
-- Sadece gerçekten yüz görünüyorsa → yuz_var: true
-- Şüphe durumunda → yuz_var: false (uydurma, güvenilir ol)
+── YÜZ TESPİTİ (DÜRÜST OL, UYDURMA) ──
+- Görüntüde NET insan yüzü (göz+burun+ağız) varsa → yuz_var: true
+- Kamera kapalı, karanlık, el önde, nesne kaplıyor → yuz_var: false, guven: 0
+- Şüphe durumunda → yuz_var: false
 
-DUYGU ANALİZİ (sadece yuz_var: true ise):
-- Kaş çatma, dar gözler, sıkılmış çene = sinirli
-- Sarkık yüz, düşük göz teması = üzgün/yorgun
-- Geniş gözler, gergin alın = endişeli/korkmuş
-- Rahat yüz, açık göz teması = sakin
-- Gülümseme (yanak kası aktifse gerçek, değilse sosyal) = mutlu
+── DUYGU ANALİZİ (yuz_var: true ise) ──
+- Kaş çatma + dar gözler + sıkılmış çene = sinirli
+- Sarkık yüz + düşük göz teması = üzgün/yorgun
+- Geniş gözler + gergin alın = endişeli/korkmuş
+- Rahat yüz + açık göz teması = sakin
+- Yanak kası + dudak köşesi = gerçek gülümseme (mutlu)
 
-GÜVEN SKORU:
-- Net yüz, iyi ışık → 75-95
-- Biraz bulanık/karanlık ama yüz var → 50-74
+── NESNE TESPİTİ (ÇOK ÖNEMLİ) ──
+Görüntüde elle tutulan veya yakında duran nesneleri tespit et.
+
+el_nesnesi: Elde veya vücuda çok yakın nesneyi yaz. Örnek: "kalem", "makas", "bıçak", "bardak", "iğne", "jilet", "tel", "ip", "cam parçası", "tarak", "kaşık", "yok"
+
+nesne_risk_seviyesi:
+- "yuksek": Doğrudan tehlikeli — bıçak, makas, iğne, jilet, cam parçası, ip, tel
+- "orta": Tehlikeli değil ama zarar verilmek için kullanılabilir — kalem, tarak, kaşık, çatal, kurşun kalem
+- "dusuk": Günlük nesne, risk yok — telefon, bardak, kitap, yiyecek
+- "yok": Elde nesne yok
+
+zarar_sinyali: Nesne cilde temas ediyor mu, baskı uygulanıyor mu, tekrarlı hareket var mı? → true/false
+tehlike_var: nesne_risk_seviyesi "yuksek" ise → true
+
+el_aktivitesi: "nesne_tutuyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|boşta"
+nesne_amac_tahmini: Nesnenin bu anda ne için kullanıldığına dair kısa yorum. Örn: "kalem yazı yazıyor", "kalem cilde sürülüyor", "makas açık tutuluyor"
+
+── GÜVEN SKORU ──
+- Net görüntü → 75-95
+- Bulanık/karanlık ama yüz var → 50-74
 - Yüz yok → 0
 
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","tehlike_var":false,"zarar_sinyali":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","el_nesnesi":"yok","nesne_risk_seviyesi":"yok","nesne_amac_tahmini":"","zarar_sinyali":false,"tehlike_var":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
