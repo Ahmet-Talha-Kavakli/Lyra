@@ -477,12 +477,18 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
             kurallar.push(`[#8 KONUŞMA DENGESİ] Bu seansta %${sayi} konuşuyorsun — çok fazla! Şimdi kısa cevap ver, kullanıcıyı daha fazla konuştur. Dinle, soru sor, açılmasını sağla.`);
         }
 
-        // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti
-        const absKelimeler = ['asla', 'hep böyle', 'her zaman böyle', 'hiç kimse', 'kimse beni', 'hiçbir zaman', 'tamamen mahvoldum', 'hiçbir şey işe yaramıyor', 'her şey berbat'];
+        // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti (#9)
+        const absKelimeler = [
+            'asla', 'hep böyle', 'her zaman böyle', 'hiç kimse', 'kimse beni', 'hiçbir zaman',
+            'tamamen mahvoldum', 'hiçbir şey işe yaramıyor', 'her şey berbat', 'hep benim hatam',
+            'kimse beni sevmez', 'yalnız olacağım', 'asla başaramayacağım', 'her zaman böyle kalacak',
+            'hiç mutlu olmayacağım', 'kimse anlayamıyor', 'daima yalnız', 'her şey imkansız'
+        ];
         const lastSeg = (transcriptData.lastSegment || '').toLowerCase();
         const absHit = absKelimeler.find(k => lastSeg.includes(k));
-        if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük')
-            kurallar.push(`Kullanıcı "${absHit}" gibi absolüt bir ifade kullandı — bilişsel çarpıtma sinyali. Nazikçe sorgula: "Az önce '${absHit}' dedin — gerçekten hiç mi, hiçbir zaman mı?"`);
+        if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük') {
+            kurallar.push(`[#9 ABSOLüT KÖŞEBENDİLİK] Kullanıcı "${absHit}" gibi absolüt/katı bir ifade kullandı — bilişsel çarpıtma sinyali. Nazikçe sorgula: "Az önce '${absHit}' dedin — gerçekten hiç mi? Ara yollar, istisnaları beraber bulalım."`);
+        }
 
         // #3 — KELIME TEKRAR TESPİTİ
         const tekrarlar = detectWordRepetition(transcriptData.fullTranscript);
