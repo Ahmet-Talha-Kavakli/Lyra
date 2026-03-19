@@ -804,6 +804,12 @@
         let ardiArdina = 0;
         let emotionTimer = null;
 
+        // Sessizlik & transcript streaming
+        let silenceStartTime = null;
+        let silenceDuration = 0;
+        let lastUserMessage = '';
+        let transcriptStreamInterval = null;
+
         function getBaseInterval(duygu) {
             if (['sakin', 'mutlu'].includes(duygu))                          return 6000;
             if (['endişeli', 'üzgün', 'korkmuş', 'sinirli'].includes(duygu)) return 2000;
@@ -1336,12 +1342,30 @@
         vapiInstance.on('call-start', () => {
             isCallActive = true;
             fullConversation = "";
+            lastUserMessage = '';
+            silenceDuration = 0;
+            silenceStartTime = null;
             statusEl.textContent = "GÖRÜŞME AKTİF";
             statusEl.classList.add('listening');
             talkBtn.textContent = "BAĞLANTIYI KES";
             talkBtn.classList.add('active');
             document.getElementById('mic-indicator').classList.add('active');
             setCamera('close', 1800);
+
+            // Transcript streaming — her 5sn'de sunucuya gönder
+            transcriptStreamInterval = setInterval(() => {
+                if (!persistentUserId || !isCallActive) return;
+                fetch('/update-transcript', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: persistentUserId,
+                        fullTranscript: fullConversation,
+                        silenceDuration: Math.round(silenceDuration),
+                        lastSegment: lastUserMessage
+                    })
+                }).catch(() => {});
+            }, 5000);
         });
 
         vapiInstance.on('speech-start', () => {
@@ -1364,6 +1388,11 @@
             if (panelLyraEl) panelLyraEl.classList.remove('speaking');
             if (panelUserEl) panelUserEl.classList.remove('speaking');
             setCamera('normal', 2000);
+            clearInterval(transcriptStreamInterval);
+            transcriptStreamInterval = null;
+            silenceStartTime = null;
+            silenceDuration = 0;
+            lastUserMessage = '';
 
             console.log('[MEMORY] call-end fired. userId:', persistentUserId, 'transcript length:', fullConversation.length);
             console.log('[MEMORY] transcript preview:', fullConversation.substring(0, 200));
@@ -1387,8 +1416,12 @@
             if (panelUserEl) {
                 if (vol > 0.05) {
                     panelUserEl.classList.add('speaking');
+                    silenceStartTime = null;
+                    silenceDuration = 0;
                 } else {
                     panelUserEl.classList.remove('speaking');
+                    if (!silenceStartTime) silenceStartTime = Date.now();
+                    silenceDuration = (Date.now() - silenceStartTime) / 1000;
                 }
             }
         });
@@ -1410,6 +1443,7 @@
             if (message?.type === 'transcript' && message.transcriptType === 'final') {
                 const text = message.transcript.toLowerCase();
                 fullConversation += (message.role || 'user') + ': ' + message.transcript + '\n';
+                if (message.role === 'user') lastUserMessage = message.transcript;
                 transcriptEl.style.opacity = '0';
                 setTimeout(() => {
                     transcriptEl.textContent = `"${message.transcript}"`;

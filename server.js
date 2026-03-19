@@ -73,7 +73,101 @@ const getDominantDuygu = (gecmis) => {
     return adaylar[0];
 };
 
+// ─── SEANS İÇİ ÖRÜNTÜ YARDIMCILARI ──────────────────────
+const KONU_GRUPLARI = {
+    'aile': ['anne', 'baba', 'kardeş', 'aile', 'ebeveyn', 'çocuk', 'family', 'mother', 'father'],
+    'iş': ['iş', 'patron', 'çalışma', 'işyeri', 'kariyer', 'meslek', 'müdür', 'work', 'job', 'boss'],
+    'ilişki': ['sevgili', 'eş', 'partner', 'ilişki', 'ayrılık', 'yalnız', 'relationship', 'lonely'],
+    'gelecek': ['gelecek', 'plan', 'kaygı', 'endişe', 'belirsiz', 'ne olacak', 'future', 'anxious'],
+    'geçmiş': ['geçmiş', 'eskiden', 'çocukken', 'hatıra', 'travma', 'past', 'trauma', 'childhood'],
+    'beden': ['uyku', 'yeme', 'ağrı', 'yorgunluk', 'hastalık', 'beden', 'sleep', 'tired', 'pain'],
+};
+
+const trackSessionTopics = (transcript) => {
+    if (!transcript) return {};
+    const lower = transcript.toLowerCase();
+    const counts = {};
+    for (const [konu, kelimeler] of Object.entries(KONU_GRUPLARI)) {
+        counts[konu] = kelimeler.filter(k => lower.includes(k)).length;
+    }
+    return counts;
+};
+
+const detectAvoidance = (transcript) => {
+    if (!transcript) return [];
+    const lower = transcript.toLowerCase();
+    const sinyaller = [];
+    const konuDegistirme = ['neyse', 'geçelim', 'başka bir şey', 'farklı bir konu', 'bırakalım', 'anyway', "let's move on"];
+    if (konuDegistirme.some(k => lower.includes(k))) sinyaller.push('konu_degistirme');
+    const kucumseme = ['önemli değil', 'abartmıyorum', 'saçma', 'gülünç', 'ne fark eder', "doesn't matter", 'not important'];
+    if (kucumseme.some(k => lower.includes(k))) sinyaller.push('kucumseme');
+    const savunma = ['ama şu var ki', 'aslında', 'anlayamazsın', 'you wouldn\'t understand', 'but actually'];
+    if (savunma.some(k => lower.includes(k))) sinyaller.push('savunma');
+    return sinyaller;
+};
+
 // ─── KURAL MOTORU ─────────────────────────────────────────
+// L4: Söz-Yüz Çelişkisi
+const OLUMLU_KELIMELER = ['iyiyim', 'iyi', 'tamam', 'sorun yok', 'normalim', 'mutluyum', 'güzel', 'harika', 'fena değil', "i'm fine", 'fine', 'okay', 'good'];
+const OLUMSUZ_KAMERA_DUYGULAR = ['üzgün', 'endişeli', 'korkmuş', 'sinirli', 'yorgun'];
+
+const buildLayer4Rules = (lastSegment, sonAnaliz) => {
+    if (!lastSegment || !sonAnaliz || !sonAnaliz.yuz_var) return '';
+    const kurallar = [];
+    const segLower = lastSegment.toLowerCase();
+
+    const sozluOlumlu = OLUMLU_KELIMELER.some(k => segLower.includes(k));
+    const kameraOlumsuz = OLUMSUZ_KAMERA_DUYGULAR.includes(sonAnaliz.duygu) &&
+        ['orta', 'yüksek'].includes(sonAnaliz.yogunluk);
+
+    if (sozluOlumlu && kameraOlumsuz && sonAnaliz.guven > 65)
+        kurallar.push(`Kullanıcı olumlu kelimeler söylüyor ama yüzü "${sonAnaliz.duygu}" ifadesi gösteriyor. Nazikçe sorgula: "Bunu söylerken sesin biraz farklıydı, gerçekten nasılsın?"`);
+
+    if (sozluOlumlu && sonAnaliz.genel_vucut_dili === 'kapalı' && sonAnaliz.jestler?.goz_temasi === 'düşük')
+        kurallar.push('Kullanıcı olumlu konuşuyor ama beden dili kapalı ve göz teması düşük. "Biraz daha anlatır mısın bunu?" diye sor.');
+
+    if (sonAnaliz.yogunluk === 'yüksek' && (segLower.includes('önemli değil') || segLower.includes('saçma') || segLower.includes("doesn't matter")))
+        kurallar.push('Kullanıcı yüksek duygusal yoğunlukta ama durumu önemsiz gösteriyor. "Bu duygu gerçek ve önemli" mesajını ver.');
+
+    return kurallar.join(' ');
+};
+
+// L5: Sessizlik & Ritim
+const buildLayer5Rules = (silenceDuration) => {
+    if (!silenceDuration || silenceDuration < 10) return '';
+    if (silenceDuration >= 10 && silenceDuration < 20)
+        return 'Kullanıcı uzun süredir sessiz. "Seninle buradayım, hazır olduğunda devam edebiliriz" de.';
+    if (silenceDuration >= 20)
+        return 'Kullanıcı çok uzun süredir sessiz. "Şu an kelimeler gelmiyorsa, o da tamam. Sessizlik de bir cevap." de.';
+    return '';
+};
+
+// L6: Seanslar Arası Pattern
+const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
+    if (!patternMemory || !sonAnaliz) return '';
+    const kurallar = [];
+
+    const trendi = patternMemory.seans_trendi || [];
+    if (trendi.length >= 3) {
+        const son3 = trendi.slice(-3);
+        if (son3.every(t => t === 'kötüleşiyor'))
+            kurallar.push('Kullanıcı son 3 seanstır kötüleşiyor. Bu trendi nazikçe paylaş: "Birkaç süredir zor bir dönemdesin, fark ediyor musun?"');
+        if (son3[son3.length - 1] === 'iyileşiyor' && son3[0] === 'kötüleşiyor')
+            kurallar.push('Kullanıcı kötü bir dönemden iyileşmeye başlıyor. Bu ilerlemeyi kutla.');
+    }
+
+    const dominantKonu = Object.entries(patternMemory.konular || {})
+        .sort(([, a], [, b]) => b.frekans - a.frekans)[0];
+    if (dominantKonu && dominantKonu[1].frekans >= 3)
+        kurallar.push(`Kullanıcı daha önce de "${dominantKonu[0]}" konusunu sık konuşmuş. Bu konuya duyarlı yaklaş.`);
+
+    const basarili = patternMemory.basarili_mudahaleler || [];
+    if (basarili.includes('nefes') && sonAnaliz.yogunluk === 'yüksek')
+        kurallar.push('Geçmişte nefes egzersizi bu kullanıcıya yaramış. Yüksek yoğunlukta nefes tekniği öner.');
+
+    return kurallar.join(' ');
+};
+
 const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
@@ -122,27 +216,48 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis) => {
     return kurallar.join(' ');
 };
 
-const buildLayer3Rules = (hafizaMetni, sonAnaliz) => {
-    if (!hafizaMetni || !sonAnaliz) return '';
+const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
     const kurallar = [];
-    const lower = hafizaMetni.toLowerCase();
 
-    if ((lower.includes('üzgün') || lower.includes('uzgun')) &&
-        (lower.includes('seans') || lower.includes('hafta') || lower.includes('süre')))
-        kurallar.push('Hafızaya göre kullanıcı bir süredir üzgün. Bu tekrarlayan durumu nazikçe gündeme getirmeyi düşün.');
+    // Hafıza bazlı kurallar
+    if (hafizaMetni) {
+        const lower = hafizaMetni.toLowerCase();
+        if ((lower.includes('üzgün') || lower.includes('uzgun')) &&
+            (lower.includes('seans') || lower.includes('hafta') || lower.includes('süre')))
+            kurallar.push('Hafızaya göre kullanıcı bir süredir üzgün. Bu tekrarlayan durumu nazikçe gündeme getirmeyi düşün.');
+        if (lower.includes('iyileş') || lower.includes('daha iyi') || lower.includes('güzel geçt'))
+            kurallar.push('Önceki seanslarda iyileşme kaydedilmiş. Bu ilerlemeyi fark et ve kutla.');
+        if (sonAnaliz?.yogunluk === 'yüksek' && sonAnaliz?.guven > 80 &&
+            !lower.includes('yoğun') && !lower.includes('kriz'))
+            kurallar.push('Bu seansta ilk kez yüksek yoğunluk görülüyor. Daha dikkatli yaklaş, acele etme.');
+    }
 
-    if (lower.includes('iyileş') || lower.includes('daha iyi') || lower.includes('güzel geçt'))
-        kurallar.push('Önceki seanslarda iyileşme kaydedilmiş. Bu ilerlemeyi fark et ve kutla.');
+    // Seans içi örüntü
+    const transcriptData = userId ? sessionTranscriptStore.get(userId) : null;
+    if (transcriptData?.fullTranscript) {
+        const konular = trackSessionTopics(transcriptData.fullTranscript);
+        const tekrarlayan = Object.entries(konular).filter(([, v]) => v >= 2).map(([k]) => k);
+        if (tekrarlayan.length > 0)
+            kurallar.push(`Bu seansta "${tekrarlayan.join(', ')}" konusuna defalarca döndünüz. Burada önemli bir şey olabilir, nazikçe derinleş.`);
 
-    if (sonAnaliz.yogunluk === 'yüksek' && sonAnaliz.guven > 80 &&
-        !lower.includes('yoğun') && !lower.includes('kriz'))
-        kurallar.push('Bu seansta ilk kez yüksek yoğunluk görülüyor. Daha dikkatli yaklaş, acele etme.');
+        const kacınma = detectAvoidance(transcriptData.fullTranscript);
+        if (kacınma.includes('konu_degistirme'))
+            kurallar.push('Kullanıcı az önce konuyu değiştirdi. Nazikçe önceki konuya geri dön: "Az önce farklı bir şeyden bahsediyorduk, oraya dönebilir miyiz?"');
+        if (kacınma.includes('kucumseme'))
+            kurallar.push('Kullanıcı yaşadığını küçümsüyor. Nazikçe önem ver: "Bunu küçümsüyor olsan da, hissetmen önemli."');
+        if (kacınma.includes('savunma'))
+            kurallar.push('Kullanıcı savunmaya geçti. Baskı yapma, güvenli alan yarat, yavaşla.');
+    }
 
     return kurallar.join(' ');
 };
 
 // --- DUYGU DURUMU TAKİBİ ---
-const userEmotions = new Map(); // userId -> { duygu, guven, timestamp }
+const userEmotions = new Map(); // userId -> { gecmis, trend, dominant_duygu, ... }
+
+// --- SEANS TRANSCRIPT STORE ---
+const sessionTranscriptStore = new Map();
+// userId → { fullTranscript, silenceDuration, lastSegment, updatedAt }
 
 // --- AKTİF OTURUM ---
 let activeSessionUserId = null;
@@ -164,6 +279,41 @@ const saveMemory = async (userId, content) => {
     } catch (e) { console.error('[MEMORY] Kaydetme hatası:', e.message); }
 };
 
+const updatePatternMemory = async (userId, sessionData) => {
+    if (!userId) return;
+    try {
+        const { data } = await supabase
+            .from('memories')
+            .select('pattern_memory')
+            .eq('user_id', userId)
+            .single();
+
+        const existing = data?.pattern_memory || {
+            konular: {}, seans_trendi: [], toplam_seans: 0,
+            basarili_mudahaleler: [], son_seans_tarihi: null
+        };
+
+        existing.seans_trendi = [...(existing.seans_trendi || []), sessionData.trend].slice(-10);
+        existing.toplam_seans = (existing.toplam_seans || 0) + 1;
+        existing.son_seans_tarihi = new Date().toISOString();
+
+        for (const [konu, sayi] of Object.entries(sessionData.konular || {})) {
+            if (sayi > 0) {
+                if (!existing.konular[konu]) existing.konular[konu] = { frekans: 0, duygu: sessionData.dominantDuygu };
+                existing.konular[konu].frekans += sayi;
+                existing.konular[konu].duygu = sessionData.dominantDuygu;
+            }
+        }
+
+        await supabase.from('memories').upsert({
+            user_id: userId,
+            pattern_memory: existing,
+            updated_at: new Date().toISOString()
+        });
+        console.log(`[PATTERN] ✅ Pattern memory güncellendi: ${userId}`);
+    } catch (e) { console.error('[PATTERN] Güncelleme hatası:', e.message); }
+};
+
 // ─── CONFIG (Frontend için Supabase bilgileri) ──────────────
 app.get('/config', (req, res) => {
     res.json({
@@ -175,6 +325,19 @@ app.get('/config', (req, res) => {
 // ─── PING ──────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
+});
+
+// ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
+app.post('/update-transcript', (req, res) => {
+    const { userId, fullTranscript, silenceDuration, lastSegment } = req.body;
+    if (!userId) return res.sendStatus(400);
+    sessionTranscriptStore.set(userId, {
+        fullTranscript: fullTranscript || '',
+        silenceDuration: silenceDuration || 0,
+        lastSegment: lastSegment || '',
+        updatedAt: Date.now()
+    });
+    res.sendStatus(200);
 });
 
 // ─── OTURUM BAŞLAT (Token doğrulama ile) ───────────────────
@@ -259,6 +422,19 @@ app.post('/vapi-webhook', async (req, res) => {
             await saveMemory(userId, summary);
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
+
+            // Pattern memory güncelle
+            const transcriptDataForPattern = sessionTranscriptStore.get(userId);
+            if (transcriptDataForPattern) {
+                const konular = trackSessionTopics(transcriptDataForPattern.fullTranscript);
+                const emotionState = userEmotions.get(userId);
+                await updatePatternMemory(userId, {
+                    trend: emotionState?.trend || 'stabil',
+                    konular,
+                    dominantDuygu: emotionState?.dominant_duygu || 'sakin'
+                });
+                sessionTranscriptStore.delete(userId);
+            }
         } catch (err) {
             console.error('[BRAIN ASCENSION] ❌ Özetleme hatası:', err.message);
         }
@@ -333,9 +509,28 @@ app.post('/api/chat/completions', async (req, res) => {
 
             const l1 = buildLayer1Rules(son_analiz, aktif_sinyal);
             const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || []);
-            const l3 = buildLayer3Rules(userMemory, son_analiz);
+            const l3 = buildLayer3Rules(userMemory, son_analiz, userId);
 
-            const tumKurallar = [l1, l2, l3].filter(Boolean).join(' ');
+            // L4: Söz-yüz çelişkisi
+            const transcriptState = sessionTranscriptStore.get(userId);
+            const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz);
+
+            // L5: Sessizlik
+            const l5 = buildLayer5Rules(transcriptState?.silenceDuration);
+
+            // L6: Seanslar arası pattern
+            let l6 = '';
+            try {
+                const { data: memRow } = await supabase
+                    .from('memories')
+                    .select('pattern_memory')
+                    .eq('user_id', userId)
+                    .single();
+                const patternMemory = memRow?.pattern_memory || {};
+                l6 = buildLayer6Rules(patternMemory, son_analiz, dominant_duygu);
+            } catch { /* pattern_memory yoksa geç */ }
+
+            const tumKurallar = [l1, l2, l3, l4, l5, l6].filter(Boolean).join(' ');
 
             if (tumKurallar) {
                 const sysIdx = enrichedMessages.findIndex(m => m.role === 'system');
