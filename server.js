@@ -171,9 +171,22 @@ const buildLayer5Rules = (silenceDuration, sessizlikTipi) => {
 };
 
 // L6: Seanslar Arası Pattern
-const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
+const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistory) => {
     if (!patternMemory || !sonAnaliz) return '';
     const kurallar = [];
+
+    // #13 — İlerleme Zaman Çizelgesi: son seanslar karşılaştırması
+    if (sessionHistory && sessionHistory.length >= 3) {
+        const ilkSeans = sessionHistory[sessionHistory.length - 1];
+        const sonSeans = sessionHistory[0];
+        const ilkTarih = new Date(ilkSeans.tarih).toLocaleDateString('tr-TR');
+        const sonTarih = new Date(sonSeans.tarih).toLocaleDateString('tr-TR');
+
+        const ilkAylar = Math.floor((Date.now() - new Date(ilkSeans.tarih).getTime()) / (30 * 24 * 60 * 60 * 1000));
+        if (sessionHistory.length >= 2 && sonSeans.bas_yaygin && !ilkSeans.bas_yaygin && ilkAylar >= 1) {
+            kurallar.push(`[#13 İLERLEME] ${ilkAylar} ay önceye (${ilkTarih}) göre çok daha iyi durumdasın! Bu dönemde yaşadığın değişime bak, kendini takdir et.`);
+        }
+    }
 
     const trendi = patternMemory.seans_trendi || [];
     if (trendi.length >= 3) {
@@ -675,10 +688,19 @@ const saveMemory = async (userId, content) => {
     try {
         const { data: existing } = await supabase.from('memories').select('session_history').eq('user_id', userId).single();
         const eskiGecmis = existing?.session_history || [];
+
+        // #13 — İlerleme Zaman Çizelgesi: seans özetini geçmişe ekle
+        const yeniSeans = {
+            tarih: new Date().toISOString(),
+            ozet: content.substring(0, 200), // İlk 200 char özet
+            bas_yaygin: content.toLowerCase().includes('iyileş') || content.toLowerCase().includes('daha iyi')
+        };
+        const guncelGecmis = [yeniSeans, ...eskiGecmis].slice(0, 5); // Son 5 seansı tut
+
         await supabase.from('memories').upsert({
             user_id: userId,
             content: encryptField(content), // AES şifrele
-            session_history: eskiGecmis,
+            session_history: guncelGecmis,
             updated_at: new Date().toISOString()
         });
     } catch (e) {
@@ -1156,11 +1178,12 @@ app.post('/api/chat/completions', async (req, res) => {
             try {
                 const { data: memRow } = await supabase
                     .from('memories')
-                    .select('pattern_memory')
+                    .select('pattern_memory, session_history')
                     .eq('user_id', userId)
                     .single();
                 const patternMemory = memRow?.pattern_memory || {};
-                l6 = buildLayer6Rules(patternMemory, son_analiz, dominant_duygu);
+                const sessionHistory = memRow?.session_history || [];
+                l6 = buildLayer6Rules(patternMemory, son_analiz, dominant_duygu, sessionHistory);
             } catch { /* pattern_memory yoksa geç */ }
 
             // L7: Seans momentum & profil adaptasyonu
