@@ -133,12 +133,16 @@ const buildLayer4Rules = (lastSegment, sonAnaliz) => {
 };
 
 // L5: Sessizlik & Ritim
-const buildLayer5Rules = (silenceDuration) => {
-    if (!silenceDuration || silenceDuration < 10) return '';
-    if (silenceDuration >= 10 && silenceDuration < 20)
-        return 'Kullanıcı uzun süredir sessiz. "Seninle buradayım, hazır olduğunda devam edebiliriz" de.';
-    if (silenceDuration >= 20)
-        return 'Kullanıcı çok uzun süredir sessiz. "Şu an kelimeler gelmiyorsa, o da tamam. Sessizlik de bir cevap." de.';
+const buildLayer5Rules = (silenceDuration, sessizlikTipi) => {
+    if (!silenceDuration || silenceDuration < 8) return '';
+    if (sessizlikTipi === 'donmus')
+        return 'Kullanıcı donmuş/bloke bir sessizlikte. "Şu an kelimeler gelmiyorsa, o da tamam. Seninleyim." de, hiç baskı yapma.';
+    if (sessizlikTipi === 'dusunceli' && silenceDuration < 20)
+        return 'Kullanıcı düşünüyor gibi görünüyor — rahat bir sessizlik. Bozma, sabırla bekle.';
+    if (silenceDuration >= 25)
+        return 'Çok uzun sessizlik. Nazikçe sor: "Şu an ne hissediyorsun, söylemek zor mu?"';
+    if (silenceDuration >= 8)
+        return 'Kullanıcı sessiz. "Hazır olduğunda devam edebiliriz, acele yok." de.';
     return '';
 };
 
@@ -164,6 +168,21 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
     const basarili = patternMemory.basarili_mudahaleler || [];
     if (basarili.includes('nefes') && sonAnaliz.yogunluk === 'yüksek')
         kurallar.push('Geçmişte nefes egzersizi bu kullanıcıya yaramış. Yüksek yoğunlukta nefes tekniği öner.');
+
+    // TETİKLEYİCİ HARİTA
+    const tetKonular = patternMemory.tetikleyici_konular || {};
+    const yuksekHitKonu = Object.entries(tetKonular).sort(([,a],[,b]) => b.hit - a.hit)[0];
+    if (yuksekHitKonu && yuksekHitKonu[1].hit >= 3)
+        kurallar.push(`"${yuksekHitKonu[0]}" konusu bu kullanıcı için her açıldığında zorlanıyor (${yuksekHitKonu[1].hit} seans). Bu konuda özellikle yavaş, nazik ve dikkatli ol.`);
+
+    // İLERLEME ZAMAN ÇİZELGESİ
+    const sessionHistory = patternMemory.session_history || [];
+    if (sessionHistory.length >= 3) {
+        const ilkTarih = new Date(sessionHistory[0].tarih);
+        const gunFarki = Math.round((Date.now() - ilkTarih) / (1000*60*60*24));
+        if (gunFarki >= 14 && trendi.slice(-2).every(t => t !== 'kötüleşiyor'))
+            kurallar.push(`Kullanıcı ${gunFarki} gündür Lyra ile çalışıyor ve genel seyir iyi. Bunu fark et: "Son haftalarda gerçekten bir şeyler değişiyor, görüyorum."`);
+    }
 
     return kurallar.join(' ');
 };
@@ -198,10 +217,18 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
     if (aktifTetikleyici)
         kurallar.push(`"${aktifTetikleyici}" bu kullanıcı için bilinen bir tetikleyici. Bu konuda özellikle yavaş ve dikkatli ol.`);
 
+    // DUYGU GEÇİŞ HIZI — duygusal labilite tespiti
+    if (gecmis && gecmis.length >= 8) {
+        const son8 = gecmis.slice(-8);
+        const benzersizDuygular = new Set(son8.map(a => a.duygu)).size;
+        if (benzersizDuygular >= 5)
+            kurallar.push('Kullanıcı son birkaç dakikada çok hızlı duygu değiştiriyor (duygusal labilite sinyali). Stabilizasyon moduna geç: zemine in, nefes ver, yavaşlat. Soru sorma.');
+    }
+
     return kurallar.join(' ');
 };
 
-const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
+const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
     const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
@@ -210,6 +237,8 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (ortam?.tehlike_var === true) {
         const nesne = ortam.tehlikeli_nesne || 'tehlikeli nesne';
         kurallar.push(`KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında "${nesne}" tespit edildi. Hemen nazikçe sor: "Şu an elinde bir şey var, iyi misin?" Sakin kal, yargılama, güvenliğini önce sorgula.`);
+        // Kriz log kaydet — fire and forget
+        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'tehlikeli_nesne', nesne }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     }
 
     if (ortam?.zarar_sinyali === true) {
@@ -217,6 +246,8 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
             kurallar.push('KRİZ: Kullanıcı kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninle buradayım." Sakin kal, suçlama yapma, güvenli alan yarat.');
         else
             kurallar.push('Kullanıcının hareketi dikkat çekici. Nazikçe sor: "Şu an kendine iyi bakıyor musun?" — baskı yapma, sadece fark ettiğini göster.');
+        // Kriz log kaydet
+        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'zarar_sinyali' }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     }
 
     // ── ORTAM OLAYI ────────────────────────────────────────
@@ -282,6 +313,25 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (jestler?.goz_yasi_birikimi === 'belirgin')
         kurallar.push('Belirgin göz yaşı birikimi — ağlamak üzere. Hiç soru sorma, sadece "Seninle buradayım, devam et" de.');
 
+    // ── AĞLAMA TESPİTİ ──────────────────────────────────────
+    const aglayorMu = jestler?.goz_yasi_birikimi === 'belirgin' ||
+        (jestler?.goz_yasi_birikimi === 'başlıyor' && jestler?.gozyasi_izi === true);
+    if (aglayorMu)
+        kurallar.push('Kullanıcı ağlıyor veya ağlamak üzere. Hiç soru sorma. Sadece kısa "Buradayım, devam et." de ve sessizlik ver.');
+
+    // ── YORGUNLUK & UYKU ────────────────────────────────────
+    if (jestler?.goz_kapagi_agirlik === 'belirgin_agir' && enerji === 'yorgun')
+        kurallar.push('Kullanıcı çok yorgun — göz kapakları belirgin şekilde düşük. "Bugün çok yorgun görünüyorsun, hafif konuşalım" de, ağır konulara girme.');
+    if (jestler?.goz_kapagi_agirlik === 'hafif_agir' && yogunluk !== 'yüksek')
+        kurallar.push('Kullanıcı yorgun ama konuşabilir durumda. Enerji gerektiren egzersizler verme, tempo düşük tut.');
+
+    // ── NEFES EGZERSİZİ MODU ────────────────────────────────
+    const nefesGerekli = (duygu === 'endişeli' || duygu === 'korkmuş') &&
+        yogunluk === 'yüksek' &&
+        (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel');
+    if (nefesGerekli)
+        kurallar.push('NEFES_EGZERSIZI_BASLAT: Kullanıcı yüksek kaygıda, nefesi hızlanmış. Hemen 4-7-8 nefes tekniği uygulat: "Seninle birlikte nefes alalım mı? 4 say nefes al, 7 say tut, 8 say ver."');
+
     // ── NESNE FARKINDALĞI ───────────────────────────────────
     if (ortam?.nesneler?.length > 0 && !ortam.tehlike_var) {
         const ilginc = ortam.nesneler.filter(n => !['bardak', 'telefon', 'masa', 'sandalye', 'koltuk'].includes(n.toLowerCase()));
@@ -320,6 +370,9 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
 
         if (tempoTrend === 'artıyor' && konusmaTempo > 3)
             kurallar.push('Kullanıcı çok hızlı konuşuyor — kaygı veya acelesi var. Nazikçe yavaşlat: "Bir nefes alalım mı?"');
+
+        if (transcriptData.sesMonotonluk && (dominantDuygu === 'üzgün' || dominantDuygu === 'yorgun'))
+            kurallar.push('Kullanıcının sesi monoton ve düz — içinde ağırlık/boşluk sinyali. "Sesin çok düz, içinde bir ağırlık var gibi hissediyorum" diyebilirsin. Depresyon sinyali olabilir, dikkatli ol.');
     }
 
     const son5 = gecmis.slice(-5);
@@ -365,6 +418,21 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
             kurallar.push('Kullanıcı yaşadığını küçümsüyor. Nazikçe önem ver: "Bunu küçümsüyor olsan da, hissetmen önemli."');
         if (kacınma.includes('savunma'))
             kurallar.push('Kullanıcı savunmaya geçti. Baskı yapma, güvenli alan yarat, yavaşla.');
+
+        // KONUŞMA DENGESİ — Lyra çok fazla konuşuyorsa uyar
+        const satirlar = transcriptData.fullTranscript.split('\n').filter(Boolean);
+        const assistantSatir = satirlar.filter(s => s.startsWith('assistant:')).length;
+        const userSatir = satirlar.filter(s => s.startsWith('user:')).length;
+        const toplamSatir = assistantSatir + userSatir;
+        if (toplamSatir > 8 && assistantSatir / toplamSatir > 0.45)
+            kurallar.push('DİKKAT: Bu seansta çok fazla konuşuyorsun. Şimdi kısa cevap ver veya sadece soru sor, kullanıcıyı konuştur.');
+
+        // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti
+        const absKelimeler = ['asla', 'hep böyle', 'her zaman böyle', 'hiç kimse', 'kimse beni', 'hiçbir zaman', 'tamamen mahvoldum', 'hiçbir şey işe yaramıyor', 'her şey berbat'];
+        const lastSeg = (transcriptData.lastSegment || '').toLowerCase();
+        const absHit = absKelimeler.find(k => lastSeg.includes(k));
+        if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük')
+            kurallar.push(`Kullanıcı "${absHit}" gibi absolüt bir ifade kullandı — bilişsel çarpıtma sinyali. Nazikçe sorgula: "Az önce '${absHit}' dedin — gerçekten hiç mi, hiçbir zaman mı?"`);
     }
 
     return kurallar.join(' ');
@@ -393,7 +461,15 @@ const getMemory = async (userId) => {
 const saveMemory = async (userId, content) => {
     if (!userId) return;
     try {
-        await supabase.from('memories').upsert({ user_id: userId, content, updated_at: new Date().toISOString() });
+        // session_history'yi koru — üstüne yazma
+        const { data: existing } = await supabase.from('memories').select('session_history').eq('user_id', userId).single();
+        const eskiGecmis = existing?.session_history || [];
+        await supabase.from('memories').upsert({
+            user_id: userId,
+            content,
+            session_history: eskiGecmis, // koruyarak güncelle
+            updated_at: new Date().toISOString()
+        });
     } catch (e) { console.error('[MEMORY] Kaydetme hatası:', e.message); }
 };
 
@@ -423,6 +499,8 @@ Duygu trendi: ${emotionState?.trend || 'stabil'}
   "sessizlik_konforu": true,
   "soru_toleransi": "düşük|orta|yüksek",
   "basarili_mudahaleler": ["nefes", "sokratik_soru"],
+  "degerler_haritasi": ["aile", "özgürlük", "başarı"],
+  "haftalik_gorev": "verildiyse görevi yaz, verilmediyse boş string",
   "ozet": "1 cümle kişilik özeti"
 }
 Sadece JSON döndür.`
@@ -444,9 +522,25 @@ Sadece JSON döndür.`
                 tetikleyiciler: [...new Set([...(mevcutProfil.tetikleyiciler || []), ...(parsed.tetikleyiciler || [])])],
                 savunma_mekanizmalari: [...new Set([...(mevcutProfil.savunma_mekanizmalari || []), ...(parsed.savunma_mekanizmalari || [])])],
                 basarili_mudahaleler: [...new Set([...(mevcutProfil.basarili_mudahaleler || []), ...(parsed.basarili_mudahaleler || [])])],
+                degerler_haritasi: [...new Set([...(mevcutProfil.degerler_haritasi || []), ...(parsed.degerler_haritasi || [])])],
                 guncelleme_tarihi: new Date().toISOString()
             };
         } catch { /* parse hatası → mevcut profil korunur */ }
+
+        // ÖZEL İSİM ÇIKARIMI — GPT-4o-mini ile
+        try {
+            const isimCikar = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: `Bu konuşmadan bahsedilen kişilerin adlarını ve rollerini çıkar. JSON döndür: {"isimler": {"patron": "Ahmet", "sevgili": "Ayşe"}}. Sadece açıkça belirtilen isimler. Yoksa: {"isimler": {}}\n\nKonuşma:\n${transcript.slice(-1500)}` }],
+                max_tokens: 100
+            });
+            const rawIsim = isimCikar.choices[0].message.content.trim().replace(/```json|```/g, '');
+            const isimData = JSON.parse(rawIsim);
+            if (isimData.isimler && Object.keys(isimData.isimler).length > 0) {
+                yeniProfil.ozel_isimler = { ...(mevcutProfil.ozel_isimler || {}), ...isimData.isimler };
+                console.log(`[PROFİL] İsimler güncellendi: ${JSON.stringify(isimData.isimler)}`);
+            }
+        } catch { /* isim çıkarımı başarısız → geç */ }
 
         await supabase.from('memories').upsert({ user_id: userId, user_profile: yeniProfil, updated_at: new Date().toISOString() });
         console.log(`[PROFİL] ✅ Kişilik profili güncellendi: ${userId}`);
@@ -479,6 +573,27 @@ const updatePatternMemory = async (userId, sessionData) => {
             }
         }
 
+        // TETİKLEYİCİ HARİTA — kötü duygu + konu = tetikleyici kaydet
+        const olumsuzDuygular = ['üzgün', 'sinirli', 'korkmuş', 'endişeli'];
+        if (olumsuzDuygular.includes(sessionData.dominantDuygu)) {
+            if (!existing.tetikleyici_konular) existing.tetikleyici_konular = {};
+            for (const [konu, sayi] of Object.entries(sessionData.konular || {})) {
+                if (sayi > 0) {
+                    if (!existing.tetikleyici_konular[konu]) existing.tetikleyici_konular[konu] = { hit: 0, duygu: [] };
+                    existing.tetikleyici_konular[konu].hit++;
+                    existing.tetikleyici_konular[konu].duygu = [...(existing.tetikleyici_konular[konu].duygu || []), sessionData.dominantDuygu].slice(-5);
+                }
+            }
+        }
+
+        // SESSION HISTORY — son 5 seans özeti
+        if (!existing.session_history) existing.session_history = [];
+        existing.session_history = [...existing.session_history, {
+            tarih: new Date().toISOString(),
+            trend: sessionData.trend,
+            dominant_duygu: sessionData.dominantDuygu
+        }].slice(-5);
+
         await supabase.from('memories').upsert({
             user_id: userId,
             pattern_memory: existing,
@@ -503,7 +618,7 @@ app.get('/ping', (req, res) => {
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
 app.post('/update-transcript', (req, res) => {
-    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend } = req.body;
+    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk, sessizlikTipi } = req.body;
     if (!userId) return res.sendStatus(400);
     sessionTranscriptStore.set(userId, {
         fullTranscript: fullTranscript || '',
@@ -511,8 +626,10 @@ app.post('/update-transcript', (req, res) => {
         lastSegment: lastSegment || '',
         sesYogunlukOrt: sesYogunlukOrt || 0,
         sesTitreme: sesTitreme || false,
+        sesMonotonluk: sesMonotonluk || false,
         konusmaTempo: konusmaTempo || 0,
         tempoTrend: tempoTrend || 'stabil',
+        sessizlikTipi: sessizlikTipi || 'normal',
         updatedAt: Date.now()
     });
     res.sendStatus(200);
@@ -692,7 +809,7 @@ app.post('/api/chat/completions', async (req, res) => {
             const { son_analiz, trend, dominant_duygu, aktif_sinyal, gecmis, yogunluk_ort } = userState;
             console.log(`[KURAL MOTORU] son_analiz: ${son_analiz?.duygu} | yogunluk: ${son_analiz?.yogunluk} | guven: ${son_analiz?.guven}`);
 
-            const l1 = buildLayer1Rules(son_analiz, aktif_sinyal);
+            const l1 = buildLayer1Rules(son_analiz, aktif_sinyal, userId);
             const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || [], transcriptState);
             const l3 = buildLayer3Rules(userMemory, son_analiz, userId);
 
@@ -701,7 +818,7 @@ app.post('/api/chat/completions', async (req, res) => {
             const l4 = buildLayer4Rules(transcriptState?.lastSegment, son_analiz);
 
             // L5: Sessizlik
-            const l5 = buildLayer5Rules(transcriptState?.silenceDuration);
+            const l5 = buildLayer5Rules(transcriptState?.silenceDuration, transcriptState?.sessizlikTipi);
 
             // L6: Seanslar arası pattern
             let l6 = '';
@@ -766,6 +883,25 @@ app.post('/api/chat/completions', async (req, res) => {
     }
 });
 
+// ─── KRİZ SONRASI KONTROL (Cron) ──────────────────────────
+app.get('/cron-checkin', async (req, res) => {
+    try {
+        const onceki24h = new Date(Date.now() - 24*60*60*1000).toISOString();
+        const { data: krizKayitlari } = await supabase
+            .from('memories')
+            .select('user_id, kriz_log')
+            .not('kriz_log', 'is', null)
+            .gte('updated_at', onceki24h);
+
+        const kontrol = (krizKayitlari || []).filter(k => k.kriz_log?.tarih);
+        console.log(`[CRON] ${kontrol.length} kriz kaydı kontrol edildi.`);
+        res.json({ kontrol_edilen: kontrol.length, tarih: new Date().toISOString() });
+    } catch (e) {
+        console.error('[CRON] Hata:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
 app.post('/analyze-emotion', async (req, res) => {
     try {
@@ -786,9 +922,10 @@ BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin.
 3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun.
 4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş.
-5. Görüntü karanlık bile olsa insan silueti/şekli varsa analiz et, yuz_var:true yaz ve guven:40-60 ver.
-6. Sadece tamamen boş/siyah ekran veya yüz hiç yoksa yuz_var:false döndür.
-7. guven: net görüntü=80+, karanlık/belirsiz=40-65, tahmin=50-70.
+5. HAYALET YÜZ MODU: Görüntü çok karanlık, bulanık veya aşırı parlak bile olsa — insan şekli, saç, omuz, siluet, ten rengi görünüyorsa yuz_var:true yaz. guven minimum 40 olsun.
+6. Sadece tamamen boş/siyah/beyaz ekran veya insan hiç yoksa yuz_var:false döndür.
+7. YORGUNLUK & UYKU: goz_kapagi_agirlik ekle — "normal|hafif_agir|belirgin_agir". Göz kapakları düşükse belirgin_agir.
+8. guven: net görüntü=80+, karanlık/bulanık=40-65, siluet/hayalet=40-52. ASLA 40 altına düşürme.
 
 BÖLÜM 2 — ORTAM & NESNE & OLAY ANALİZİ:
 - Elinde/yakınında görünen nesneleri tespit et.
@@ -804,7 +941,7 @@ ORTAM OLAYI:
 - Ortamda gerilim/hareket var mı? ortam_gerilimi:"yok|var|belirsiz"
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',

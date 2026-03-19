@@ -98,6 +98,74 @@
         .camera-off-msg p { font-size: 12px; margin: 8px 0 0; letter-spacing: 0.1em; text-transform: uppercase; }
         .camera-off-msg.hidden { display: none; }
 
+        /* ── NEFES EGZERSİZİ OVERLAY ── */
+        #nefes-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(8, 5, 16, 0.94); z-index: 9000;
+            flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+        }
+        #nefes-overlay.active { display: flex; }
+        #nefes-circle {
+            width: 140px; height: 140px; border-radius: 50%;
+            border: 3px solid var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 42px; font-weight: 200; color: var(--accent);
+            transition: transform 4s ease-in-out, border-color 0.8s;
+        }
+        #nefes-label {
+            font-size: 16px; letter-spacing: 0.25em;
+            text-transform: uppercase; color: var(--text-color); font-weight: 200;
+        }
+        #nefes-kapat {
+            margin-top: 12px; font-size: 11px; color: rgba(255,255,255,0.25);
+            cursor: pointer; letter-spacing: 0.12em; text-transform: uppercase;
+        }
+        #nefes-kapat:hover { color: rgba(255,255,255,0.5); }
+
+        /* ── ACİL YARDIM BUTONU ── */
+        #acil-btn {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 40px; height: 40px; background: rgba(180,50,50,0.12);
+            border: 1px solid rgba(180,50,50,0.35); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; cursor: pointer; z-index: 8000;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        #acil-btn:hover { background: rgba(180,50,50,0.3); border-color: rgba(180,50,50,0.6); }
+        #acil-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.88); z-index: 9500;
+            align-items: center; justify-content: center;
+        }
+        #acil-modal.active { display: flex; }
+        #acil-kart {
+            background: #1a0808; border: 1px solid rgba(180,50,50,0.4);
+            border-radius: 18px; padding: 32px 28px; max-width: 320px; width: 90%; text-align: center;
+        }
+        #acil-kart h3 { color: #e07070; margin: 0 0 20px; font-weight: 300; letter-spacing: 0.12em; font-size: 13px; text-transform: uppercase; }
+        .acil-hat { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .acil-hat:last-of-type { border-bottom: none; }
+        .acil-hat strong { display: block; color: var(--accent); font-size: 22px; font-weight: 300; }
+        .acil-hat span { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.08em; }
+        #acil-kapat-btn { margin-top: 20px; font-size: 11px; color: rgba(255,255,255,0.25); cursor: pointer; letter-spacing: 0.1em; }
+        #acil-kapat-btn:hover { color: rgba(255,255,255,0.5); }
+
+        /* ── GUIDED VİZUALIZATION OVERLAY ── */
+        #vizual-overlay {
+            display: none; position: fixed; inset: 0;
+            background: #000; z-index: 8500;
+            align-items: center; justify-content: center; flex-direction: column; gap: 28px;
+        }
+        #vizual-overlay.active { display: flex; }
+        #vizual-metin {
+            max-width: 340px; text-align: center; line-height: 2.0;
+            font-size: 15px; font-weight: 200; letter-spacing: 0.07em;
+            color: rgba(255,255,255,0.65); padding: 0 24px;
+            transition: opacity 1s ease;
+        }
+        #vizual-kapat { font-size: 11px; color: rgba(255,255,255,0.2); cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; }
+        #vizual-kapat:hover { color: rgba(255,255,255,0.4); }
+
         .bottom-controls {
             display: flex;
             flex-direction: column;
@@ -592,6 +660,33 @@
     <div id="error-toast"></div>
     <canvas id="hidden-canvas" style="display:none"></canvas>
 
+    <!-- NEFES EGZERSİZİ OVERLAY -->
+    <div id="nefes-overlay">
+        <div id="nefes-circle">♡</div>
+        <div id="nefes-label">NEFES AL</div>
+        <div id="nefes-kapat" onclick="kapat478()">Kapat</div>
+    </div>
+
+    <!-- ACİL YARDIM BUTONU -->
+    <div id="acil-btn" onclick="acilAc()" title="Acil Yardım">🆘</div>
+    <div id="acil-modal">
+        <div id="acil-kart">
+            <h3>Acil Yardım Hatları</h3>
+            <div class="acil-hat"><strong>182</strong><span>ALO Psikososyal Destek</span></div>
+            <div class="acil-hat"><strong>182</strong><span>Sağlık Bakanlığı ALO</span></div>
+            <div class="acil-hat"><strong>155</strong><span>Polis İmdat</span></div>
+            <div class="acil-hat"><strong>112</strong><span>Acil Servis</span></div>
+            <div class="acil-hat"><strong>183</strong><span>Aile ve Sosyal Hizmetler</span></div>
+            <div id="acil-kapat-btn" onclick="acilKapat()">Kapat</div>
+        </div>
+    </div>
+
+    <!-- GUIDED VİZUALIZATION OVERLAY -->
+    <div id="vizual-overlay">
+        <div id="vizual-metin"></div>
+        <div id="vizual-kapat" onclick="vizualKapat()">Geri dön</div>
+    </div>
+
     <div class="therapy-layout" id="therapyLayout">
         <div class="panels-row">
             <!-- Sol panel: Lyra 3D avatar -->
@@ -814,10 +909,72 @@
         let sesGecmisi = [];           // Son 20 volume değeri
         let sesYogunlukOrt = 0;
         let sesTitreme = false;
+        let sesMonotonluk = false;
         let konusmaBaslangic = null;
         let konusmaKelimeSayisi = 0;
         let konusmaTempo = 0;          // kelime/saniye
         let tempoGecmisi = [];         // Son 5 tempo değeri
+        let sessizlikTipi = 'normal';  // rahat|donmus|dusunceli|bloke
+
+        // ── GÖRÜNTÜ ÖNİŞLEME ──────────────────────────────────
+        function applyHistogramEqualization(ctx, w, h) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            const hist = new Array(256).fill(0);
+            for (let i = 0; i < data.length; i += 4) {
+                const lum = Math.round(data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114);
+                hist[lum]++;
+            }
+            const pixels = w * h;
+            const cdf = new Array(256).fill(0);
+            cdf[0] = hist[0];
+            for (let i = 1; i < 256; i++) cdf[i] = cdf[i-1] + hist[i];
+            const cdfMin = cdf.find(v => v > 0) || 1;
+            const lut = new Array(256);
+            for (let i = 0; i < 256; i++) {
+                lut[i] = Math.round(((cdf[i] - cdfMin) / Math.max(pixels - cdfMin, 1)) * 255);
+            }
+            for (let i = 0; i < data.length; i += 4) {
+                data[i]   = lut[data[i]];
+                data[i+1] = lut[data[i+1]];
+                data[i+2] = lut[data[i+2]];
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        async function captureAndPreprocess() {
+            const hiddenCanvas = document.getElementById('hidden-canvas');
+            const ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+            hiddenCanvas.width = 640;
+            hiddenCanvas.height = 480;
+            // Merkez parlaklık ölç
+            ctx.filter = 'none';
+            ctx.drawImage(userVideo, 0, 0, 640, 480);
+            const centerData = ctx.getImageData(160, 120, 320, 240).data;
+            let totalBr = 0, sampleCnt = 0;
+            for (let i = 0; i < centerData.length; i += 4*20) {
+                totalBr += centerData[i]*0.299 + centerData[i+1]*0.587 + centerData[i+2]*0.114;
+                sampleCnt++;
+            }
+            const avgBr = sampleCnt > 0 ? totalBr / sampleCnt : 128;
+            // Akıllı filtre
+            let filterStr = 'none';
+            if      (avgBr < 20)  filterStr = 'brightness(5) contrast(1.5) saturate(0.8)';
+            else if (avgBr < 40)  filterStr = 'brightness(3.5) contrast(1.4)';
+            else if (avgBr < 70)  filterStr = 'brightness(2.2) contrast(1.3)';
+            else if (avgBr < 110) filterStr = 'brightness(1.5) contrast(1.15)';
+            else if (avgBr < 160) filterStr = 'none';
+            else if (avgBr < 200) filterStr = 'brightness(0.85) contrast(1.1)';
+            else                  filterStr = 'brightness(0.6) contrast(1.2)';
+            ctx.filter = filterStr;
+            ctx.drawImage(userVideo, 0, 0, 640, 480);
+            ctx.filter = 'none';
+            // Histogram eşitleme — sadece karanlık ortamda
+            if (avgBr < 120) applyHistogramEqualization(ctx, 640, 480);
+            const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+            console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr}`);
+            return { base64, avgBrightness: avgBr };
+        }
 
         function getBaseInterval(duygu) {
             if (['korkmuş', 'sinirli'].includes(duygu))               return 1500;
@@ -870,80 +1027,39 @@
         }
 
         async function analyzeEmotion() {
-            if (!cameraActive || !camStream) {
-                scheduleNextAnalysis();
-                return;
-            }
+            if (!cameraActive || !camStream) { scheduleNextAnalysis(); return; }
+            if (!userVideo || userVideo.readyState < 2) { scheduleNextAnalysis(); return; }
             try {
-                // Video akışından frame çek
-                if (!userVideo || userVideo.readyState < 2) {
-                    scheduleNextAnalysis();
-                    return;
-                }
-                const hiddenCanvas = document.getElementById('hidden-canvas');
-                const ctx = hiddenCanvas.getContext('2d');
-                hiddenCanvas.width = 640;
-                hiddenCanvas.height = 480;
-
-                // Önce raw frame çiz — parlaklık ölç (merkez bölge, yüz orada)
-                ctx.filter = 'none';
-                ctx.drawImage(userVideo, 0, 0, 640, 480);
-                // Merkez 1/4 bölgeyi ölç (yüz genellikle ortada)
-                const centerX = 160, centerY = 120, centerW = 320, centerH = 240;
-                const rawData = ctx.getImageData(centerX, centerY, centerW, centerH).data;
-                let totalBrightness = 0;
-                const sampleStep = 20;
-                let sampleCount = 0;
-                for (let i = 0; i < rawData.length; i += 4 * sampleStep) {
-                    totalBrightness += (rawData[i] * 0.299 + rawData[i+1] * 0.587 + rawData[i+2] * 0.114);
-                    sampleCount++;
-                }
-                const avgBrightness = totalBrightness / sampleCount; // 0-255
-
-                // Parlaklığa göre agresif düzeltme
-                let filterStr;
-                if (avgBrightness < 20) {
-                    filterStr = 'brightness(5) contrast(1.5) saturate(0.8)'; // neredeyse siyah
-                } else if (avgBrightness < 40) {
-                    filterStr = 'brightness(3.5) contrast(1.4) saturate(1.0)'; // çok karanlık
-                } else if (avgBrightness < 70) {
-                    filterStr = 'brightness(2.2) contrast(1.3)'; // karanlık
-                } else if (avgBrightness < 110) {
-                    filterStr = 'brightness(1.5) contrast(1.15)'; // hafif karanlık
-                } else if (avgBrightness < 160) {
-                    filterStr = 'none'; // normal
-                } else if (avgBrightness < 200) {
-                    filterStr = 'brightness(0.85) contrast(1.1)'; // biraz parlak
-                } else {
-                    filterStr = 'brightness(0.6) contrast(1.2)'; // çok parlak/flash
+                let result = null;
+                // Max 3 deneme — yüz bulunamazsa veya güven <40 ise tekrar dene
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, 450));
+                    const { base64 } = await captureAndPreprocess();
+                    const resp = await fetch('/analyze-emotion', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null })
+                    });
+                    result = await resp.json();
+                    if (result.yuz_var && result.guven >= 40) break;
+                    console.log(`[DUYGU] Deneme ${attempt+1} başarısız (yuz:${result.yuz_var} guven:${result.guven})${attempt < 2 ? ', tekrar...' : ''}`);
                 }
 
-                ctx.filter = filterStr;
-                ctx.drawImage(userVideo, 0, 0, 640, 480);
-                ctx.filter = 'none';
-                const imageBase64 = hiddenCanvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-                console.log(`[KAMERA] brightness:${Math.round(avgBrightness)} filter:${filterStr}`);
-
-                const resp = await fetch('/analyze-emotion', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ imageBase64, userId: persistentUserId, sessionId: null })
-                });
-                const result = await resp.json();
-
-                if (!result.yuz_var) {
-                    console.log('[DUYGU] Yüz bulunamadı, atlanıyor...');
-                    scheduleNextAnalysis();
-                    return;
-                }
+                if (!result?.yuz_var) { scheduleNextAnalysis(); return; }
 
                 currentEmotionState = result.duygu;
+
+                // Sessizlik tipi güncelle
+                if (silenceDuration > 5) {
+                    if (result.duygu === 'korkmuş' || result.duygu === 'endişeli') sessizlikTipi = 'donmus';
+                    else if (result.duygu === 'sakin') sessizlikTipi = 'dusunceli';
+                    else sessizlikTipi = 'normal';
+                }
 
                 // Adaptif interval güncelle — max 4sn
                 const base = getBaseInterval(result.duygu);
                 if (result.duygu === sonDuygu) {
                     ardiArdina++;
-                    // Aynı duygu tekrarlıyorsa yavaşla ama max 4sn
                     if (ardiArdina >= 4) adaptifInterval = Math.min(base * 1.5, 4000);
                     else adaptifInterval = base;
                 } else {
@@ -951,8 +1067,6 @@
                     adaptifInterval = base;
                 }
                 sonDuygu = result.duygu;
-
-                // Sadece konsolda göster — UI'da hiçbir şey gösterme
                 console.log(`[DUYGU] ${result.duygu} | yogunluk:${result.yogunluk} | güven:${result.guven} | interval:${adaptifInterval}ms`);
             } catch (err) {
                 console.warn('[DUYGU] Hata:', err.message);
@@ -1421,8 +1535,10 @@
                         lastSegment: lastUserMessage,
                         sesYogunlukOrt: Math.round(sesYogunlukOrt * 100) / 100,
                         sesTitreme,
+                        sesMonotonluk,
                         konusmaTempo: Math.round(konusmaTempo * 10) / 10,
-                        tempoTrend
+                        tempoTrend,
+                        sessizlikTipi
                     })
                 }).catch(() => {});
             }, 5000);
@@ -1489,6 +1605,10 @@
                 const ort = sesYogunlukOrt;
                 const stdDev = Math.sqrt(sesGecmisi.reduce((s, v) => s + Math.pow(v - ort, 2), 0) / sesGecmisi.length);
                 sesTitreme = stdDev > 0.08 && ort > 0.05; // Konuşurken titreme
+                // Monoton ses: konuşuyor ama çok düz (std deviation çok düşük)
+                if (sesGecmisi.length >= 20) {
+                    sesMonotonluk = stdDev < 0.02 && ort > 0.03;
+                }
             }
 
             if (panelUserEl) {
@@ -1570,6 +1690,84 @@
             statusEl.textContent = "SİSTEM HAZIR";
             showError("Bağlantı hatası oluştu. Lütfen tekrar deneyin.");
         });
+
+        // VAPI transcript'ten nefes egzersizi tetikle
+        vapiInstance.on('message', (message) => {
+            if (message?.type === 'transcript' && message.role === 'assistant' && message.transcriptType === 'final') {
+                const txt = message.transcript.toLowerCase();
+                if (txt.includes('nefes_egzersizi_baslat') ||
+                    (txt.includes('4') && txt.includes('7') && txt.includes('8') && txt.includes('nefes'))) {
+                    baslat478();
+                }
+                if (txt.includes('gözlerini kapat') || txt.includes('güvenli bir yerde hayal')) {
+                    baslat_vizual();
+                }
+            }
+        });
+
+        // ── NEFES EGZERSİZİ 4-7-8 ──────────────────────────
+        let nefes478Timer = null;
+        function baslat478() {
+            const overlay = document.getElementById('nefes-overlay');
+            const circle  = document.getElementById('nefes-circle');
+            const label   = document.getElementById('nefes-label');
+            overlay.classList.add('active');
+            const adimlar = [
+                { sure: 4000, metin: 'NEFES AL',  scale: '1.35', renk: 'var(--accent)' },
+                { sure: 7000, metin: 'TUT',        scale: '1.35', renk: '#e8a96e' },
+                { sure: 8000, metin: 'VER',        scale: '1.0',  renk: 'var(--primary)' }
+            ];
+            let adim = 0;
+            function sonrakiAdim() {
+                const a = adimlar[adim % 3];
+                label.textContent = a.metin;
+                circle.style.transform = `scale(${a.scale})`;
+                circle.style.borderColor = a.renk;
+                adim++;
+                nefes478Timer = setTimeout(sonrakiAdim, a.sure);
+            }
+            clearTimeout(nefes478Timer);
+            sonrakiAdim();
+        }
+        function kapat478() {
+            clearTimeout(nefes478Timer);
+            document.getElementById('nefes-overlay').classList.remove('active');
+        }
+
+        // ── ACİL YARDIM ─────────────────────────────────────
+        function acilAc()  { document.getElementById('acil-modal').classList.add('active'); }
+        function acilKapat(){ document.getElementById('acil-modal').classList.remove('active'); }
+
+        // ── GUIDED VİZUALIZATION ─────────────────────────────
+        const VIZUAL_SCRIPT = [
+            "Gözlerini yavaşça kapat...",
+            "Kendini güvenli bir yerde hayal et.\nBelki tanıdık bir yer, belki bir renk.",
+            "Nefes al... ve bırak.",
+            "Şu an tamamen güvende hissedebilirsin.",
+            "Bu his senindir, kimse alamaz."
+        ];
+        let vizualTimer = null, vizualStep = 0;
+        function baslat_vizual() {
+            vizualStep = 0;
+            const overlay = document.getElementById('vizual-overlay');
+            const metin   = document.getElementById('vizual-metin');
+            overlay.classList.add('active');
+            function goster() {
+                if (vizualStep >= VIZUAL_SCRIPT.length) return;
+                metin.style.opacity = '0';
+                setTimeout(() => {
+                    metin.textContent = VIZUAL_SCRIPT[vizualStep++];
+                    metin.style.opacity = '1';
+                }, 400);
+                vizualTimer = setTimeout(goster, 5500);
+            }
+            clearTimeout(vizualTimer);
+            goster();
+        }
+        function vizualKapat() {
+            clearTimeout(vizualTimer);
+            document.getElementById('vizual-overlay').classList.remove('active');
+        }
 
     </script>
 </body>
