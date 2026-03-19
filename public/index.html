@@ -1502,7 +1502,8 @@
             });
 
             vapiInstance.start(VAPI_ASSISTANT_ID, {
-                variableValues: { userId: persistentUserId }
+                variableValues: { userId: persistentUserId },
+                maxDurationSeconds: 3600
             });
         });
 
@@ -1719,7 +1720,7 @@
             clearTimeout(autoReconnectTimer);
             autoReconnectTimer = setTimeout(async () => {
                 try {
-                    await vapiInstance.start(ASSISTANT_ID);
+                    await vapiInstance.start(VAPI_ASSISTANT_ID, { variableValues: { userId: persistentUserId }, maxDurationSeconds: 3600 });
                     reconnectAttempts = 0;
                     console.log('[VAPI] Otomatik yeniden bağlanma başarılı.');
                 } catch(e) {
