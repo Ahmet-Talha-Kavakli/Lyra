@@ -957,20 +957,28 @@
                 sampleCnt++;
             }
             const avgBr = sampleCnt > 0 ? totalBr / sampleCnt : 128;
-            // Akıllı filtre
+
+            // Strateji: çok karanlıksa → histogram eşitleme (daha doğal)
+            // Orta karanlıksa → brightness filtresi (hızlı)
+            // Flash/parlaksa → brightness azalt
             let filterStr = 'none';
-            if      (avgBr < 20)  filterStr = 'brightness(5) contrast(1.5) saturate(0.8)';
-            else if (avgBr < 40)  filterStr = 'brightness(3.5) contrast(1.4)';
-            else if (avgBr < 70)  filterStr = 'brightness(2.2) contrast(1.3)';
-            else if (avgBr < 110) filterStr = 'brightness(1.5) contrast(1.15)';
-            else if (avgBr < 160) filterStr = 'none';
-            else if (avgBr < 200) filterStr = 'brightness(0.85) contrast(1.1)';
-            else                  filterStr = 'brightness(0.6) contrast(1.2)';
+            if (avgBr < 50) {
+                // Çok karanlık: önce hafif brightness uygula, sonra histogram
+                filterStr = 'brightness(1.8) contrast(1.2)';
+            } else if (avgBr < 90) {
+                filterStr = 'brightness(1.4) contrast(1.1)';
+            } else if (avgBr < 140) {
+                filterStr = 'none';
+            } else if (avgBr < 200) {
+                filterStr = 'brightness(0.85) contrast(1.1)';
+            } else {
+                filterStr = 'brightness(0.65) contrast(1.15)'; // flash
+            }
             ctx.filter = filterStr;
             ctx.drawImage(userVideo, 0, 0, 640, 480);
             ctx.filter = 'none';
-            // Histogram eşitleme — sadece karanlık ortamda
-            if (avgBr < 120) applyHistogramEqualization(ctx, 640, 480);
+            // Histogram eşitleme — sadece gerçekten çok karanlıkta (brightness + histogram birlikte overexpose yapar, sadece <50 için)
+            if (avgBr < 50) applyHistogramEqualization(ctx, 640, 480);
             const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.9).split(',')[1];
             console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr}`);
             return { base64, avgBrightness: avgBr };
@@ -1554,6 +1562,8 @@
         });
 
         vapiInstance.on('call-end', async () => {
+            // Eğer autoReconnect beklemiyorsa normal bitiş sayılır
+            if (reconnectAttempts === 0) clearTimeout(autoReconnectTimer);
             isCallActive = false;
             statusEl.textContent = "SİSTEM HAZIR";
             statusEl.classList.remove('listening');
@@ -1680,15 +1690,60 @@
             }
         });
 
-        vapiInstance.on('error', (err) => {
-            console.error('[VAPI] Hata:', err);
+        let autoReconnectTimer = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT = 3;
+
+        function resetCallUI() {
             isCallActive = false;
             talkBtn.textContent = "GÖRÜŞMEYİ BAŞLAT";
             talkBtn.classList.remove('active');
             document.getElementById('mic-indicator').classList.remove('active');
             statusEl.classList.remove('listening');
-            statusEl.textContent = "SİSTEM HAZIR";
-            showError("Bağlantı hatası oluştu. Lütfen tekrar deneyin.");
+            if (panelLyraEl) panelLyraEl.classList.remove('speaking');
+            if (panelUserEl) panelUserEl.classList.remove('speaking');
+            clearInterval(transcriptStreamInterval);
+            transcriptStreamInterval = null;
+        }
+
+        async function autoReconnect() {
+            if (reconnectAttempts >= MAX_RECONNECT) {
+                statusEl.textContent = "BAĞLANTI KURULAMADI — manuel başlatın";
+                reconnectAttempts = 0;
+                return;
+            }
+            reconnectAttempts++;
+            const delay = reconnectAttempts * 2000; // 2s, 4s, 6s
+            statusEl.textContent = `YENİDEN BAĞLANIYOR (${reconnectAttempts}/${MAX_RECONNECT})...`;
+            console.warn(`[VAPI] ${delay/1000}s sonra otomatik yeniden bağlanma deneme ${reconnectAttempts}...`);
+            clearTimeout(autoReconnectTimer);
+            autoReconnectTimer = setTimeout(async () => {
+                try {
+                    await vapiInstance.start(ASSISTANT_ID);
+                    reconnectAttempts = 0;
+                    console.log('[VAPI] Otomatik yeniden bağlanma başarılı.');
+                } catch(e) {
+                    console.error('[VAPI] Yeniden bağlanma başarısız:', e);
+                    autoReconnect();
+                }
+            }, delay);
+        }
+
+        vapiInstance.on('error', (err) => {
+            console.error('[VAPI] Hata:', err);
+            resetCallUI();
+
+            const errType = err?.error?.type || err?.type || '';
+            const errMsg  = err?.error?.msg  || err?.msg  || '';
+            const isEjection = errType === 'daily-error' || errMsg.includes('ejected') || errMsg.includes('ended');
+
+            if (isEjection) {
+                console.warn('[VAPI] Daily.co ejection/bağlantı kesilmesi — otomatik yeniden bağlanıyor...');
+                autoReconnect();
+            } else {
+                statusEl.textContent = "SİSTEM HAZIR";
+                showError("Bağlantı hatası oluştu. Lütfen tekrar deneyin.");
+            }
         });
 
         // VAPI transcript'ten nefes egzersizi tetikle
