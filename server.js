@@ -193,11 +193,21 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
     if (basarili.includes('nefes') && sonAnaliz.yogunluk === 'yüksek')
         kurallar.push('Geçmişte nefes egzersizi bu kullanıcıya yaramış. Yüksek yoğunlukta nefes tekniği öner.');
 
-    // TETİKLEYİCİ HARİTA
+    // #12 TETİKLEYİCİ HARİTA (Trigger Mapping)
     const tetKonular = patternMemory.tetikleyici_konular || {};
-    const yuksekHitKonu = Object.entries(tetKonular).sort(([,a],[,b]) => b.hit - a.hit)[0];
-    if (yuksekHitKonu && yuksekHitKonu[1].hit >= 3)
-        kurallar.push(`"${yuksekHitKonu[0]}" konusu bu kullanıcı için her açıldığında zorlanıyor (${yuksekHitKonu[1].hit} seans). Bu konuda özellikle yavaş, nazik ve dikkatli ol.`);
+    if (Object.keys(tetKonular).length > 0) {
+        const siralanmis = Object.entries(tetKonular)
+            .sort(([,a],[,b]) => b.hit - a.hit)
+            .slice(0, 2); // top 2 triggers
+
+        for (const [konu, data] of siralanmis) {
+            const duygular = data.duygu || [];
+            const sonDuygu = duygular[duygular.length - 1] || 'bilinmiyor';
+            if (data.hit >= 2) {
+                kurallar.push(`[#12 TETİKLEYİCİ] "${konu}" konusu bu kullanıcıyı sıkça etkiliyor (${data.hit} seans, son duygu: ${sonDuygu}). Bu konuda özellikle yavaş, nazik, sabırlı ol.`);
+            }
+        }
+    }
 
     // İLERLEME ZAMAN ÇİZELGESİ
     const sessionHistory = patternMemory.session_history || [];
@@ -234,12 +244,18 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
     if (userProfile?.sessizlik_konforu === true)
         kurallar.push('Bu kullanıcı sessizliğe alışkın — 15 saniyeye kadar bekleyebilirsin, doldurmak zorunda değilsin.');
 
-    // Tetikleyici konu tespiti
-    const tetikleyiciler = userProfile?.tetikleyiciler || [];
+    // #12 — Seans İçinde Tetikleyici Konu Geçti mi?
     const transcript = transcriptData?.fullTranscript?.toLowerCase() || '';
-    const aktifTetikleyici = tetikleyiciler.find(t => transcript.includes(t));
-    if (aktifTetikleyici)
-        kurallar.push(`"${aktifTetikleyici}" bu kullanıcı için bilinen bir tetikleyici. Bu konuda özellikle yavaş ve dikkatli ol.`);
+    const patternTetikleyiciler = patternMemory?.tetikleyici_konular || {};
+    const aktifTetikleyici = Object.entries(patternTetikleyiciler)
+        .filter(([konu]) => transcript.includes(konu))
+        .sort(([,a],[,b]) => b.hit - a.hit)[0];
+    if (aktifTetikleyici && aktifTetikleyici[1].hit >= 2) {
+        const [konu, data] = aktifTetikleyici;
+        const duygular = data.duygu || [];
+        const sonDuygu = duygular[duygular.length - 1] || 'bilinmiyor';
+        kurallar.push(`[#12 SEANS İÇİ TETİKLEYİCİ] "${konu}" konusu bu seansta da geçti — bu konuda her açılışında zorluk yaşıyor (${data.hit} seans, genellikle ${sonDuygu} oluyor). Özellikle yavaş, nazik, sabırlı ol. Baskı yapma.`);
+    }
 
     // DUYGU GEÇİŞ HIZI — duygusal labilite tespiti (#5)
     if (gecmis && gecmis.length >= 10) {
