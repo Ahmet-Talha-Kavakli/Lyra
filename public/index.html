@@ -811,9 +811,11 @@
         let transcriptStreamInterval = null;
 
         function getBaseInterval(duygu) {
-            if (['sakin', 'mutlu'].includes(duygu))                          return 6000;
-            if (['endişeli', 'üzgün', 'korkmuş', 'sinirli'].includes(duygu)) return 2000;
-            return 4000;
+            if (['korkmuş', 'sinirli'].includes(duygu))               return 1500;
+            if (['endişeli', 'üzgün', 'iğnelenmiş'].includes(duygu)) return 2000;
+            if (['yorgun', 'şaşırmış'].includes(duygu))              return 2500;
+            if (['sakin', 'mutlu'].includes(duygu))                   return 3000;
+            return 2000;
         }
 
         function scheduleNextAnalysis() {
@@ -871,11 +873,10 @@
                 }
                 const hiddenCanvas = document.getElementById('hidden-canvas');
                 const ctx = hiddenCanvas.getContext('2d');
-                // Yüksek çözünürlük: daha iyi analiz için 480x360
-                hiddenCanvas.width = 480;
-                hiddenCanvas.height = 360;
-                ctx.drawImage(userVideo, 0, 0, 480, 360);
-                const imageBase64 = hiddenCanvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+                hiddenCanvas.width = 640;
+                hiddenCanvas.height = 480;
+                ctx.drawImage(userVideo, 0, 0, 640, 480);
+                const imageBase64 = hiddenCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
 
                 const resp = await fetch('/analyze-emotion', {
                     method: 'POST',
@@ -892,11 +893,13 @@
 
                 currentEmotionState = result.duygu;
 
-                // Adaptif interval güncelle
+                // Adaptif interval güncelle — max 4sn
                 const base = getBaseInterval(result.duygu);
                 if (result.duygu === sonDuygu) {
                     ardiArdina++;
-                    if (ardiArdina >= 3) adaptifInterval = Math.min(base * 2, 6000);
+                    // Aynı duygu tekrarlıyorsa yavaşla ama max 4sn
+                    if (ardiArdina >= 4) adaptifInterval = Math.min(base * 1.5, 4000);
+                    else adaptifInterval = base;
                 } else {
                     ardiArdina = 0;
                     adaptifInterval = base;

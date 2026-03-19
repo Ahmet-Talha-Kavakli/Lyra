@@ -176,8 +176,11 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (duygu === 'korkmuş' && guven > 80 && jestler?.gozyasi_izi === true)
         kurallar.push('Kullanıcı korkmuş ve gözyaşı izi var. Önce güven ver, hiç soru sorma. Sessiz, kısa, destekleyici cümleler kur.');
 
-    if (duygu === 'sinirli' && jestler?.cene_gerginligi === 'yüksek' && jestler?.omuz_durusu === 'yüksek')
-        kurallar.push('Kullanıcı sinirli ve gergin. Doğrula, çözüm önerme. Gerekirse nefes egzersizi sun.');
+    if (duygu === 'sinirli' || duygu === 'iğnelenmiş' || duygu === 'küçümseyen')
+        kurallar.push('Kullanıcı sinirli/rahatsız görünüyor. Önce duyguyu doğrula: "Seni bir şey rahatsız ediyor gibi, söylemek ister misin?" — çözüm önerme, tavsiye verme.');
+
+    if (duygu === 'sinirli' && jestler?.cene_gerginligi === 'yüksek')
+        kurallar.push('Yüksek çene gerginliği var — ciddi öfke sinyali. Sakin kal, yavaş konuş, zemine in.');
 
     if (duygu === 'yorgun' && jestler?.goz_kirpma_hizi === 'yavaş' && enerji === 'yorgun')
         kurallar.push('Kullanıcı çok yorgun. Seansı kısalt, konuyu değiştirme, enerjik sorular sorma.');
@@ -582,12 +585,18 @@ app.post('/analyze-emotion', async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Görüntüdeki kişinin yüzünü ve beden dilini dikkatlice analiz et. Gerçek duyguyu nesnel olarak belirle — varsayılan olarak "sakin" yazma, gördüğünü yaz.
+                        text: `Sen deneyimli bir klinik psikolog ve yüz ifadesi uzmanısın. Görüntüdeki kişinin yüzünü ve beden dilini mikro-ifadeler dahil son derece dikkatli analiz et.
 
-Kural: Yüz görünmüyorsa veya görüntü çok karanlıksa yalnızca {"yuz_var":false} döndür.
+KRİTİK KURALLAR:
+1. "sakin" ancak gerçekten hiçbir duygu belirtisi yoksa yaz. Şüphe durumunda en belirgin duyguyu seç.
+2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin işareti.
+3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun işareti.
+4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş işareti.
+5. Yüz görünmüyorsa veya görüntü çok karanlıksa SADECE {"yuz_var":false} döndür.
+6. guven değeri: gerçekten emin olduğunda 80+, tahmin ise 50-70 yaz.
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false},"genel_vucut_dili":"açık|nötr|kapalı","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan"},"genel_vucut_dili":"açık|nötr|kapalı","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
