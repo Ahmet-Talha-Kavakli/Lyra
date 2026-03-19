@@ -344,12 +344,13 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     if (sonAnaliz?.yuz_soluklugu === true && (duygu === 'yorgun' || enerji === 'yorgun'))
         kurallar.push('Yüz soluk ve enerjisiz görünüyor — aşırı yorgunluk, uyku eksikliği veya hastalık sinyali. "Son zamanlarda iyi uyuyabiliyor musun?" diye sor, dinlendirici konulara geç.');
 
-    // ── NEFES EGZERSİZİ MODU ────────────────────────────────
+    // ── NEFES EGZERSİZİ MODU (#6) ───────────────────────────
     const nefesGerekli = (duygu === 'endişeli' || duygu === 'korkmuş') &&
         yogunluk === 'yüksek' &&
-        (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel');
-    if (nefesGerekli)
-        kurallar.push('NEFES_EGZERSIZI_BASLAT: Kullanıcı yüksek kaygıda, nefesi hızlanmış. Hemen 4-7-8 nefes tekniği uygulat: "Seninle birlikte nefes alalım mı? 4 say nefes al, 7 say tut, 8 say ver."');
+        (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel' || jestler?.nefes_hizi === 'tutuyor');
+    if (nefesGerekli) {
+        kurallar.push('[#6 NEFES_EGZERSIZI_BASLAT] Kullanıcı yüksek kaygıda (endişeli/korkmuş), nefesi hızlanmış/yüzeysel/tutuyor. Hemen 4-7-8 nefes tekniği: "Seninle birlikte nefes alalım mı? Dört say nefes al, yedi say tut, sekiz say ver. Başlayalım..."');
+    }
 
     // ── NESNE FARKINDALĞI ───────────────────────────────────
     if (ortam?.nesneler?.length > 0 && !ortam.tehlike_var) {
