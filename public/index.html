@@ -699,6 +699,7 @@
             <div class="panel-user" id="panel-user">
                 <video id="user-video" autoplay muted playsinline></video>
                 <div class="panel-label">Sen</div>
+                <div id="light-warning" style="display:none;position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#f0c060;font-size:11px;padding:3px 10px;border-radius:8px;white-space:nowrap;">💡 Işığı artır</div>
                 <div class="camera-off-msg" id="camera-off-msg">
                     <span>📷</span>
                     <p>Kamera kapalı</p>
@@ -920,24 +921,28 @@
         function applyHistogramEqualization(ctx, w, h) {
             const imageData = ctx.getImageData(0, 0, w, h);
             const data = imageData.data;
-            const hist = new Array(256).fill(0);
+            // Luminance-only histogram — renk kaymasını önler
+            const hist = new Uint32Array(256);
             for (let i = 0; i < data.length; i += 4) {
-                const lum = Math.round(data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114);
-                hist[lum]++;
+                hist[Math.round(data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114)]++;
             }
-            const pixels = w * h;
-            const cdf = new Array(256).fill(0);
+            const cdf = new Uint32Array(256);
             cdf[0] = hist[0];
             for (let i = 1; i < 256; i++) cdf[i] = cdf[i-1] + hist[i];
             const cdfMin = cdf.find(v => v > 0) || 1;
-            const lut = new Array(256);
+            const total = w * h;
+            const lut = new Uint8Array(256);
             for (let i = 0; i < 256; i++) {
-                lut[i] = Math.round(((cdf[i] - cdfMin) / Math.max(pixels - cdfMin, 1)) * 255);
+                lut[i] = Math.round(((cdf[i] - cdfMin) / Math.max(total - cdfMin, 1)) * 255);
             }
+            // Sadece luminance'ı scale et, renk tonlarını koru
             for (let i = 0; i < data.length; i += 4) {
-                data[i]   = lut[data[i]];
-                data[i+1] = lut[data[i+1]];
-                data[i+2] = lut[data[i+2]];
+                const oldLum = data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114;
+                if (oldLum < 1) continue;
+                const scale = lut[Math.round(oldLum)] / oldLum;
+                data[i]   = Math.min(255, data[i]   * scale);
+                data[i+1] = Math.min(255, data[i+1] * scale);
+                data[i+2] = Math.min(255, data[i+2] * scale);
             }
             ctx.putImageData(imageData, 0, 0);
         }
@@ -945,41 +950,48 @@
         async function captureAndPreprocess() {
             const hiddenCanvas = document.getElementById('hidden-canvas');
             const ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+
+            // Parlaklık ölçmek için geçici tam frame çiz
             hiddenCanvas.width = 640;
             hiddenCanvas.height = 480;
-            // Merkez parlaklık ölç
             ctx.filter = 'none';
             ctx.drawImage(userVideo, 0, 0, 640, 480);
-            const centerData = ctx.getImageData(160, 120, 320, 240).data;
+            const centerData = ctx.getImageData(160, 100, 320, 200).data;
             let totalBr = 0, sampleCnt = 0;
-            for (let i = 0; i < centerData.length; i += 4*20) {
+            for (let i = 0; i < centerData.length; i += 4*16) {
                 totalBr += centerData[i]*0.299 + centerData[i+1]*0.587 + centerData[i+2]*0.114;
                 sampleCnt++;
             }
             const avgBr = sampleCnt > 0 ? totalBr / sampleCnt : 128;
 
-            // Strateji: çok karanlıksa → histogram eşitleme (daha doğal)
-            // Orta karanlıksa → brightness filtresi (hızlı)
-            // Flash/parlaksa → brightness azalt
+            // Brightness filtresi seç
             let filterStr = 'none';
-            if (avgBr < 50) {
-                // Çok karanlık: önce hafif brightness uygula, sonra histogram
-                filterStr = 'brightness(1.8) contrast(1.2)';
-            } else if (avgBr < 90) {
-                filterStr = 'brightness(1.4) contrast(1.1)';
-            } else if (avgBr < 140) {
-                filterStr = 'none';
-            } else if (avgBr < 200) {
-                filterStr = 'brightness(0.85) contrast(1.1)';
-            } else {
-                filterStr = 'brightness(0.65) contrast(1.15)'; // flash
-            }
+            if      (avgBr < 30)  filterStr = 'brightness(2.5) contrast(1.3) saturate(1.2)';
+            else if (avgBr < 55)  filterStr = 'brightness(1.6) contrast(1.15)';
+            else if (avgBr < 90)  filterStr = 'brightness(1.2) contrast(1.05)';
+            else if (avgBr < 150) filterStr = 'none';
+            else if (avgBr < 200) filterStr = 'brightness(0.85)';
+            else                  filterStr = 'brightness(0.6) contrast(1.1)';
+
+            // Canvas'ı yüz bölgesine crop et: 480x312 (üst %65)
+            // GPT-4o için 512px altı = low detail = tek geçiş, daha tutarlı
+            const outW = 480;
+            const outH = 312;
+            hiddenCanvas.width  = outW;
+            hiddenCanvas.height = outH;
             ctx.filter = filterStr;
-            ctx.drawImage(userVideo, 0, 0, 640, 480);
+            // Kaynak: video'nun üst %65'i (0,0,640,312) → hedef: (0,0,480,312)
+            ctx.drawImage(userVideo, 0, 0, 640, 312, 0, 0, outW, outH);
             ctx.filter = 'none';
-            // Histogram eşitleme — sadece gerçekten çok karanlıkta (brightness + histogram birlikte overexpose yapar, sadece <50 için)
-            if (avgBr < 50) applyHistogramEqualization(ctx, 640, 480);
-            const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+            // Histogram — sadece çok karanlıkta
+            if (avgBr < 35) applyHistogramEqualization(ctx, outW, outH);
+
+            // Işık uyarısı
+            const lightWarn = document.getElementById('light-warning');
+            if (lightWarn) lightWarn.style.display = avgBr < 40 ? 'block' : 'none';
+
+            const base64 = hiddenCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
             console.log(`[KAMERA] brightness:${Math.round(avgBr)} filter:${filterStr}`);
             return { base64, avgBrightness: avgBr };
         }
@@ -1563,8 +1575,23 @@
         });
 
         vapiInstance.on('call-end', async () => {
-            // Eğer autoReconnect beklemiyorsa normal bitiş sayılır
-            if (reconnectAttempts === 0) clearTimeout(autoReconnectTimer);
+            // Ejection sonrası call-end gelirse — reconnect zaten bekliyor, UI'ı sıfırlama
+            if (isEjectionPending) {
+                isEjectionPending = false;
+                isCallActive = false;
+                // Memory kısa kayıt yap ama konuşma state'ini koru
+                if (fullConversation.length > 50) {
+                    fetch('/save-local-memory', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: persistentUserId, transcript: fullConversation })
+                    }).catch(() => {});
+                }
+                return; // Normal call-end işlemlerini yapma
+            }
+            // Normal bitiş
+            clearTimeout(autoReconnectTimer);
+            reconnectAttempts = 0;
             isCallActive = false;
             statusEl.textContent = "SİSTEM HAZIR";
             statusEl.classList.remove('listening');
@@ -1694,6 +1721,7 @@
         let autoReconnectTimer = null;
         let reconnectAttempts = 0;
         const MAX_RECONNECT = 3;
+        let isEjectionPending = false;
 
         function resetCallUI() {
             isCallActive = false;
@@ -1714,7 +1742,7 @@
                 return;
             }
             reconnectAttempts++;
-            const delay = reconnectAttempts * 2000; // 2s, 4s, 6s
+            const delay = reconnectAttempts * 3000; // 3s, 6s, 9s
             statusEl.textContent = `YENİDEN BAĞLANIYOR (${reconnectAttempts}/${MAX_RECONNECT})...`;
             console.warn(`[VAPI] ${delay/1000}s sonra otomatik yeniden bağlanma deneme ${reconnectAttempts}...`);
             clearTimeout(autoReconnectTimer);
@@ -1732,16 +1760,17 @@
 
         vapiInstance.on('error', (err) => {
             console.error('[VAPI] Hata:', err);
-            resetCallUI();
 
             const errType = err?.error?.type || err?.type || '';
-            const errMsg  = err?.error?.msg  || err?.msg  || '';
-            const isEjection = errType === 'daily-error' || errMsg.includes('ejected') || errMsg.includes('ended');
+            const isEjection = errType === 'daily-error';
 
             if (isEjection) {
-                console.warn('[VAPI] Daily.co ejection/bağlantı kesilmesi — otomatik yeniden bağlanıyor...');
+                isEjectionPending = true;
+                resetCallUI();
+                console.warn('[VAPI] Daily.co ejection — otomatik yeniden bağlanıyor...');
                 autoReconnect();
             } else {
+                resetCallUI();
                 statusEl.textContent = "SİSTEM HAZIR";
                 showError("Bağlantı hatası oluştu. Lütfen tekrar deneyin.");
             }

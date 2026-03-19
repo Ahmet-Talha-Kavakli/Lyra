@@ -922,8 +922,8 @@ BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin.
 3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun.
 4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş.
-5. HAYALET YÜZ MODU: Görüntü çok karanlık, bulanık veya aşırı parlak bile olsa — insan şekli, saç, omuz, siluet, ten rengi görünüyorsa yuz_var:true yaz. guven minimum 40 olsun.
-6. Sadece tamamen boş/siyah/beyaz ekran veya insan hiç yoksa yuz_var:false döndür.
+5. HAYALET YÜZ MODU: Görüntü karanlık, bulanık, grenli veya aşırı parlak olsa bile — siluet, saç çizgisi, omuz, göz yuvası gölgesi, ten tonu izi, herhangi bir insan şekli görünüyorsa yuz_var:true YAZ. Tahmin et, çıkarım yap. guven:40-55 ver.
+6. Görüntü TAMAMEN siyah piksel veya boş bir ekran değilse yuz_var:true yaz. Şüphe durumunda her zaman true. Sadece %100 insan olmayan bir görüntüde yuz_var:false döndür.
 7. YORGUNLUK & UYKU: goz_kapagi_agirlik ekle — "normal|hafif_agir|belirgin_agir". Göz kapakları düşükse belirgin_agir.
 8. guven: net görüntü=80+, karanlık/bulanık=40-65, siluet/hayalet=40-52. ASLA 40 altına düşürme.
 
@@ -945,7 +945,7 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'auto' }
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' }
                     }
                 ]
             }],
