@@ -6,6 +6,8 @@ import OpenAI from 'openai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from 'express-rate-limit';
+import crypto from 'crypto';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -384,6 +386,17 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
     if (yogunlukOrt > 75 && gecmis.length >= 5)
         kurallar.push('Kullanıcı bu seans boyunca yüksek duygusal yoğunlukta. Sabırlı ve yavaş ol.');
 
+    // #5 — EMPATİ KALİTESİ SKORU
+    // Olumsuz duygu + ard arda 3+ = yeterli empati gösterilmemiş olabilir
+    if (gecmis.length >= 4) {
+        const sonDortNegatif = gecmis.slice(-4).filter(a =>
+            ['üzgün', 'korkmuş', 'sinirli', 'endişeli', 'yorgun'].includes(a.duygu) &&
+            (a.yogunluk === 'yüksek' || a.yogunluk === 'orta')
+        );
+        if (sonDortNegatif.length >= 3)
+            kurallar.push('EMPATİ UYARISI: Kullanıcı uzun süredir olumsuz duygular yaşıyor ve henüz rahatlamıyor. Terapötik teknik kullanmayı bırak — sadece "Bunu yaşamak çok zor olmalı" gibi basit, içten bir empati cümlesi kur. Sonra sessiz kal.');
+    }
+
     return kurallar.join(' ');
 };
 
@@ -424,7 +437,7 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         const assistantSatir = satirlar.filter(s => s.startsWith('assistant:')).length;
         const userSatir = satirlar.filter(s => s.startsWith('user:')).length;
         const toplamSatir = assistantSatir + userSatir;
-        if (toplamSatir > 8 && assistantSatir / toplamSatir > 0.45)
+        if (toplamSatir > 8 && assistantSatir / toplamSatir > 0.33)
             kurallar.push('DİKKAT: Bu seansta çok fazla konuşuyorsun. Şimdi kısa cevap ver veya sadece soru sor, kullanıcıyı konuştur.');
 
         // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti
@@ -433,9 +446,121 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         const absHit = absKelimeler.find(k => lastSeg.includes(k));
         if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük')
             kurallar.push(`Kullanıcı "${absHit}" gibi absolüt bir ifade kullandı — bilişsel çarpıtma sinyali. Nazikçe sorgula: "Az önce '${absHit}' dedin — gerçekten hiç mi, hiçbir zaman mı?"`);
+
+        // #3 — KELIME TEKRAR TESPİTİ
+        const tekrarlar = detectWordRepetition(transcriptData.fullTranscript);
+        if (tekrarlar.length > 0) {
+            const [kelime, sayi] = tekrarlar[0];
+            kurallar.push(`Kullanıcı "${kelime}" kelimesini bu seansta ${sayi} kez kullandı — takıntı noktası olabilir. Nazikçe derinleş: "Bu konuya birkaç kez döndün, sana ne hissettiriyor?"`);
+        }
+
+        // #6 — RÜYA & METAFOR ANALİZİ
+        const { ruya, metafor, icerik } = detectDreamMetaphor(transcriptData.fullTranscript);
+        if (ruya)
+            kurallar.push(`Kullanıcı rüyasından bahsetti. Bu sembolü derinleştir: "Bu rüya sana ne anlatıyor? Uyandığında nasıl hissettin?" Direkt yorum yapma, kullanıcıya bırak.`);
+        else if (metafor && icerik)
+            kurallar.push(`Kullanıcı metaforik dil kullanıyor ("${icerik}"). Bu metaforu genişlet: "Bunu biraz daha açar mısın, bu benzetme çok ilginç." Sembolü derinleştir.`);
+
+        // #8 — ÇOCUKLUK TETİKLEYİCİ
+        if (detectChildhoodTrigger(transcriptData.fullTranscript, sonAnaliz?.yogunluk))
+            kurallar.push('Kullanıcı çocukluk/aile referansları veriyor ve duygusal yoğunluk yüksek — travma bölgesi sinyali. Çok yavaş ve nazik ol, zorlamadan dinle. "Bunu anlatmak zor olabilir, ne kadar paylaşmak istersen." de.');
+
+        // #10 — BAĞIMLILIK DİLİ
+        const bagimlilik = detectDependencyLanguage(transcriptData.lastSegment);
+        if (bagimlilik && sonAnaliz?.yogunluk !== 'düşük')
+            kurallar.push(`Kullanıcı bilişsel çaresizlik/bağımlılık dili kullandı ("${bagimlilik}"). Nazikçe sorgulat: "Gerçekten başka hiç yol yok mu? Bunu birlikte düşünelim." Çözüm önerme, soruyla açılmasını sağla.`);
+
+        // #2 — KONUŞMA RİTMİ
+        if (transcriptData.konusmaTempo > 4.5)
+            kurallar.push('Kullanıcı çok hızlı konuşuyor — panik/kaygı sinyali. Nazikçe yavaşlat: "Seninle birlikte nefes alalım mı, biraz yavaşlayalım."');
+        else if (transcriptData.konusmaTempo > 0 && transcriptData.konusmaTempo < 0.8)
+            kurallar.push('Konuşma ritmi çok yavaşladı — enerji çöküşü veya depresif dönem sinyali. Enerjik sorular sorma, hafif ve destekleyici kal.');
     }
 
     return kurallar.join(' ');
+};
+
+// ─── AES-256-GCM ŞİFRELEME ────────────────────────────────
+const ENC_KEY = process.env.ENCRYPTION_KEY
+    ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
+    : crypto.randomBytes(32); // fallback: her restart'ta yeni key (prod'da env ekle)
+
+const encryptField = (text) => {
+    if (!text) return text;
+    try {
+        const iv  = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+        const enc = Buffer.concat([cipher.update(String(text), 'utf8'), cipher.final()]);
+        const tag = cipher.getAuthTag();
+        return `ENC:${iv.toString('hex')}:${enc.toString('hex')}:${tag.toString('hex')}`;
+    } catch { return text; }
+};
+
+const decryptField = (text) => {
+    if (!text || !String(text).startsWith('ENC:')) return text;
+    try {
+        const [, ivHex, encHex, tagHex] = String(text).split(':');
+        const iv  = Buffer.from(ivHex, 'hex');
+        const enc = Buffer.from(encHex, 'hex');
+        const tag = Buffer.from(tagHex, 'hex');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
+    } catch { return text; }
+};
+
+// ─── ERROR LOGLAMA ─────────────────────────────────────────
+const logError = async (endpoint, errorMessage, userId = null) => {
+    try {
+        await supabase.from('error_logs').insert({
+            user_id: userId,
+            endpoint,
+            error_message: errorMessage,
+            timestamp: new Date().toISOString()
+        });
+    } catch { /* loglama başarısız olsa da devam et */ }
+};
+
+// ─── YENİ KURAL MOTORU FONKSİYONLARI ──────────────────────
+
+// Kelime tekrar tespiti
+const detectWordRepetition = (transcript) => {
+    if (!transcript) return [];
+    const stopWords = new Set(['ve', 'ama', 'için', 'bir', 'bu', 'da', 'de', 'ki', 'ile', 'ben', 'sen', 'o', 'biz', 'siz', 'ne', 'var', 'yok', 'mi', 'mı', 'çok', 'daha', 'gibi', 'ya', 'şey', 'şu', 'nasıl', 'çünkü', 'ise', 'bile', 'hem', 'veya']);
+    const userLines = transcript.split('\n').filter(l => l.startsWith('user:')).join(' ').replace(/user:/g, '');
+    const kelimeler = userLines.toLowerCase().replace(/[^a-zçğıöşüa-z\s]/gi, '').split(/\s+/).filter(k => k.length > 3 && !stopWords.has(k));
+    const sayac = {};
+    kelimeler.forEach(k => { sayac[k] = (sayac[k] || 0) + 1; });
+    return Object.entries(sayac).filter(([, s]) => s >= 3).sort(([, a], [, b]) => b - a).slice(0, 3);
+};
+
+// Rüya & Metafor tespiti
+const detectDreamMetaphor = (transcript) => {
+    if (!transcript) return { ruya: false, metafor: false, icerik: '' };
+    const lower = transcript.toLowerCase();
+    const ruyaKelimeler = ['rüyamda', 'rüya gördüm', 'düşümde', 'nightmare', 'kâbusumda', 'hayalimde'];
+    const metaforKelimeler = ['sanki bir', 'gibi hissediyorum', 'adeta', 'tam olarak şuna benziyor', 'benim için bu şu anlama'];
+    const ruya = ruyaKelimeler.some(k => lower.includes(k));
+    const metafor = metaforKelimeler.some(k => lower.includes(k));
+    const hit = [...ruyaKelimeler, ...metaforKelimeler].find(k => lower.includes(k)) || '';
+    return { ruya, metafor, icerik: hit };
+};
+
+// Çocukluk tetikleyici tespiti
+const detectChildhoodTrigger = (transcript, yogunluk) => {
+    if (!transcript || yogunluk === 'düşük') return false;
+    const lower = transcript.toLowerCase();
+    const tetikler = ['çocukken', 'küçükken', 'çocukluğumda', 'annem', 'babam', 'okul yılları', 'ilkokulda', 'ortaokulda', 'lisede', 'çocukluğumda', 'büyürken'];
+    const hitler = tetikler.filter(k => lower.includes(k));
+    return hitler.length >= 2;
+};
+
+// Bağımlılık dili tespiti
+const detectDependencyLanguage = (segment) => {
+    if (!segment) return null;
+    const lower = segment.toLowerCase();
+    const kaliplar = ['yapamam', 'yapamıyorum', 'zorundayım', 'mecburum', 'başka seçeneğim yok', 'kaçış yok', 'çaresizim', 'elimde değil', 'her zaman böyle olacak', 'hiçbir zaman değişmeyecek'];
+    return kaliplar.find(k => lower.includes(k)) || null;
 };
 
 // --- DUYGU DURUMU TAKİBİ ---
@@ -454,23 +579,26 @@ const getMemory = async (userId) => {
     if (!userId) return '';
     try {
         const { data } = await supabase.from('memories').select('content').eq('user_id', userId).single();
-        return data?.content || '';
+        const raw = data?.content || '';
+        return decryptField(raw); // şifreli ise çöz
     } catch { return ''; }
 };
 
 const saveMemory = async (userId, content) => {
     if (!userId) return;
     try {
-        // session_history'yi koru — üstüne yazma
         const { data: existing } = await supabase.from('memories').select('session_history').eq('user_id', userId).single();
         const eskiGecmis = existing?.session_history || [];
         await supabase.from('memories').upsert({
             user_id: userId,
-            content,
-            session_history: eskiGecmis, // koruyarak güncelle
+            content: encryptField(content), // AES şifrele
+            session_history: eskiGecmis,
             updated_at: new Date().toISOString()
         });
-    } catch (e) { console.error('[MEMORY] Kaydetme hatası:', e.message); }
+    } catch (e) {
+        console.error('[MEMORY] Kaydetme hatası:', e.message);
+        await logError('/save-memory', e.message, userId);
+    }
 };
 
 const updateUserProfile = async (userId, transcript, emotionState) => {
@@ -588,11 +716,19 @@ const updatePatternMemory = async (userId, sessionData) => {
 
         // SESSION HISTORY — son 5 seans özeti
         if (!existing.session_history) existing.session_history = [];
-        existing.session_history = [...existing.session_history, {
+        const seansEntry = {
             tarih: new Date().toISOString(),
             trend: sessionData.trend,
             dominant_duygu: sessionData.dominantDuygu
-        }].slice(-5);
+        };
+
+        // #27 — BEDEN DİLİ PUANI
+        if (sessionData.bedenDiliPuan !== undefined) {
+            seansEntry.aciklik_skoru = sessionData.bedenDiliPuan;
+            existing.son_aciklik_skoru = sessionData.bedenDiliPuan;
+        }
+
+        existing.session_history = [...existing.session_history, seansEntry].slice(-5);
 
         await supabase.from('memories').upsert({
             user_id: userId,
@@ -614,6 +750,14 @@ app.get('/config', (req, res) => {
 // ─── PING ──────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
+});
+
+// ─── FRONTEND ERROR LOGLAMA (#43) ──────────────────────────
+app.post('/log-error', async (req, res) => {
+    const { userId, error, source, line, col } = req.body;
+    if (!error) return res.sendStatus(400);
+    await logError('/frontend', `${error} | ${source}:${line}:${col}`, userId || null);
+    res.sendStatus(200);
 });
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
@@ -713,7 +857,62 @@ app.post('/vapi-webhook', async (req, res) => {
                 }
             } catch (e) { console.error('[EMOTION OZET] Hata:', e.message); }
 
-            const summary = summaryResponse.choices[0].message.content + emotionOzeti;
+            // #9 — SEANS SONU DUYGU KARŞILAŞTIRMASI
+            let seansKarsilastirma = '';
+            try {
+                if (activeSessionId) {
+                    const { data: allLogs } = await supabase
+                        .from('emotion_logs')
+                        .select('duygu, yogunluk, guven, timestamp')
+                        .eq('session_id', activeSessionId)
+                        .order('timestamp', { ascending: true });
+
+                    if (allLogs && allLogs.length >= 4) {
+                        const ilkCeyrek = allLogs.slice(0, Math.floor(allLogs.length / 4));
+                        const sonCeyrek = allLogs.slice(-Math.floor(allLogs.length / 4));
+                        const ilkYogunluk = ilkCeyrek.reduce((s, l) => s + yogunlukToNum(l.yogunluk), 0) / ilkCeyrek.length;
+                        const sonYogunluk = sonCeyrek.reduce((s, l) => s + yogunlukToNum(l.yogunluk), 0) / sonCeyrek.length;
+                        const fark = sonYogunluk - ilkYogunluk;
+                        const sonDuygu = sonCeyrek[sonCeyrek.length - 1]?.duygu || 'bilinmiyor';
+                        const ilkDuygu = ilkCeyrek[0]?.duygu || 'bilinmiyor';
+                        if (Math.abs(fark) > 15) {
+                            seansKarsilastirma = `\nSeans duygu değişimi: "${ilkDuygu}" → "${sonDuygu}" (${fark > 0 ? '+' : ''}${Math.round(fark)} puan yoğunluk ${fark > 0 ? 'artışı' : 'düşüşü'}).`;
+                        } else {
+                            seansKarsilastirma = `\nSeans boyunca duygu stabil kaldı (${ilkDuygu} → ${sonDuygu}).`;
+                        }
+                    }
+                }
+            } catch (e) { console.error('[SEANS KARSILASTIRMA] Hata:', e.message); }
+
+            // #7 — GÜVEN İNŞA SKORU
+            let guvenSkoru = '';
+            try {
+                const { data: patternData } = await supabase
+                    .from('user_profiles')
+                    .select('pattern_memory')
+                    .eq('user_id', userId)
+                    .single();
+
+                const pattern = patternData?.pattern_memory || {};
+                const seansCount = (pattern.toplam_seans || 0) + 1;
+                const pozitifSeans = (pattern.pozitif_seans || 0) + (emotionOzeti.includes('iyileşiyor') ? 1 : 0);
+                const guvenSkor = Math.min(100, Math.round((pozitifSeans / Math.max(seansCount, 1)) * 60 + Math.min(seansCount * 4, 40)));
+                guvenSkoru = `\nGüven inşa skoru: ${guvenSkor}/100 (${seansCount}. seans).`;
+
+                // Skoru pattern_memory'ye kaydet
+                await supabase.from('user_profiles').upsert({
+                    user_id: userId,
+                    pattern_memory: {
+                        ...pattern,
+                        toplam_seans: seansCount,
+                        pozitif_seans: pozitifSeans,
+                        guven_skoru: guvenSkor,
+                        son_guncelleme: new Date().toISOString()
+                    }
+                }, { onConflict: 'user_id' });
+            } catch (e) { console.error('[GÜVEN SKORU] Hata:', e.message); }
+
+            const summary = summaryResponse.choices[0].message.content + emotionOzeti + seansKarsilastirma + guvenSkoru;
             await saveMemory(userId, summary);
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
@@ -727,10 +926,40 @@ app.post('/vapi-webhook', async (req, res) => {
             if (transcriptDataForPattern) {
                 const konular = trackSessionTopics(transcriptDataForPattern.fullTranscript);
                 const emotionState = userEmotions.get(userId);
+
+                // #27 — BEDEN DİLİ PUANI hesapla (emotion_logs jestlerinden)
+                let bedenDiliPuan = 50; // başlangıç nötr
+                try {
+                    if (activeSessionId) {
+                        const { data: jestLogs } = await supabase
+                            .from('emotion_logs')
+                            .select('jestler')
+                            .eq('session_id', activeSessionId);
+                        if (jestLogs && jestLogs.length > 0) {
+                            let puan = 50;
+                            jestLogs.forEach(log => {
+                                const j = log.jestler || {};
+                                if (j.kas_catma)                         puan -= 1;
+                                if (j.gozyasi_izi)                       puan -= 2;
+                                if (j.dudak_sikistirma)                  puan -= 1;
+                                if (j.bas_egme)                          puan -= 1;
+                                if (j.goz_temasi === 'düşük')            puan -= 2;
+                                if (j.omuz_durusu === 'düşük')           puan -= 2;
+                                if (j.goz_temasi === 'yüksek')           puan += 2;
+                                if (j.omuz_durusu === 'yüksek')          puan += 2;
+                                if (j.genel_vucut_dili === 'açık')       puan += 3;
+                                if (j.genel_vucut_dili === 'kapalı')     puan -= 3;
+                            });
+                            bedenDiliPuan = Math.max(0, Math.min(100, Math.round(50 + (puan - 50) / jestLogs.length * 10)));
+                        }
+                    }
+                } catch (e) { /* beden dili hesap hatası → 50 kullan */ }
+
                 await updatePatternMemory(userId, {
                     trend: emotionState?.trend || 'stabil',
                     konular,
-                    dominantDuygu: emotionState?.dominant_duygu || 'sakin'
+                    dominantDuygu: emotionState?.dominant_duygu || 'sakin',
+                    bedenDiliPuan
                 });
                 sessionTranscriptStore.delete(userId);
             }
@@ -903,7 +1132,18 @@ app.get('/cron-checkin', async (req, res) => {
 });
 
 // ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
-app.post('/analyze-emotion', async (req, res) => {
+// Rate limiter: max 30 istek/dk per userId veya IP
+const emotionRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    keyGenerator: (req) => req.body?.userId || req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
+    },
+    skip: (req) => !req.body?.userId // userId yoksa atla
+});
+
+app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
     try {
         const { imageBase64, userId, sessionId } = req.body;
         if (!imageBase64) return res.json({ duygu: 'sakin', guven: 0, yuz_var: false });

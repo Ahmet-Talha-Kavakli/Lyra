@@ -166,6 +166,36 @@
         #vizual-kapat { font-size: 11px; color: rgba(255,255,255,0.2); cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; }
         #vizual-kapat:hover { color: rgba(255,255,255,0.4); }
 
+        /* ── SEANS PROGRESS BAR (#16) ── */
+        #seans-progress-wrap {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 3px;
+            background: rgba(255,255,255,0.04); z-index: 7000;
+            display: none;
+        }
+        #seans-progress-wrap.active { display: block; }
+        #seans-progress-bar {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 1s linear;
+        }
+
+        /* ── TOAST BİLDİRİM (#36) ── */
+        #toast-container {
+            position: fixed; top: 20px; right: 20px; z-index: 9000;
+            display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+        }
+        .toast {
+            background: rgba(20,14,40,0.92); border: 1px solid rgba(180,140,255,0.25);
+            border-radius: 12px; padding: 10px 16px; max-width: 260px;
+            font-size: 12px; color: rgba(255,255,255,0.75); letter-spacing: 0.04em;
+            backdrop-filter: blur(16px);
+            animation: toastIn 0.3s ease forwards;
+            pointer-events: auto;
+        }
+        .toast.fade-out { animation: toastOut 0.4s ease forwards; }
+        @keyframes toastIn  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes toastOut { from { opacity:1; transform: translateX(0); } to { opacity:0; transform: translateX(20px); } }
+
         .bottom-controls {
             display: flex;
             flex-direction: column;
@@ -464,12 +494,9 @@
             width: 3px;
             background: var(--primary);
             border-radius: 2px;
-            animation: mic-wave 0.8s ease-in-out infinite;
+            transition: height 0.08s ease-out;
+            min-height: 4px;
         }
-        #mic-indicator span:nth-child(2) { animation-delay: 0.1s; }
-        #mic-indicator span:nth-child(3) { animation-delay: 0.2s; }
-        #mic-indicator span:nth-child(4) { animation-delay: 0.3s; }
-        #mic-indicator span:nth-child(5) { animation-delay: 0.15s; }
 
         #loader-bar-wrap {
             width: 220px;
@@ -667,6 +694,14 @@
         <div id="nefes-kapat" onclick="kapat478()">Kapat</div>
     </div>
 
+    <!-- SEANS PROGRESS BAR (#16) -->
+    <div id="seans-progress-wrap">
+        <div id="seans-progress-bar"></div>
+    </div>
+
+    <!-- TOAST BİLDİRİM CONTAINER (#36) -->
+    <div id="toast-container"></div>
+
     <!-- ACİL YARDIM BUTONU -->
     <div id="acil-btn" onclick="acilAc()" title="Acil Yardım">🆘</div>
     <div id="acil-modal">
@@ -837,6 +872,26 @@
                 }
             });
         }
+
+        // #43 — FRONTEND HATA SINIIRI (Error Boundary)
+        window.onerror = function(message, source, lineno, colno, error) {
+            const uid = persistentUserId || null;
+            fetch('/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: uid, error: message, source, line: lineno, col: colno })
+            }).catch(() => {}); // sessiz hata — loglama başarısız olsa bile UI çalışmaya devam eder
+            return false; // tarayıcının varsayılan hata işleyicisini de çalıştır
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            const uid = persistentUserId || null;
+            fetch('/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: uid, error: String(event.reason), source: 'unhandledrejection', line: 0, col: 0 })
+            }).catch(() => {});
+        });
 
         // Auth bittikten sonra sahneyi başlat
         initAuth().then(() => {
@@ -1068,6 +1123,16 @@
                 if (!result?.yuz_var) { scheduleNextAnalysis(); return; }
 
                 currentEmotionState = result.duygu;
+
+                // #11 — AVATAR DUYGU YANSIMASI: Kullanıcının duygusu avatarı etkiler
+                // Lyra aktif konuşmuyorsa, kullanıcının duygusuyla empatik idle animasyon oynat
+                if (!isCallActive || (currentAction && currentAction._clip?.name === (animationsMap['Idle']?._clip?.name || 'Idle'))) {
+                    if (result.duygu === 'üzgün' && result.yogunluk !== 'düşük') {
+                        playAnimation('Sad');
+                    } else if (result.duygu === 'sinirli' && result.yogunluk === 'yüksek') {
+                        setTimeout(() => playAnimation('Sad'), 500); // sakin yansıma
+                    }
+                }
 
                 // Sessizlik tipi güncelle
                 if (silenceDuration > 5) {
@@ -1473,6 +1538,12 @@
                     avatar.rotation.x *= 0.9; // sıfıra dön
                 }
 
+                // #14 — AVATAR BAKIŞ: Kullanıcı konuşunca Lyra hafifçe sola bakar (kameraya)
+                // #12 — AVATAR BAŞ HAREKETİ: Merak edince hafif sola tilt
+                const userSpeaking = (typeof targetVolume !== 'undefined') && targetVolume > 0.05;
+                const headTiltTarget = userSpeaking ? -0.04 : 0;
+                avatar.rotation.z = (avatar.rotation.z || 0) + (headTiltTarget - (avatar.rotation.z || 0)) * 0.02;
+
                 // C) Avatar spotlight — konuşunca parlaklık artar
                 if (window.avatarSpot) {
                     const targetIntensity = 1.2 + currentVolume * 2.0;
@@ -1531,6 +1602,8 @@
             silenceStartTime = null;
             statusEl.textContent = "GÖRÜŞME AKTİF";
             statusEl.classList.add('listening');
+            showToast('Lyra bağlandı — konuşmaya hazır');
+            startSeansProgress();
             talkBtn.textContent = "BAĞLANTIYI KES";
             talkBtn.classList.add('active');
             document.getElementById('mic-indicator').classList.add('active');
@@ -1593,6 +1666,7 @@
             clearTimeout(autoReconnectTimer);
             reconnectAttempts = 0;
             isCallActive = false;
+            stopSeansProgress();
             statusEl.textContent = "SİSTEM HAZIR";
             statusEl.classList.remove('listening');
             talkBtn.textContent = "GÖRÜŞMEYİ BAŞLAT";
@@ -1632,8 +1706,25 @@
             }
         });
 
+        // #18 — SES DALGASI GÖRSELLEŞTİRMESİ
+        const micBars = document.querySelectorAll('#mic-indicator span');
         vapiInstance.on('volume-level', vol => {
             targetVolume = vol;
+
+            // Waveform bar heights driven by volume
+            if (micBars.length > 0) {
+                const base = 6;
+                const heights = [
+                    base + vol * 24,
+                    base + vol * 38,
+                    base + vol * 48,
+                    base + vol * 32,
+                    base + vol * 20
+                ];
+                micBars.forEach((bar, i) => {
+                    if (heights[i] !== undefined) bar.style.height = Math.round(heights[i]) + 'px';
+                });
+            }
 
             // Ses pattern takibi
             sesGecmisi.push(vol);
@@ -1693,10 +1784,20 @@
                         konusmaTempo = yeniTempo;
                     }
                 }
+                // #15 — TİPOGRAFİK YAZICI ETKİSİ (Typewriter)
                 transcriptEl.style.opacity = '0';
                 setTimeout(() => {
-                    transcriptEl.textContent = `"${message.transcript}"`;
                     transcriptEl.style.opacity = '1';
+                    const fullText = `"${message.transcript}"`;
+                    transcriptEl.textContent = '';
+                    let charIdx = 0;
+                    const typeInterval = setInterval(() => {
+                        if (charIdx < fullText.length) {
+                            transcriptEl.textContent += fullText[charIdx++];
+                        } else {
+                            clearInterval(typeInterval);
+                        }
+                    }, 18);
                 }, 150);
 
                 if      (text.includes('mutlu') || text.includes('harika')) emotionState = 'neutral';
@@ -1720,7 +1821,7 @@
 
         let autoReconnectTimer = null;
         let reconnectAttempts = 0;
-        const MAX_RECONNECT = 3;
+        const MAX_RECONNECT = 4;
         let isEjectionPending = false;
 
         function resetCallUI() {
@@ -1742,7 +1843,8 @@
                 return;
             }
             reconnectAttempts++;
-            const delay = reconnectAttempts * 3000; // 3s, 6s, 9s
+            // Exponential backoff + jitter: 2s, 4s, 8s, 16s (+0-500ms random)
+            const delay = Math.pow(2, reconnectAttempts) * 1000 + Math.random() * 500;
             statusEl.textContent = `YENİDEN BAĞLANIYOR (${reconnectAttempts}/${MAX_RECONNECT})...`;
             console.warn(`[VAPI] ${delay/1000}s sonra otomatik yeniden bağlanma deneme ${reconnectAttempts}...`);
             clearTimeout(autoReconnectTimer);
@@ -1750,6 +1852,7 @@
                 try {
                     await vapiInstance.start(VAPI_ASSISTANT_ID, { variableValues: { userId: persistentUserId }, maxDurationSeconds: 3600 });
                     reconnectAttempts = 0;
+                    showToast('Bağlantı yenilendi — konuşmaya devam');
                     console.log('[VAPI] Otomatik yeniden bağlanma başarılı.');
                 } catch(e) {
                     console.error('[VAPI] Yeniden bağlanma başarısız:', e);
@@ -1822,6 +1925,49 @@
         // ── ACİL YARDIM ─────────────────────────────────────
         function acilAc()  { document.getElementById('acil-modal').classList.add('active'); }
         function acilKapat(){ document.getElementById('acil-modal').classList.remove('active'); }
+
+        // ── SEANS PROGRESS BAR (#16) ──────────────────────
+        const SEANS_SURE_MS = 50 * 60 * 1000; // 50 dakika
+        let seansBaslangic = null;
+        let seansProgressInterval = null;
+
+        function startSeansProgress() {
+            seansBaslangic = Date.now();
+            const wrap = document.getElementById('seans-progress-wrap');
+            const bar  = document.getElementById('seans-progress-bar');
+            if (!wrap || !bar) return;
+            wrap.classList.add('active');
+            bar.style.width = '0%';
+            clearInterval(seansProgressInterval);
+            seansProgressInterval = setInterval(() => {
+                const gecen = Date.now() - seansBaslangic;
+                const yuzde = Math.min(100, (gecen / SEANS_SURE_MS) * 100);
+                bar.style.width = yuzde + '%';
+                if (yuzde >= 80 && yuzde < 81) showToast('Seans %80 tamamlandı — yakında sonlandırabiliriz');
+                if (yuzde >= 100) { clearInterval(seansProgressInterval); showToast('50 dakika tamamlandı'); }
+            }, 1000);
+        }
+
+        function stopSeansProgress() {
+            clearInterval(seansProgressInterval);
+            const wrap = document.getElementById('seans-progress-wrap');
+            if (wrap) wrap.classList.remove('active');
+            seansBaslangic = null;
+        }
+
+        // ── TOAST BİLDİRİM (#36) ──────────────────────────
+        function showToast(message, duration = 4000) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
+            }, duration);
+        }
 
         // ── GUIDED VİZUALIZATION ─────────────────────────────
         const VIZUAL_SCRIPT = [
