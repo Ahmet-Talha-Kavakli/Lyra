@@ -810,6 +810,15 @@
         let lastUserMessage = '';
         let transcriptStreamInterval = null;
 
+        // Ses zekası
+        let sesGecmisi = [];           // Son 20 volume değeri
+        let sesYogunlukOrt = 0;
+        let sesTitreme = false;
+        let konusmaBaslangic = null;
+        let konusmaKelimeSayisi = 0;
+        let konusmaTempo = 0;          // kelime/saniye
+        let tempoGecmisi = [];         // Son 5 tempo değeri
+
         function getBaseInterval(duygu) {
             if (['korkmuş', 'sinirli'].includes(duygu))               return 1500;
             if (['endişeli', 'üzgün', 'iğnelenmiş'].includes(duygu)) return 2000;
@@ -875,7 +884,10 @@
                 const ctx = hiddenCanvas.getContext('2d');
                 hiddenCanvas.width = 640;
                 hiddenCanvas.height = 480;
+                // Düşük ışık telafisi — brightness ve contrast artır
+                ctx.filter = 'brightness(1.5) contrast(1.25) saturate(1.1)';
                 ctx.drawImage(userVideo, 0, 0, 640, 480);
+                ctx.filter = 'none';
                 const imageBase64 = hiddenCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
 
                 const resp = await fetch('/analyze-emotion', {
@@ -1358,6 +1370,13 @@
             // Transcript streaming — her 5sn'de sunucuya gönder
             transcriptStreamInterval = setInterval(() => {
                 if (!persistentUserId || !isCallActive) return;
+                // Tempo trendi hesapla
+                let tempoTrend = 'stabil';
+                if (tempoGecmisi.length >= 3) {
+                    const fark = tempoGecmisi[tempoGecmisi.length-1] - tempoGecmisi[0];
+                    if (fark > 0.5) tempoTrend = 'artıyor';
+                    else if (fark < -0.5) tempoTrend = 'azalıyor';
+                }
                 fetch('/update-transcript', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1365,7 +1384,11 @@
                         userId: persistentUserId,
                         fullTranscript: fullConversation,
                         silenceDuration: Math.round(silenceDuration),
-                        lastSegment: lastUserMessage
+                        lastSegment: lastUserMessage,
+                        sesYogunlukOrt: Math.round(sesYogunlukOrt * 100) / 100,
+                        sesTitreme,
+                        konusmaTempo: Math.round(konusmaTempo * 10) / 10,
+                        tempoTrend
                     })
                 }).catch(() => {});
             }, 5000);
@@ -1396,6 +1419,13 @@
             silenceStartTime = null;
             silenceDuration = 0;
             lastUserMessage = '';
+            sesGecmisi = [];
+            sesYogunlukOrt = 0;
+            sesTitreme = false;
+            konusmaBaslangic = null;
+            konusmaKelimeSayisi = 0;
+            konusmaTempo = 0;
+            tempoGecmisi = [];
 
             console.log('[MEMORY] call-end fired. userId:', persistentUserId, 'transcript length:', fullConversation.length);
             console.log('[MEMORY] transcript preview:', fullConversation.substring(0, 200));
@@ -1416,6 +1446,17 @@
 
         vapiInstance.on('volume-level', vol => {
             targetVolume = vol;
+
+            // Ses pattern takibi
+            sesGecmisi.push(vol);
+            if (sesGecmisi.length > 20) sesGecmisi.shift();
+            if (sesGecmisi.length >= 5) {
+                sesYogunlukOrt = sesGecmisi.reduce((a, b) => a + b, 0) / sesGecmisi.length;
+                const ort = sesYogunlukOrt;
+                const stdDev = Math.sqrt(sesGecmisi.reduce((s, v) => s + Math.pow(v - ort, 2), 0) / sesGecmisi.length);
+                sesTitreme = stdDev > 0.08 && ort > 0.05; // Konuşurken titreme
+            }
+
             if (panelUserEl) {
                 if (vol > 0.05) {
                     panelUserEl.classList.add('speaking');
@@ -1446,7 +1487,20 @@
             if (message?.type === 'transcript' && message.transcriptType === 'final') {
                 const text = message.transcript.toLowerCase();
                 fullConversation += (message.role || 'user') + ': ' + message.transcript + '\n';
-                if (message.role === 'user') lastUserMessage = message.transcript;
+                if (message.role === 'user') {
+                    lastUserMessage = message.transcript;
+                    // Konuşma temposu hesapla
+                    const kelimeler = message.transcript.trim().split(/\s+/).length;
+                    if (!konusmaBaslangic) konusmaBaslangic = Date.now();
+                    konusmaKelimeSayisi += kelimeler;
+                    const sure = (Date.now() - konusmaBaslangic) / 1000;
+                    if (sure > 0) {
+                        const yeniTempo = konusmaKelimeSayisi / sure;
+                        tempoGecmisi.push(yeniTempo);
+                        if (tempoGecmisi.length > 5) tempoGecmisi.shift();
+                        konusmaTempo = yeniTempo;
+                    }
+                }
                 transcriptEl.style.opacity = '0';
                 setTimeout(() => {
                     transcriptEl.textContent = `"${message.transcript}"`;

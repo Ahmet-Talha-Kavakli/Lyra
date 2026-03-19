@@ -168,16 +168,63 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu) => {
     return kurallar.join(' ');
 };
 
+// L7: Seans Momentum & Adaptasyon
+const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
+    if (!sonAnaliz) return '';
+    const kurallar = [];
+
+    // Günlük kapasite hesapla
+    const ilkYogunluk = gecmis?.[0]?.yogunluk;
+    const sonYogunluk = sonAnaliz.yogunluk;
+    const dusukKapasite = ilkYogunluk === 'yüksek' || sonYogunluk === 'yüksek';
+
+    if (dusukKapasite && gecmis?.length <= 3)
+        kurallar.push('Kullanıcı bugün zor bir günde görünüyor. Ağır konulara girme, hafif ve destekleyici kal.');
+
+    // Profil bazlı adaptasyon
+    if (userProfile?.soru_toleransi === 'düşük')
+        kurallar.push('Bu kullanıcı çok soru sormaktan rahatsız oluyor. Maksimum 1 soru sor, sonra bekle.');
+
+    if (userProfile?.iletisim_tarzi === 'kapalı')
+        kurallar.push('Bu kullanıcı kapalı iletişim tarzına sahip. Zorlamadan, nazikçe açılmasını bekle.');
+
+    if (userProfile?.sessizlik_konforu === true)
+        kurallar.push('Bu kullanıcı sessizliğe alışkın — 15 saniyeye kadar bekleyebilirsin, doldurmak zorunda değilsin.');
+
+    // Tetikleyici konu tespiti
+    const tetikleyiciler = userProfile?.tetikleyiciler || [];
+    const transcript = transcriptData?.fullTranscript?.toLowerCase() || '';
+    const aktifTetikleyici = tetikleyiciler.find(t => transcript.includes(t));
+    if (aktifTetikleyici)
+        kurallar.push(`"${aktifTetikleyici}" bu kullanıcı için bilinen bir tetikleyici. Bu konuda özellikle yavaş ve dikkatli ol.`);
+
+    return kurallar.join(' ');
+};
+
 const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
     const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
 
-    // ── TEHLİKE PROTOKOLÜ (en yüksek öncelik) ──────────────
+    // ── TEHLİKE & ZARAR PROTOKOLÜ (en yüksek öncelik) ─────
     if (ortam?.tehlike_var === true) {
         const nesne = ortam.tehlikeli_nesne || 'tehlikeli nesne';
-        kurallar.push(`KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında "${nesne}" tespit edildi. Hemen nazikçe sor: "Şu an elinde bir şey var,괜찮아mısın?" Sakin kal, yargılama, güvenliğini önce sorgula.`);
+        kurallar.push(`KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında "${nesne}" tespit edildi. Hemen nazikçe sor: "Şu an elinde bir şey var, iyi misin?" Sakin kal, yargılama, güvenliğini önce sorgula.`);
     }
+
+    if (ortam?.zarar_sinyali === true) {
+        if (yogunluk === 'yüksek')
+            kurallar.push('KRİZ: Kullanıcı kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninle buradayım." Sakin kal, suçlama yapma, güvenli alan yarat.');
+        else
+            kurallar.push('Kullanıcının hareketi dikkat çekici. Nazikçe sor: "Şu an kendine iyi bakıyor musun?" — baskı yapma, sadece fark ettiğini göster.');
+    }
+
+    // ── ORTAM OLAYI ────────────────────────────────────────
+    if (ortam?.arkaplan_kisi === true && ortam?.ani_degisim === true)
+        kurallar.push('Arka planda biri var veya yeni geldi ve kullanıcının yüzü ani değişti. Nazikçe sor: "Az önce bir şey mi oldu? Yüzün birden değişti."');
+
+    if (ortam?.ortam_gerilimi === 'var' && ortam?.ani_degisim === true)
+        kurallar.push('Ortamda gerilim var ve kullanıcı etkilendi. "Şu an bulunduğun ortam güvenli mi?" diye sor.');
 
     // ── GÖRME FARKINDALĞI — Lyra görebildiğini bilsin ──────
     if (gorunum_ozeti && guven > 70) {
@@ -206,6 +253,35 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     if (yogunluk === 'yüksek' && jestler?.kas_catma === true)
         kurallar.push('Yüksek yoğunluk ve kaş çatma. Yavaş konuş, kısa cümleler kur.');
 
+    // ── MİKRO İFADE ─────────────────────────────────────────
+    const mikro = sonAnaliz.mikro_duygu;
+    if (mikro && mikro !== 'yok') {
+        const mikroMap = {
+            'gizli_öfke':    'Kullanıcı yüzünde anlık öfke sinyali var ama bunu gizliyor. "Seni gerçekten ne rahatsız etti?" diye sor.',
+            'gizli_üzüntü':  'Kullanıcı gülümsüyor ama gizli bir üzüntü var. "Gerçekten nasılsın, içten söyle?" diye sor.',
+            'gizli_korku':   'Kullanıcıda gizli korku var. Güven ver, yargılama, "Burada güvendesin" de.',
+            'gizli_tiksinme':'Kullanıcı bir konudan/kişiden tiksinme hissediyor ama söylemek istemiyor. Nazikçe aç.'
+        };
+        if (mikroMap[mikro]) kurallar.push(mikroMap[mikro]);
+    }
+
+    // ── NEFES & TİTREME ─────────────────────────────────────
+    if (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel')
+        kurallar.push('Nefes hızlanmış/yüzeysel — kaygı artıyor. 4-7-8 nefes tekniği öner: "Birlikte nefes alalım mı?"');
+
+    if (jestler?.nefes_hizi === 'tutuyor')
+        kurallar.push('Kullanıcı nefesini tutuyor — yüksek stres veya şok. "Bir nefes al" de, hemen yavaşlat.');
+
+    if (jestler?.el_titreme === true)
+        kurallar.push('El titremesi var — yüksek kaygı veya korku. Zemine in, güvenli alan yarat, soru sormayı bırak.');
+
+    // ── GÖZ YASI BİRİKİMİ ───────────────────────────────────
+    if (jestler?.goz_yasi_birikimi === 'başlıyor')
+        kurallar.push('Göz yaşı birikiyor ama henüz akmadı. Sessiz kal, alan tanı. "Buradayım" de, devam etmesini zorlamaz.');
+
+    if (jestler?.goz_yasi_birikimi === 'belirgin')
+        kurallar.push('Belirgin göz yaşı birikimi — ağlamak üzere. Hiç soru sorma, sadece "Seninle buradayım, devam et" de.');
+
     // ── NESNE FARKINDALĞI ───────────────────────────────────
     if (ortam?.nesneler?.length > 0 && !ortam.tehlike_var) {
         const ilginc = ortam.nesneler.filter(n => !['bardak', 'telefon', 'masa', 'sandalye', 'koltuk'].includes(n.toLowerCase()));
@@ -216,7 +292,7 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller) => {
     return kurallar.join(' ');
 };
 
-const buildLayer2Rules = (trend, dominantDuygu, gecmis) => {
+const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
     if (!gecmis || gecmis.length < 2) return '';
     const kurallar = [];
 
@@ -225,6 +301,26 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis) => {
 
     if (trend === 'iyileşiyor')
         kurallar.push('Kullanıcı sakinleşiyor. Bu ilerlemeyi nazikçe yansıt, zorlamadan teşvik et.');
+
+    // ── SES ZEKASI KURALLARI ────────────────────────────────
+    if (transcriptData) {
+        const { sesTitreme, sesYogunlukOrt, tempoTrend, konusmaTempo } = transcriptData;
+
+        if (sesTitreme && (dominantDuygu === 'üzgün' || dominantDuygu === 'korkmuş'))
+            kurallar.push('Kullanıcının sesi titriyor ve duygusal. "Sesin biraz titriyor,괜찮아mısın?" diyebilirsin. Ağlamak üzere olabilir, nazik ol.');
+
+        if (sesTitreme && dominantDuygu === 'sinirli')
+            kurallar.push('Ses titremesi + sinirli = öfke kontrolünü zorlanıyor. Sakin ve yavaş konuş, ses tonunu düşür.');
+
+        if (tempoTrend === 'azalıyor' && konusmaTempo < 1.5)
+            kurallar.push('Konuşma hızı giderek azalıyor — enerji düşüyor veya kapanıyor. Enerjik sorular sorma, hafif kal.');
+
+        if (sesYogunlukOrt > 0.7 && dominantDuygu === 'sinirli')
+            kurallar.push('Yüksek ses şiddeti + sinirli = öfke dorukta. Sesin tonunu düşür, kısa cümleler kur, zemine in.');
+
+        if (tempoTrend === 'artıyor' && konusmaTempo > 3)
+            kurallar.push('Kullanıcı çok hızlı konuşuyor — kaygı veya acelesi var. Nazikçe yavaşlat: "Bir nefes alalım mı?"');
+    }
 
     const son5 = gecmis.slice(-5);
     const hepsiYogun = son5.length === 5 && son5.every(a => a.yogunluk === 'yüksek' || a.yogunluk === 'orta');
@@ -301,6 +397,62 @@ const saveMemory = async (userId, content) => {
     } catch (e) { console.error('[MEMORY] Kaydetme hatası:', e.message); }
 };
 
+const updateUserProfile = async (userId, transcript, emotionState) => {
+    if (!userId || !transcript || transcript.length < 50) return;
+    try {
+        const { data } = await supabase.from('memories').select('user_profile').eq('user_id', userId).single();
+        const mevcutProfil = data?.user_profile || {};
+
+        const profilGuncelleme = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{
+                role: 'system',
+                content: `Sen bir klinik psikolog asistanısın. Bu seans transcript'ini analiz et ve kullanıcının kişilik profilini güncelle.
+
+Mevcut profil: ${JSON.stringify(mevcutProfil)}
+Baskın duygu bu seansta: ${emotionState?.dominant_duygu || 'bilinmiyor'}
+Duygu trendi: ${emotionState?.trend || 'stabil'}
+
+Şunları belirle ve JSON olarak döndür:
+{
+  "savunma_mekanizmalari": ["espri yapma", "konu değiştirme", "küçümseme"],
+  "tetikleyiciler": ["aile", "iş", "gelecek"],
+  "guclu_yonler": ["öz-farkındalık", "cesaret"],
+  "iletisim_tarzi": "açık|kapalı|savunmacı|işbirlikçi",
+  "duygusal_tepki_hizi": "hızlı|yavaş|orta",
+  "sessizlik_konforu": true,
+  "soru_toleransi": "düşük|orta|yüksek",
+  "basarili_mudahaleler": ["nefes", "sokratik_soru"],
+  "ozet": "1 cümle kişilik özeti"
+}
+Sadece JSON döndür.`
+            }, {
+                role: 'user',
+                content: `Transcript:\n${transcript.slice(-2000)}`
+            }],
+            max_tokens: 300
+        });
+
+        let yeniProfil = mevcutProfil;
+        try {
+            const raw = profilGuncelleme.choices[0].message.content.trim().replace(/```json|```/g, '');
+            const parsed = JSON.parse(raw);
+            // Mevcut profille birleştir
+            yeniProfil = {
+                ...mevcutProfil,
+                ...parsed,
+                tetikleyiciler: [...new Set([...(mevcutProfil.tetikleyiciler || []), ...(parsed.tetikleyiciler || [])])],
+                savunma_mekanizmalari: [...new Set([...(mevcutProfil.savunma_mekanizmalari || []), ...(parsed.savunma_mekanizmalari || [])])],
+                basarili_mudahaleler: [...new Set([...(mevcutProfil.basarili_mudahaleler || []), ...(parsed.basarili_mudahaleler || [])])],
+                guncelleme_tarihi: new Date().toISOString()
+            };
+        } catch { /* parse hatası → mevcut profil korunur */ }
+
+        await supabase.from('memories').upsert({ user_id: userId, user_profile: yeniProfil, updated_at: new Date().toISOString() });
+        console.log(`[PROFİL] ✅ Kişilik profili güncellendi: ${userId}`);
+    } catch (e) { console.error('[PROFİL] Hata:', e.message); }
+};
+
 const updatePatternMemory = async (userId, sessionData) => {
     if (!userId) return;
     try {
@@ -351,12 +503,16 @@ app.get('/ping', (req, res) => {
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
 app.post('/update-transcript', (req, res) => {
-    const { userId, fullTranscript, silenceDuration, lastSegment } = req.body;
+    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend } = req.body;
     if (!userId) return res.sendStatus(400);
     sessionTranscriptStore.set(userId, {
         fullTranscript: fullTranscript || '',
         silenceDuration: silenceDuration || 0,
         lastSegment: lastSegment || '',
+        sesYogunlukOrt: sesYogunlukOrt || 0,
+        sesTitreme: sesTitreme || false,
+        konusmaTempo: konusmaTempo || 0,
+        tempoTrend: tempoTrend || 'stabil',
         updatedAt: Date.now()
     });
     res.sendStatus(200);
@@ -444,6 +600,10 @@ app.post('/vapi-webhook', async (req, res) => {
             await saveMemory(userId, summary);
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
+
+            // Kişilik profili güncelle
+            const emotionStateForProfile = userEmotions.get(userId);
+            await updateUserProfile(userId, transcript, emotionStateForProfile);
 
             // Pattern memory güncelle
             const transcriptDataForPattern = sessionTranscriptStore.get(userId);
@@ -533,7 +693,7 @@ app.post('/api/chat/completions', async (req, res) => {
             console.log(`[KURAL MOTORU] son_analiz: ${son_analiz?.duygu} | yogunluk: ${son_analiz?.yogunluk} | guven: ${son_analiz?.guven}`);
 
             const l1 = buildLayer1Rules(son_analiz, aktif_sinyal);
-            const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || []);
+            const l2 = buildLayer2Rules(trend, dominant_duygu, gecmis || [], transcriptState);
             const l3 = buildLayer3Rules(userMemory, son_analiz, userId);
 
             // L4: Söz-yüz çelişkisi
@@ -555,7 +715,19 @@ app.post('/api/chat/completions', async (req, res) => {
                 l6 = buildLayer6Rules(patternMemory, son_analiz, dominant_duygu);
             } catch { /* pattern_memory yoksa geç */ }
 
-            const tumKurallar = [l1, l2, l3, l4, l5, l6].filter(Boolean).join(' ');
+            // L7: Seans momentum & profil adaptasyonu
+            let l7 = '';
+            try {
+                const { data: profileRow } = await supabase
+                    .from('memories')
+                    .select('user_profile')
+                    .eq('user_id', userId)
+                    .single();
+                const userProfile = profileRow?.user_profile || {};
+                l7 = buildLayer7Rules(userProfile, son_analiz, gecmis, transcriptState);
+            } catch { /* profil yoksa geç */ }
+
+            const tumKurallar = [l1, l2, l3, l4, l5, l6, l7].filter(Boolean).join(' ');
 
             if (tumKurallar) {
                 const sysIdx = enrichedMessages.findIndex(m => m.role === 'system');
@@ -617,13 +789,21 @@ BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
 5. Yüz görünmüyorsa SADECE {"yuz_var":false} döndür.
 6. guven: emin olduğunda 80+, tahmin ise 50-70.
 
-BÖLÜM 2 — ORTAM & NESNE ANALİZİ:
-Kişinin elinde veya yakınında görünen nesneleri tespit et.
-KRİTİK: Kesici/tehlikeli alet (bıçak, makas, cam, iğne vb.) varsa tehlike_var:true yaz.
-Ortam: ev, ofis, dışarı, araba gibi mekan bilgisini yaz.
+BÖLÜM 2 — ORTAM & NESNE & OLAY ANALİZİ:
+- Elinde/yakınında görünen nesneleri tespit et.
+- Kesici/tehlikeli alet (bıçak, makas, cam, iğne) varsa tehlike_var:true yaz.
+- Mekan: ev, ofis, dışarı, araba.
+
+ZARAR VERME SINYALI:
+Elindeki herhangi bir nesne (kalem, cisim dahil) kendi cildine tekrarlı temas veya baskı uyguluyorsa, ya da kişi kolunu/bedenini çiziyor/kazıyorsa: zarar_sinyali:true yaz.
+
+ORTAM OLAYI:
+- Arka planda başka biri var mı? arkaplan_kisi:true/false
+- Kişinin yüzü/postu ani değişti mi? ani_degisim:true/false
+- Ortamda gerilim/hareket var mı? ortam_gerilimi:"yok|var|belirsiz"
 
 Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem","bardak"],"tehlike_var":false,"tehlikeli_nesne":""},"gorunum_ozeti":"kısa bir cümle ile kişinin genel görünümü","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin"},"genel_vucut_dili":"açık|nötr|kapalı","ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
