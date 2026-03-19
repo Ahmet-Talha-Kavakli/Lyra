@@ -1970,53 +1970,34 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Sen deneyimli bir klinik psikolog, yüz ifadesi uzmanı ve çevre analisti olarak çalışıyorsun. Görüntüdeki kişiyi VE ortamı aynı anda analiz et.
+                        text: `Sen bir yüz analizi sistemisin. Görüntüde bir insan yüzü var mı yok mu — bunu dürüstçe belirle.
 
-BÖLÜM 1 — YÜZ & DUYGU ANALİZİ:
-1. "sakin" ancak gerçekten hiçbir duygu belirtisi yoksa yaz. Şüphe durumunda en belirgin duyguyu seç.
-2. Kaş çatma, çene gerginliği, sıkılmış dudaklar, dar gözler = sinirli/gergin.
-3. Düşük göz teması, omuz çöküklüğü, sarkık yüz = üzgün/yorgun.
-4. Hızlı göz kırpma, geniş gözler, gergin alın = endişeli/korkmuş.
-5. HAYALET YÜZ MODU: Görüntü karanlık, bulanık, grenli veya aşırı parlak olsa bile — siluet, saç çizgisi, omuz, göz yuvası gölgesi, ten tonu izi, herhangi bir insan şekli görünüyorsa yuz_var:true YAZ. Tahmin et, çıkarım yap. guven:40-55 ver.
-6. Görüntü TAMAMEN siyah piksel veya boş bir ekran değilse yuz_var:true yaz. Şüphe durumunda her zaman true. Sadece %100 insan olmayan bir görüntüde yuz_var:false döndür.
-7. YORGUNLUK & UYKU: goz_kapagi_agirlik ekle — "normal|hafif_agir|belirgin_agir". Göz kapakları düşükse belirgin_agir.
-8. TEN TONU SOLUKLUGU: yuz_soluklugu true ise soluk/ölü görünüyor. Yorgunluk, hastalık veya stres sinyali.
-9. guven: net görüntü=80+, karanlık/bulanık=40-65, siluet/hayalet=40-52. ASLA 40 altına düşürme.
+YÜZ VAR MI KURALI (EN ÖNEMLİ):
+- Görüntüde NET olarak bir insan yüzü (göz, burun, ağız) görünmüyorsa → yuz_var: false, guven: 0
+- Kamera kapalı, karanlık, el kapatmış, nesne var → yuz_var: false
+- Sadece gerçekten yüz görünüyorsa → yuz_var: true
+- Şüphe durumunda → yuz_var: false (uydurma, güvenilir ol)
 
-BÖLÜM 2 — ORTAM & NESNE & OLAY ANALİZİ:
-- Elinde/yakınında görünen nesneleri tespit et.
-- Kesici/tehlikeli alet (bıçak, makas, cam, iğne) varsa tehlike_var:true yaz.
-- Mekan: ev, ofis, dışarı, araba.
+DUYGU ANALİZİ (sadece yuz_var: true ise):
+- Kaş çatma, dar gözler, sıkılmış çene = sinirli
+- Sarkık yüz, düşük göz teması = üzgün/yorgun
+- Geniş gözler, gergin alın = endişeli/korkmuş
+- Rahat yüz, açık göz teması = sakin
+- Gülümseme (yanak kası aktifse gerçek, değilse sosyal) = mutlu
 
-ZARAR VERME SINYALI:
-Elindeki herhangi bir nesne (kalem, cisim dahil) kendi cildine tekrarlı temas veya baskı uyguluyorsa, ya da kişi kolunu/bedenini çiziyor/kazıyorsa: zarar_sinyali:true yaz.
-
-ORTAM OLAYI:
-- Arka planda başka biri var mı? arkaplan_kisi:true/false
-- Kişinin yüzü/postu ani değişti mi? ani_degisim:true/false
-- Ortamda gerilim/hareket var mı? ortam_gerilimi:"yok|var|belirsiz"
-
-⭐ LANDMARK VERİSİ UYARISI:
-Eğer yukarıda "MEDİAPİPE FACIAL LANDMARK ANALİZİ" varsa, bu ÖNEMLİ:
-- Bu landmark tarafından tahmin edilen duygular YÜKSEKTİR: O duygulara %30-50 daha fazla ağırlık ver
-- Örn. Landmark "anxiety" dedi ama GPT görüntüde nötr gördüyse → YINE DE anxiety kat kat daha güçlü
-- Landmark'lar GPT-4o vision'dan GAY GÜVENİLİRDİR çünkü:
-  * Karanlık ortamlarda çalışır
-  * Matematiksel (hile yapılamaz)
-  * 30 FPS real-time
-  * Facial action units (Ekman)'a dayalı
-
-SONUÇ FORMÜLÜ:
-final_emotion = 0.65 * landmark_emotion + 0.35 * gpt_vision_emotion
+GÜVEN SKORU:
+- Net yüz, iyi ışık → 75-95
+- Biraz bulanık/karanlık ama yüz var → 50-74
+- Yüz yok → 0
 
 ${buildLandmarkContext(landmarks)}
 
-Yalnızca geçerli JSON döndür, başka metin ekleme:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun|iğnelenmiş|küçümseyen","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":true,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","bas_egme":false,"omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"gozyasi_izi":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","nefes_hizi":"normal|hızlı|yüzeysel|tutuyor","el_titreme":false,"goz_yasi_birikimi":"yok|başlıyor|belirgin","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":["kalem"],"tehlike_var":false,"tehlikeli_nesne":"","zarar_sinyali":false,"arkaplan_kisi":false,"ani_degisim":false,"ortam_gerilimi":"yok|var|belirsiz"},"mikro_duygu":"yok|gizli_öfke|gizli_üzüntü|gizli_korku|gizli_tiksinme","gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+Yalnızca geçerli JSON döndür:
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","tehlike_var":false,"zarar_sinyali":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
-                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' }
+                        image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'auto' }
                     }
                 ]
             }],
