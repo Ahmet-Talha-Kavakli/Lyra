@@ -220,12 +220,14 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
     if (aktifTetikleyici)
         kurallar.push(`"${aktifTetikleyici}" bu kullanıcı için bilinen bir tetikleyici. Bu konuda özellikle yavaş ve dikkatli ol.`);
 
-    // DUYGU GEÇİŞ HIZI — duygusal labilite tespiti
-    if (gecmis && gecmis.length >= 8) {
-        const son8 = gecmis.slice(-8);
-        const benzersizDuygular = new Set(son8.map(a => a.duygu)).size;
-        if (benzersizDuygular >= 5)
-            kurallar.push('Kullanıcı son birkaç dakikada çok hızlı duygu değiştiriyor (duygusal labilite sinyali). Stabilizasyon moduna geç: zemine in, nefes ver, yavaşlat. Soru sorma.');
+    // DUYGU GEÇİŞ HIZI — duygusal labilite tespiti (#5)
+    if (gecmis && gecmis.length >= 10) {
+        const son10 = gecmis.slice(-10);
+        const benzersizDuygular = [...new Set(son10.map(a => a.duygu))];
+        const sayi = benzersizDuygular.length;
+        if (sayi >= 5) {
+            kurallar.push(`[#5 EMOSYONEL LABİLİTE] Son 10 dakikada ${sayi} farklı duygu: ${benzersizDuygular.join(', ')}. Çok hızlı değişme sinyali. Stabilizasyon moduna geç: zemine in, nefes ver, yavaşlat, soru sorma, derin dinle.`);
+        }
     }
 
     return kurallar.join(' ');
