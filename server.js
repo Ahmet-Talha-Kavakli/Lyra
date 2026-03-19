@@ -1915,6 +1915,39 @@ const buildLandmarkContext = (lm) => {
         emotionScore['anxiety'] = (emotionScore['anxiety'] || 0) + 0.25;
     }
 
+    // Advanced facial analysis signals (micro-expressions, hand-face, blink)
+    if (lm.micro_expressions) {
+        const me = lm.micro_expressions;
+        if (me.dominant_emotion !== 'neutral' && me.emotion_intensity > 0.3) {
+            signals.push(`🎭 MİKRO İFADE: ${me.dominant_emotion.toUpperCase()} (${(me.emotion_intensity * 100).toFixed(0)}% yoğunluk) - ${me.authenticity_score}`);
+            emotionScore[me.dominant_emotion] = (emotionScore[me.dominant_emotion] || 0) + me.emotion_intensity;
+        }
+    }
+
+    if (lm.hand_face_interaction) {
+        const hfi = lm.hand_face_interaction;
+        if (hfi.stress_indicators && hfi.stress_indicators.length > 0) {
+            signals.push(`🤚 EL HAREKETİ: ${hfi.stress_indicators.join(' | ')}`);
+            if (hfi.stress_score > 0.5) {
+                emotionScore['anxiety'] = (emotionScore['anxiety'] || 0) + hfi.stress_score;
+            }
+        }
+        if (hfi.deception_likelihood === 'high') {
+            signals.push(`⚠️ YALAN SINYALI ÇOK YÜKSEK: El yüze yakın (mouth/nose)`);
+            emotionScore['deception'] = (emotionScore['deception'] || 0) + 0.4;
+        }
+    }
+
+    if (lm.blink_analysis) {
+        const ba = lm.blink_analysis;
+        if (ba.signals && ba.signals.length > 0) {
+            signals.push(`👁️ KIRPıŞ ANALIZI: ${ba.signals.join(' | ')}`);
+            if (ba.cognitive_load > 0.6) {
+                emotionScore['anxiety'] = (emotionScore['anxiety'] || 0) + 0.2;
+            }
+        }
+    }
+
     if (signals.length === 0) return '';
 
     // En yüksek duyguyu bul
@@ -2005,6 +2038,31 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
             console.warn('[DUYGU PARSE] Hata:', parseErr.message, '| raw:', response.choices[0]?.message?.content?.slice(0, 100));
         }
 
+        // ────── ADVANCED FACIAL ANALYSIS (Micro-expressions, Hand-Face, Blink) ──────
+        let advancedAnalysis = null;
+        if (landmarks) {
+            try {
+                // Extract advanced features from landmarks if available
+                // Note: In production, these would come from MediaPipe detection
+                // For now, we use the basic landmarks to compute advanced signals
+                const testHandLandmarks = landmarks.hand_landmarks || null;
+                const testEyeData = {
+                    blink_rate: landmarks.blink_detected ? 0.25 : 0.18,
+                    pupil_dilation: 0.08,
+                    gaze_direction: { x: 0, y: 0 }
+                };
+                advancedAnalysis = advancedFacialAnalysis(
+                    landmarks, // Array would come from MediaPipe in production
+                    testHandLandmarks,
+                    testEyeData
+                );
+                result.advanced_facial = advancedAnalysis;
+                console.log(`[ADVANCED-FACIAL] stress:${(advancedAnalysis.overall_stress_level*100).toFixed(0)}% | confidence:${(advancedAnalysis.confidence*100).toFixed(0)}%`);
+            } catch (advErr) {
+                console.warn('[ADVANCED-FACIAL] Analiz hatası:', advErr.message);
+            }
+        }
+
         if (userId && result.yuz_var) {
             // userEmotions Map'i güncelle (gecmis: tam analiz objesi, jestler dahil)
             const mevcut = userEmotions.get(userId) || { gecmis: [] };
@@ -2041,7 +2099,8 @@ Yalnızca geçerli JSON döndür, başka metin ekleme:
                     trend: guncel.trend,
                     guven: result.guven,
                     mediapipe_landmarks: landmarks || null,
-                    yuz_soluklugu: result.yuz_soluklugu || false
+                    yuz_soluklugu: result.yuz_soluklugu || false,
+                    advanced_facial: advancedAnalysis || null
                 }).then(({ error }) => {
                     if (error) console.error('[EMOTION LOG] Insert hatası:', error.message);
                 });
@@ -2934,6 +2993,311 @@ try {
     console.error('[CRON] Zamanlandırma hatası:', err.message);
 }
 
+// ─── HAND-FACE INTERACTION DETECTION (Stress & Deception Indicators) ────────────────
+// El yüze dokunma = kaygı, stres, yalan göstergesi
+
+const analyzeHandFaceInteraction = (handLandmarks, faceLandmarks) => {
+    if (!handLandmarks || !faceLandmarks) return null;
+
+    const stressIndicators = [];
+    let stressScore = 0;
+
+    // Hand regions
+    const hand = handLandmarks; // 21 points per hand
+    const face = faceLandmarks;
+
+    if (!hand || hand.length < 21 || !face || face.length < 468) return null;
+
+    // Hand position (wrist + palm center)
+    const handCenter = {
+        x: (hand[5].x + hand[9].x + hand[13].x) / 3,
+        y: (hand[5].y + hand[9].y + hand[13].y) / 3
+    };
+
+    // Face regions
+    const faceCenter = {
+        x: (face[1].x + face[34].x + face[264].x) / 3,
+        y: (face[1].y + face[34].y + face[264].y) / 3
+    };
+
+    const mouthRegion = {
+        x: (face[13].x + face[14].x) / 2,
+        y: (face[13].y + face[14].y) / 2
+    };
+
+    const noseRegion = face[1];
+    const neckRegion = { x: faceCenter.x, y: faceCenter.y + 0.15 };
+
+    // Distance calculation
+    const dist = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+    // 1. HAND TO MOUTH (Mouth covering = lying/secrecy)
+    const distToMouth = dist(handCenter, mouthRegion);
+    if (distToMouth < 0.1) {
+        stressIndicators.push('🤐 El ağza yakın: Sekreti saklama/yalan/endişe');
+        stressScore += 0.35;
+    }
+
+    // 2. HAND TO NOSE (Nose touch = lying/deception)
+    const distToNose = dist(handCenter, noseRegion);
+    if (distToNose < 0.12) {
+        stressIndicators.push('👃 El buruna yakın: Yalan/endişe/kaygı (Pinocchio effect)');
+        stressScore += 0.3;
+    }
+
+    // 3. HAND TO NECK (Neck touch = discomfort/lying/stress)
+    const distToNeck = dist(handCenter, neckRegion);
+    if (distToNeck < 0.15) {
+        stressIndicators.push('🫀 El boyna yakın: Rahatsızlık/iğrenme/yalan/stres');
+        stressScore += 0.25;
+    }
+
+    // 4. HAND TO FACE (Face touch = anxiety/stress)
+    const distToFace = dist(handCenter, faceCenter);
+    if (distToFace < 0.15) {
+        stressIndicators.push('😰 El yüze yakın: Kaygı/stres/konsantrasyon');
+        stressScore += 0.2;
+    }
+
+    // 5. SELF-TOUCH FREQUENCY (Tekrarlı dokunma = nervous habit)
+    // (Bu real-time tracking gerekir, frame-to-frame comparison)
+
+    // 6. HAND CLOSEDNESS (Kapalı el = defensiveness)
+    const fingerSpread = dist(hand[4], hand[8]) + dist(hand[12], hand[16]); // Thumb-to-pinky spread
+    if (fingerSpread < 0.05) {
+        stressIndicators.push('✊ El kapalı: Savunma/kontrol/sıkı tutma');
+        stressScore += 0.15;
+    }
+
+    return {
+        stress_indicators: stressIndicators,
+        stress_score: Math.min(stressScore, 1),
+        hand_to_mouth: distToMouth,
+        hand_to_nose: distToNose,
+        hand_to_neck: distToNeck,
+        hand_to_face: distToFace,
+        deception_likelihood: stressScore > 0.5 ? 'high' : stressScore > 0.25 ? 'medium' : 'low',
+        notes: stressScore > 0.6
+            ? '⚠️ Yüksek stres/yalan göstergesi. Açık konuşmaya teşvik et.'
+            : stressScore > 0.3
+            ? '⚠️ Orta düzey rahatsızlık. Güven ortamı oluştur.'
+            : '✅ Normal, rahat görünüyor.'
+    };
+};
+
+// ─── MICRO-EXPRESSION DETECTION (Ekman Method) ──────────────────────────────────
+// 43 Facial Action Units → 7 temel duygu
+
+const detectMicroExpressions = (lm, blendshapes = []) => {
+    if (!lm) return null;
+
+    const aus = {}; // Facial Action Units
+
+    // Ekman Action Units Mapping
+    // AU1: Inner Brow Raiser
+    aus['AU1'] = lm.brow_down_left > 0.2 ? 0 : Math.max(lm.brow_angle_left * 0.3, 0);
+
+    // AU2: Outer Brow Raiser
+    aus['AU2'] = lm.brow_down_right > 0.2 ? 0 : Math.max(lm.brow_angle_right * 0.3, 0);
+
+    // AU4: Brow Lowerer (anger, concentration)
+    aus['AU4'] = Math.max(lm.brow_down_left, lm.brow_down_right);
+
+    // AU5: Upper Eyelid Raiser (surprise, fear)
+    aus['AU5'] = Math.max(lm.eye_openness_left, lm.eye_openness_right) - 0.5;
+
+    // AU6: Cheek Raiser (genuine smile)
+    aus['AU6'] = lm.cheek_raise;
+
+    // AU7: Lid Tightener (tension, sadness)
+    aus['AU7'] = Math.max(0.5 - Math.max(lm.eye_openness_left, lm.eye_openness_right), 0);
+
+    // AU9: Nose Wrinkler (disgust)
+    aus['AU9'] = lm.nose_wrinkle;
+
+    // AU12: Lip Corner Puller (smile)
+    aus['AU12'] = lm.lip_corner_pull;
+
+    // AU15: Lip Corner Depressor (sadness)
+    aus['AU15'] = Math.max(0.3 - lm.lip_corner_pull, 0);
+
+    // AU17: Chin Raiser (sadness, doubt)
+    aus['AU17'] = Math.max(0.5 - lm.jaw_drop, 0);
+
+    // AU20: Lip Stretcher (fear)
+    aus['AU20'] = Math.abs(lm.head_yaw || 0) * 0.2;
+
+    // AU25: Lips Part (surprise, pain)
+    aus['AU25'] = Math.max(lm.mouth_openness - 0.2, 0);
+
+    // AU26: Jaw Drop (sadness, shock)
+    aus['AU26'] = lm.jaw_drop;
+
+    // AU43: Eyes Closed (blink, sleep, death feign)
+    aus['AU43'] = Math.max(0.5 - Math.max(lm.eye_openness_left, lm.eye_openness_right), 0);
+
+    // ─── EKMAN 7 BASIC EMOTIONS ───
+    const emotions = {
+        anger:    Math.min(aus['AU4'] * 0.8 + aus['AU5'] * 0.2, 1),      // Brow lower + eye tighten
+        fear:     Math.min(aus['AU5'] * 0.6 + aus['AU20'] * 0.4, 1),     // Eyes wide + lips stretched
+        sadness:  Math.min(aus['AU15'] * 0.5 + aus['AU17'] * 0.3 + aus['AU7'] * 0.2, 1), // Lip down + chin raised
+        joy:      Math.min(aus['AU12'] * 0.7 + aus['AU6'] * 0.3, 1),     // Lip smile + cheek raise
+        surprise: Math.min(aus['AU5'] * 0.6 + aus['AU25'] * 0.4, 1),     // Eyes wide + mouth open
+        disgust:  Math.min(aus['AU9'] * 0.7 + aus['AU15'] * 0.3, 1),     // Nose wrinkle + lip down
+        contempt: Math.min(Math.abs(aus['AU12'] - aus['AU15']) * 0.5, 1) // Asymmetrical smile
+    };
+
+    // Normalize
+    const maxEmotion = Math.max(...Object.values(emotions));
+    Object.keys(emotions).forEach(e => {
+        emotions[e] = maxEmotion > 0 ? emotions[e] / maxEmotion : 0;
+    });
+
+    // Find dominant emotion
+    const dominant = Object.entries(emotions)
+        .sort((a, b) => b[1] - a[1])[0];
+
+    // ─── MICRO-EXPRESSION TIMING ───
+    // (Real emotions: 0.5-4 seconds, Fake: 1-5 seconds)
+    const isMicroExpression = maxEmotion > 0.3 && maxEmotion < 0.7;
+
+    return {
+        action_units: aus,
+        emotions,
+        dominant_emotion: dominant ? dominant[0] : 'neutral',
+        emotion_intensity: dominant ? dominant[1] : 0,
+        is_micro_expression: isMicroExpression,
+        authenticity_score: maxEmotion > 0.8 ? 'likely_real' : maxEmotion < 0.3 ? 'suppressed' : 'mixed'
+    };
+};
+
+// ─── BLINK RATE & PUPIL ANALYSIS (Cognitive Load, Stress, Arousal) ──────────────
+// Blink rate: Normal 15-20/min, Stress 20-26/min, Yalan 25-30/min
+
+const analyzeBlink = (eyeData = {}) => {
+    // eyeData format:
+    // { left_eye_openness: 0-1, right_eye_openness: 0-1, frames: [...] }
+
+    if (!eyeData.left_eye_openness) return null;
+
+    const eyeAvg = (eyeData.left_eye_openness + eyeData.right_eye_openness) / 2;
+    const signals = [];
+    let cognitiveLoad = 0;
+
+    // 1. BLINK DETECTION (EAR < 0.2 = blink)
+    const isBlinking = eyeAvg < 0.2;
+
+    // 2. BLINK RATE ANALYSIS (requires frame history)
+    // Normal: 15-20/min = 0.25-0.33/sec
+    // Stress: 20-26/min = 0.33-0.43/sec
+    // Lying: 25-30/min = 0.41-0.5/sec
+
+    if (eyeData.blink_rate) {
+        if (eyeData.blink_rate > 0.5) {
+            signals.push('👀 ÇOK HIZLI GÖZ KIRMASI: Yalan/derin stres/uyarı');
+            cognitiveLoad += 0.4;
+        } else if (eyeData.blink_rate > 0.35) {
+            signals.push('👁️ HIZLI GÖZ KIRMASI: Stres/kaygı/zihinsel yük');
+            cognitiveLoad += 0.25;
+        } else if (eyeData.blink_rate < 0.15) {
+            signals.push('🔍 ÇOK DÜŞÜK GÖZ KIRMASI: Yoğun konsantrasyon/odaklanma');
+            cognitiveLoad += 0.15;
+        }
+    }
+
+    // 3. PUPIL DILATION (Requires iris tracking)
+    if (eyeData.pupil_dilation !== undefined) {
+        if (eyeData.pupil_dilation > 0.15) {
+            signals.push('🔆 PÜPİLLER GENİŞ: Arousal/ilgi/emosyonel reaksiyon');
+            cognitiveLoad += 0.2;
+        } else if (eyeData.pupil_dilation < -0.1) {
+            signals.push('🔅 PÜPİLLER DARAMLAMIS: Boredom/rahatsızlık');
+            cognitiveLoad += 0.1;
+        }
+    }
+
+    // 4. EYE GAZE DIRECTION (Looking away = uncertainty/shame/lying)
+    if (eyeData.gaze_direction) {
+        const { x, y } = eyeData.gaze_direction;
+        if (Math.abs(x) > 0.3) {
+            signals.push(`👀 YANYANA BAKIŞLAR (${x > 0 ? 'sağa' : 'sola'}): Şüphe/kaçış/yalan`);
+            cognitiveLoad += 0.15;
+        }
+        if (y > 0.3) {
+            signals.push('⬆️ YUKARIYA BAKIŞLAR: Hatırlamaya çalışma/hayal kurma');
+            cognitiveLoad += 0.1;
+        }
+        if (y < -0.2) {
+            signals.push('⬇️ AŞAĞIYA BAKIŞLAR: Utanç/suçluluk/acı');
+            cognitiveLoad += 0.15;
+        }
+    }
+
+    // 5. BLINK SUPPRESSION (Normally suppressed during lying)
+    const blinkSuppressed = eyeData.blink_rate ? eyeData.blink_rate < 0.2 : false;
+
+    return {
+        is_blinking: isBlinking,
+        signals,
+        cognitive_load: Math.min(cognitiveLoad, 1),
+        blink_rate: eyeData.blink_rate || null,
+        pupil_dilation: eyeData.pupil_dilation || null,
+        gaze_direction: eyeData.gaze_direction || null,
+        blink_suppressed: blinkSuppressed,
+        interpretation: cognitiveLoad > 0.6
+            ? '🚨 Yüksek zihinsel yük / Stres / Olası yalan'
+            : cognitiveLoad > 0.3
+            ? '⚠️ Orta düzey stres / Konsantrasyon'
+            : '✅ Normal, rahat'
+    };
+};
+
+// ─── COMBINED FACIAL ANALYSIS (Micro + Hand + Blink) ─────────────────────────────
+
+const advancedFacialAnalysis = (landmarks, handLandmarks, eyeData) => {
+    const microExpressions = detectMicroExpressions(landmarks);
+    const handInteraction = analyzeHandFaceInteraction(handLandmarks, landmarks);
+    const blinkAnalysis = analyzeBlink(eyeData);
+
+    // Combine signals
+    const allSignals = [];
+    if (microExpressions) allSignals.push(`[MICRO] ${microExpressions.dominant_emotion.toUpperCase()} (${(microExpressions.emotion_intensity * 100).toFixed(0)}%)`);
+    if (handInteraction && handInteraction.stress_indicators.length > 0) {
+        allSignals.push(...handInteraction.stress_indicators);
+    }
+    if (blinkAnalysis && blinkAnalysis.signals.length > 0) {
+        allSignals.push(...blinkAnalysis.signals);
+    }
+
+    // Final assessment
+    const stressLevel = {
+        micro: microExpressions?.emotion_intensity || 0,
+        hand: handInteraction?.stress_score || 0,
+        blink: blinkAnalysis?.cognitive_load || 0
+    };
+
+    const avgStress = (stressLevel.micro + stressLevel.hand + stressLevel.blink) / 3;
+
+    return {
+        micro_expressions: microExpressions,
+        hand_face_interaction: handInteraction,
+        blink_analysis: blinkAnalysis,
+        combined_signals: allSignals,
+        overall_stress_level: avgStress,
+        confidence: Math.min(
+            (microExpressions ? 0.4 : 0) +
+            (handInteraction ? 0.3 : 0) +
+            (blinkAnalysis ? 0.3 : 0),
+            1
+        ),
+        recommendation: avgStress > 0.7
+            ? '🚨 YÜKSEK STRES / OLASI YALAN: Derin konuşmaya ihtiyaç. Güven ortamı oluştur.'
+            : avgStress > 0.4
+            ? '⚠️ ORTA STRES: Rahatlama tekniği öner (nefes, mindfulness). Açık konuşmayı teşvik et.'
+            : '✅ DÜŞÜK STRES: Rahat, uyumlu. Derinlemesine konuşabilirsin.'
+    };
+};
+
 // Test Landmark Analysis
 app.get('/test-landmarks', async (req, res) => {
     const testLandmarks = {
@@ -2955,6 +3319,98 @@ app.get('/test-landmarks', async (req, res) => {
         landmarks: testLandmarks,
         analysis: context
     });
+});
+
+// ─── TEST ENDPOINT: ADVANCED FACIAL ANALYSIS ──────────────────────
+app.get('/test-advanced-facial', async (req, res) => {
+    try {
+        // Test Case 1: High Stress (Anxiety) + Deception Signals
+        const testLandmarks1 = [
+            // Simplified: 468-point array, we'll use indices directly
+            ...Array(468).fill({ x: 0.5, y: 0.5 }),
+        ];
+        // Override key points with stress indicators
+        testLandmarks1[107] = { x: 0.4, y: 0.3 }; // L_BROW_INNER (raised)
+        testLandmarks1[105] = { x: 0.4, y: 0.35 }; // L_BROW_MID
+        testLandmarks1[336] = { x: 0.6, y: 0.3 }; // R_BROW_INNER (raised)
+        testLandmarks1[334] = { x: 0.6, y: 0.35 }; // R_BROW_MID
+        testLandmarks1[159] = { x: 0.35, y: 0.4 }; // L_EYE_TOP (wide open)
+        testLandmarks1[145] = { x: 0.35, y: 0.5 }; // L_EYE_BOT
+        testLandmarks1[386] = { x: 0.65, y: 0.4 }; // R_EYE_TOP
+        testLandmarks1[374] = { x: 0.65, y: 0.5 }; // R_EYE_BOT
+        testLandmarks1[13] = { x: 0.5, y: 0.55 }; // MOUTH_TOP
+        testLandmarks1[14] = { x: 0.5, y: 0.65 }; // MOUTH_BOT (open)
+        testLandmarks1[61] = { x: 0.3, y: 0.6 }; // MOUTH_L
+        testLandmarks1[291] = { x: 0.7, y: 0.6 }; // MOUTH_R
+
+        const testBlendshapes1 = [{
+            categories: [
+                { categoryName: 'browDownLeft', score: 0.7 },
+                { categoryName: 'browDownRight', score: 0.6 },
+                { categoryName: 'cheekSquintLeft', score: 0.3 },
+                { categoryName: 'cheekSquintRight', score: 0.3 }
+            ]
+        }];
+
+        const testHandLandmarks1 = Array(21).fill({ x: 0.25, y: 0.45 }); // Hand near mouth (deception)
+        const testEyeData1 = {
+            blink_rate: 0.27, // High blink rate (stress/lying)
+            pupil_dilation: 0.12,
+            gaze_direction: { x: 0.3, y: 0 } // Gaze left (doubt/deception)
+        };
+
+        const analysis1 = advancedFacialAnalysis(testLandmarks1, testHandLandmarks1, testEyeData1);
+
+        // Test Case 2: Calm/Content (Low Stress)
+        const testLandmarks2 = [...Array(468).fill({ x: 0.5, y: 0.5 })];
+        testLandmarks2[107] = { x: 0.4, y: 0.35 }; // L_BROW_INNER (neutral)
+        testLandmarks2[105] = { x: 0.4, y: 0.35 }; // L_BROW_MID
+        testLandmarks2[159] = { x: 0.35, y: 0.45 }; // L_EYE_TOP (normal)
+        testLandmarks2[145] = { x: 0.35, y: 0.5 }; // L_EYE_BOT
+        testLandmarks2[13] = { x: 0.5, y: 0.6 }; // MOUTH_TOP
+        testLandmarks2[14] = { x: 0.5, y: 0.62 }; // MOUTH_BOT (slightly open, smile)
+
+        const testBlendshapes2 = [{
+            categories: [
+                { categoryName: 'mouthSmileLeft', score: 0.6 },
+                { categoryName: 'mouthSmileRight', score: 0.6 },
+                { categoryName: 'cheekSquintLeft', score: 0.4 }
+            ]
+        }];
+
+        const testHandLandmarks2 = Array(21).fill({ x: 0.8, y: 0.8 }); // Hand far from face (open)
+        const testEyeData2 = {
+            blink_rate: 0.18, // Normal blink rate
+            pupil_dilation: 0.05,
+            gaze_direction: { x: 0, y: 0 } // Straight ahead (confident)
+        };
+
+        const analysis2 = advancedFacialAnalysis(testLandmarks2, testHandLandmarks2, testEyeData2);
+
+        res.json({
+            test_cases: [
+                {
+                    name: 'High Stress / Deception Signals',
+                    description: 'Raised eyebrows, wide eyes, open mouth, hand near mouth, high blink, gaze avoidance',
+                    analysis: analysis1
+                },
+                {
+                    name: 'Calm / Content',
+                    description: 'Relaxed face, genuine smile, hand away from face, normal blink, direct gaze',
+                    analysis: analysis2
+                }
+            ],
+            summary: {
+                test1_stress: (analysis1.overall_stress_level * 100).toFixed(1) + '%',
+                test1_recommendation: analysis1.recommendation,
+                test2_stress: (analysis2.overall_stress_level * 100).toFixed(1) + '%',
+                test2_recommendation: analysis2.recommendation
+            }
+        });
+    } catch (err) {
+        console.error('[TEST-ADVANCED-FACIAL] Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Bilgi Bankası Durumu Endpoint
