@@ -1799,53 +1799,26 @@
                     animationsMap = {};
                     if (gltf.animations) {
                         gltf.animations.forEach(clip => {
-                            const validTracks = clip.tracks.filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
-                            if (validTracks.length > 0) {
-                                const nc = new THREE.AnimationClip(clip.name, clip.duration, validTracks);
-                                animationsMap[clip.name] = mixer.clipAction(nc);
-                            }
+                            animationsMap[clip.name] = mixer.clipAction(clip);
                         });
                     }
 
                     // Model kemik isimlerini logla
                     const allBones = [];
-                    avatar.traverse(n => { if (n.isBone || n.type === 'Bone') allBones.push(n.name); });
-                    console.log('[BONES] Model kemikleri:', allBones.slice(0, 20));
+                    avatar.traverse(n => { if (n.isBone || n.type === 'Bone' || n.name.toLowerCase().includes('hips') || n.name.toLowerCase().includes('spine')) allBones.push(n.name); });
+                    console.log('[BONES] Model kemikleri:', allBones);
 
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
-                    // Animasyon track isimlerini model kemik isimleriyle eşleştir
-                    function fixTrackName(trackName) {
-                        const dot = trackName.lastIndexOf('.');
-                        const prop = dot !== -1 ? trackName.slice(dot) : '';
-                        let bone = dot !== -1 ? trackName.slice(0, dot) : trackName;
-                        // mixamorig:Hips → mixamorigHips (model : kullanmıyor)
-                        bone = bone.replace(/^mixamorig:/, 'mixamorig');
-                        return bone + prop;
-                    }
-
                     Promise.all(extraAnims.map(({ file, name }) =>
                         new Promise(res => {
                             extraLoader.load('/' + file, (a) => {
                                 if (a.animations.length) {
-                                    const clip = a.animations[0];
-                                    // Track isimlerini düzelt ve modelde var mı kontrol et
-                                    const fixedTracks = clip.tracks.map(t => {
-                                        const fixed = fixTrackName(t.name);
-                                        if (fixed !== t.name) {
-                                            t = t.clone();
-                                            t.name = fixed;
-                                        }
-                                        return t;
-                                    }).filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
-
-                                    if (name === 'Idle') console.log('[ANIM DEBUG] Idle track örneği (ilk 3):', clip.tracks.slice(0,3).map(t => fixTrackName(t.name)));
-                                    console.log(`[ANIM] ${name}: toplam=${clip.tracks.length} eşleşen=${fixedTracks.length}`);
-                                    if (fixedTracks.length > 0) {
-                                        const nc = new THREE.AnimationClip(name, clip.duration, fixedTracks);
-                                        animationsMap[name] = mixer.clipAction(nc);
-                                    }
+                                    const clip = THREE.AnimationClip.findByName(a.animations, a.animations[0].name) || a.animations[0];
+                                    const nc = new THREE.AnimationClip(name, clip.duration, clip.tracks);
+                                    animationsMap[name] = mixer.clipAction(nc);
+                                    console.log(`[ANIM] Yüklendi: ${name} (${clip.tracks.length} track)`);
                                 }
                                 res();
                             }, undefined, () => { console.warn('[ANIM] Yüklenemedi:', file); res(); });
