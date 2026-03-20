@@ -929,6 +929,16 @@
         </div>
     </div>
 
+    <!-- ── HOŞGELDİN OVERLAY (ilk seans) ── -->
+    <div id="welcome-overlay" style="display:none; position:fixed; inset:0; background:rgba(10,7,4,0.92); backdrop-filter:blur(12px); z-index:900; align-items:center; justify-content:center;">
+        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:40px 36px; max-width:360px; text-align:center; color:#fff;">
+            <div style="font-size:2rem; margin-bottom:12px;">🌌</div>
+            <h2 style="font-size:1.4rem; font-weight:600; margin:0 0 12px;">Lyra'ya Hoş Geldin</h2>
+            <p style="font-size:0.95rem; color:rgba(255,255,255,0.7); line-height:1.6; margin:0 0 28px;">Seninle tanışmaya hazırım.<br>İstediğin an durabilirsin, burada güvendesin.</p>
+            <button id="welcome-start-btn" style="background:linear-gradient(135deg,#7c3aed,#4f46e5); border:none; border-radius:12px; color:#fff; font-size:1rem; font-weight:600; padding:14px 32px; cursor:pointer; width:100%;">Başlayalım</button>
+        </div>
+    </div>
+
     <div id="error-toast"></div>
     <canvas id="hidden-canvas" style="display:none"></canvas>
 
@@ -1684,11 +1694,23 @@
             loadRoom().then(() => {
                 setProgress(40, "AVATAR YÜKLENİYOR...");
                 return loadAvatar();
-            }).then(() => {
+            }).then(async () => {
                 setProgress(100, "HAZIR");
                 playAnimation('Idle', true);
                 animate();
                 hideLoader();
+
+                // İlk seans kontrolü — memory'den flag al
+                if (persistentUserId) {
+                    try {
+                        const memResp = await fetch(`/memory?userId=${persistentUserId}`);
+                        const memData = await memResp.json();
+                        if (memData.ilk_seans === true) {
+                            ilkSeansFlag = true;
+                            console.log('[ONBOARDING] İlk seans tespit edildi.');
+                        }
+                    } catch { /* sessizce geç */ }
+                }
             });
         }
 
@@ -2001,20 +2023,38 @@
         });
 
         // ── VAPI EVENTS ──
-        talkBtn.addEventListener('click', async () => {
-            if (isCallActive) { vapiInstance.stop(); return; }
+        // İlk seans flag — memory'den gelir
+        let ilkSeansFlag = false;
 
-            // Backend'e token ile aktif kullanıcıyı bildir
+        async function startVapiSession() {
             await fetch('/session-start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: supabaseToken })
             });
-
             vapiInstance.start(VAPI_ASSISTANT_ID, {
                 variableValues: { userId: persistentUserId },
                 maxDurationSeconds: 3600
             });
+        }
+
+        talkBtn.addEventListener('click', async () => {
+            if (isCallActive) { vapiInstance.stop(); return; }
+
+            if (ilkSeansFlag) {
+                // İlk seans — hoşgeldin overlay göster
+                const welcomeEl = document.getElementById('welcome-overlay');
+                welcomeEl.style.display = 'flex';
+                ilkSeansFlag = false; // bir kez göster
+            } else {
+                await startVapiSession();
+            }
+        });
+
+        // Hoşgeldin overlay "Başlayalım" butonu
+        document.getElementById('welcome-start-btn').addEventListener('click', async () => {
+            document.getElementById('welcome-overlay').style.display = 'none';
+            await startVapiSession();
         });
 
         // Glow panel referansları

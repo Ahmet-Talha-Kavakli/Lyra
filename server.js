@@ -1169,8 +1169,17 @@ app.post('/session-start', async (req, res) => {
 app.get('/memory', async (req, res) => {
     const userId = req.query.userId;
     const memory = await getMemory(userId);
-    console.log(`[MEMORY READ] userId: ${userId}, hasMemory: ${!!memory}`);
-    res.json({ memory });
+
+    // İlk seans tespiti — pattern_memory'den toplam_seans oku
+    let ilkSeans = false;
+    try {
+        const { data } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
+        const toplamSeans = data?.pattern_memory?.toplam_seans || 0;
+        ilkSeans = toplamSeans === 0;
+    } catch { ilkSeans = true; } // hata olursa yeni kullanıcı say
+
+    console.log(`[MEMORY READ] userId: ${userId}, hasMemory: ${!!memory}, ilkSeans: ${ilkSeans}`);
+    res.json({ memory, ilk_seans: ilkSeans });
 });
 
 // ─── VAPI WEBHOOK (Arama bitince hafızayı kaydet) ──────────
@@ -1467,6 +1476,22 @@ app.post('/api/chat/completions', async (req, res) => {
                 enrichedMessages.unshift({ role: 'system', content: combined });
             }
         }
+
+        // ── İLK SEANS ONBOARDING INJECT ─────────────────────
+        try {
+            const { data: patternRow } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
+            const toplamSeans = patternRow?.pattern_memory?.toplam_seans || 0;
+            if (toplamSeans === 0) {
+                const onboardingInject = `\n\n[İLK SEANS PROTOKOLÜ — KRİTİK]\nBu kullanıcı Lyra'yı ilk kez kullanıyor. Şu akışı TAKİP ET:\n1. SICAK KARŞILAMA: "Merhaba, buraya geldiğin için teşekkür ederim. Seninle tanışmak güzel." de.\n2. LYRA'YI TANIT: Ne yapabildiğini kısaca anlat. Yapay zeka olduğunu doğal şekilde kabul et.\n3. GİZLİLİK: "Burada söylediklerin güvende, yargılamadan dinliyorum." de.\n4. HEDEF SOR: "Sana bugün en çok ne konuda yardımcı olmamı istersin?" diye sor. Cevaba göre seansı şekillendir.\n5. BEKLENTI: Kullanıcı çok büyük beklenti içindeyse: "Birlikte çalışarak süreci hızlandırabiliriz, ama bu yolculuk senin." de.\n6. DOĞAL GEÇİŞ: Tanışma sonrası keşif moduna geç.\nYASAK: İlk seansta ödev verme, ağır teknikler kullanma, hızlıca mod geçme.\nHEDEF: Güvende hissetmesi ve bir sonraki seansa gelmek istemesi.`;
+                const sysIdx2 = enrichedMessages.findIndex(m => m.role === 'system');
+                if (sysIdx2 !== -1) {
+                    enrichedMessages[sysIdx2] = { ...enrichedMessages[sysIdx2], content: enrichedMessages[sysIdx2].content + onboardingInject };
+                } else {
+                    enrichedMessages.unshift({ role: 'system', content: onboardingInject });
+                }
+                console.log('[CUSTOM LLM] 🌱 İlk seans onboarding inject edildi');
+            }
+        } catch { /* onboarding inject hatası — devam et */ }
 
         // userId eşleşmezse activeSessionUserId ile de dene
         const userState = userEmotions.get(userId) || userEmotions.get(activeSessionUserId);
