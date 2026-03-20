@@ -1745,6 +1745,10 @@
                         if (!n.isMesh) return;
                         n.castShadow = true;
                         n.receiveShadow = true;
+                        // Materyalin envMap ve ışık tepkisi için güncelle
+                        if (n.material) {
+                            n.material.needsUpdate = true;
+                        }
                     });
 
                     // Ölç ve boyutlandır
@@ -1847,7 +1851,9 @@
                             }, undefined, () => { console.warn('[ANIM] Yüklenemedi:', file); res(); });
                         })
                     )).then(() => {
-                        console.log('[ANIM] Yüklenen animasyonlar:', Object.keys(animationsMap));
+                        // mixamo.com adlı varsayılan animasyonu sil — kendi isimlerimizi kullanıyoruz
+                    delete animationsMap['mixamo.com'];
+                    console.log('[ANIM] Yüklenen animasyonlar:', Object.keys(animationsMap));
                         resolve();
                     });
 
@@ -1870,6 +1876,7 @@
             if (character.animMap && character.animMap[name]) name = character.animMap[name];
 
             let action = animationsMap[name];
+            console.log(`[PLAY] ${name} → action:${!!action} keys:${Object.keys(animationsMap).join(',')}`)
 
             // Idle için fallback — mevcut animasyonlardan birini seç
             if (!action) {
