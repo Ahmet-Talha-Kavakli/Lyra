@@ -1248,6 +1248,7 @@
         let tehlikeModu = false;        // Tehlike anında 1sn'ye düşer
         let tehlikeModuSayac = 0;       // Kaç kere üst üste tehlike geldi
         let sonDuygu = null;
+        let sessionId = null;
         let ardiArdina = 0;
         let emotionTimer = null;
 
@@ -2022,6 +2023,7 @@
             lastUserMessage = '';
             silenceDuration = 0;
             silenceStartTime = null;
+            sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             statusEl.textContent = "GÖRÜŞME AKTİF";
             statusEl.classList.add('listening');
             showToast('Lyra bağlandı — konuşmaya hazır');
