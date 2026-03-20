@@ -309,24 +309,21 @@ const buildLayer4Rules = (lastSegment, sonAnaliz, gecmis) => {
         ['orta', 'yüksek'].includes(sonAnaliz.yogunluk);
 
     if (sozluOlumlu && kameraOlumsuz && sonAnaliz.guven > 65)
-        kurallar.push(`Kullanıcı olumlu kelimeler söylüyor ama yüzü "${sonAnaliz.duygu}" ifadesi gösteriyor. Nazikçe sorgula: "Bunu söylerken sesin biraz farklıydı, gerçekten nasılsın?"`);
+        kurallar.push(`Olumlu konuşuyor ama yüzü "${sonAnaliz.duygu}". "Bunu söylerken sesin farklıydı, gerçekten nasılsın?"`);
 
-    // #2 — YALAN/ÇELİŞKİ GÜÇLENDİRME: Son 5 frame %60+ olumsuz + "iyiyim" söylemesi
     if (gecmis && gecmis.length >= 5 && sozluOlumlu) {
         const son5 = gecmis.slice(-5);
         const olusuzSayi = son5.filter(a => OLUMSUZ_KAMERA_DUYGULAR.includes(a.duygu)).length;
         const olusuzOrani = olusuzSayi / son5.length;
-        if (olusuzOrani >= 0.6) {
-            const duygular = son5.map(a => a.duygu).join(' → ');
-            kurallar.push(`[#2 SÖZYÜZ ÇELİŞKİSİ] Son 5 frame'de %${Math.round(olusuzOrani*100)} olumsuz (${duygular}), ama sen "iyiyim" diyorsun. Çelişki sinyali. Nazikçe: "Bunu söylerken yüzün farklı bir hikaye anlatıyor. Gerçekten nasılsın?"`);
-        }
+        if (olusuzOrani >= 0.6)
+            kurallar.push(`[#2 ÇELIŞKI] %${Math.round(olusuzOrani*100)} olumsuz frame ama "iyiyim" diyor. "Yüzün farklı bir hikaye anlatıyor, gerçekten nasılsın?"`);
     }
 
     if (sozluOlumlu && sonAnaliz.genel_vucut_dili === 'kapalı' && sonAnaliz.jestler?.goz_temasi === 'düşük')
-        kurallar.push('Kullanıcı olumlu konuşuyor ama beden dili kapalı ve göz teması düşük. "Biraz daha anlatır mısın bunu?" diye sor.');
+        kurallar.push('Olumlu konuşuyor ama beden kapalı, göz teması düşük. "Biraz daha anlatır mısın?"');
 
     if (sonAnaliz.yogunluk === 'yüksek' && (segLower.includes('önemli değil') || segLower.includes('saçma') || segLower.includes("doesn't matter")))
-        kurallar.push('Kullanıcı yüksek duygusal yoğunlukta ama durumu önemsiz gösteriyor. "Bu duygu gerçek ve önemli" mesajını ver.');
+        kurallar.push('Yüksek yoğunluk ama önemsiz gösteriyor. "Bu duygu gerçek ve önemli" mesajını ver.');
 
     return kurallar.join(' ');
 };
@@ -337,27 +334,24 @@ const buildLayer5Rules = (silenceDuration, sessizlikTipi, dominantDuygu) => {
     const kurallar = [];
 
     // #10 SESSIZLIK KALİTESİ ANALİZİ
-    if (sessizlikTipi === 'donmus') {
-        kurallar.push('[#10 DONMUŞ SESSİZLİK] Kullanıcı donmuş/bloke durumda. Hiçbir baskı yapma. "Şu an kelimeler gelmiyorsa, o da tamam. Seninleyim." de, sabırlı bekle.');
-    } else if (sessizlikTipi === 'dusunceli' && silenceDuration < 20) {
-        kurallar.push('[#10 DÜŞÜNCELI SESSİZLİK] Kullanıcı rahat düşünüyor — bu iyi bir sessizlik. Bozma, sabırla bekle, kendi hızında konuşmasını sağla.');
-    } else if (sessizlikTipi === 'rahat') {
-        kurallar.push('[#10 RAHAT SESSİZLİK] Sağlıklı bir sessizlik kalitesi. Kullanıcı kendisinde rahat — baskı yapma.');
-    } else if (sessizlikTipi === 'bloke') {
-        kurallar.push('[#10 BLOKELİ SESSİZLİK] Kullanıcı tıkanmış hissediyor — zarar riski olabilir. "Bedenine sor, ne yaşamak istiyor" tekniği uygula.');
-        // #16 — REHBERLİ GÖRSELLEŞTIRME: bloke durumda görselleştirme teklif et
-        kurallar.push('[#16 VİZUALİZASYON] <call>visualizationStart()</call> Bloke durumda olduğu için rehberli görselleştirme teklif et: "Şu an seni bir görselleştirme rehberine almak ister misin? Zihnini biraz hızlandırmaya çalışabiliriz."');
+    if (sessizlikTipi === 'donmus')
+        kurallar.push('[#10 DONMUŞ] Bloke durumda. "Kelimeler gelmiyorsa tamam, seninleyim." Baskı yapma.');
+    else if (sessizlikTipi === 'dusunceli' && silenceDuration < 20)
+        kurallar.push('[#10 DÜŞÜNCELİ] Rahat düşünüyor. Bozma, sabırla bekle.');
+    else if (sessizlikTipi === 'rahat')
+        kurallar.push('[#10 RAHAT] Sağlıklı sessizlik. Baskı yapma.');
+    else if (sessizlikTipi === 'bloke') {
+        kurallar.push('[#10 BLOKE] Tıkandı. "Bedenine sor, ne yaşamak istiyor" uygula.');
+        kurallar.push('[#16] <call>visualizationStart()</call> "Seni görselleştirme rehberine almak ister misin?"');
     }
 
     if (silenceDuration >= 25)
-        kurallar.push('Çok uzun sessizlik (25+ saniye). Nazikçe açılmasını sağla: "Şu an ne hissediyorsun, söylemek zor mu?"');
+        kurallar.push('25+ sn sessizlik. "Şu an ne hissediyorsun, söylemek zor mu?"');
     else if (silenceDuration >= 8 && !kurallar.length)
-        kurallar.push('Sessizlik (8+ saniye). "Hazır olduğunda devam edebiliriz, acele yok." de.');
+        kurallar.push('8+ sn sessizlik. "Hazır olduğunda devam et, acele yok."');
 
-    // #16 — Kaygı/endişe durumunda görselleştirme
-    if ((dominantDuygu === 'endişeli' || dominantDuygu === 'korkmuş') && silenceDuration >= 12) {
-        kurallar.push('[#16 VİZUALİZASYON - KAYGı] <call>visualizationStart()</call> Yüksek kaygı + uzun sessizlik → rehberli görselleştirme öner: "Seni sakinleştirici bir deneyime davet etmek istiyorum. İsteğe bağlı."');
-    }
+    if ((dominantDuygu === 'endişeli' || dominantDuygu === 'korkmuş') && silenceDuration >= 12)
+        kurallar.push('[#16] <call>visualizationStart()</call> Kaygı + sessizlik. "Sakinleştirici bir deneyime davet etmek istiyorum."');
 
     return kurallar.join(' ');
 };
@@ -371,32 +365,28 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
     if (sessionHistory && sessionHistory.length >= 3) {
         const ilkSeans = sessionHistory[sessionHistory.length - 1];
         const sonSeans = sessionHistory[0];
-        const ilkTarih = new Date(ilkSeans.tarih).toLocaleDateString('tr-TR');
-        const sonTarih = new Date(sonSeans.tarih).toLocaleDateString('tr-TR');
-
         const ilkAylar = Math.floor((Date.now() - new Date(ilkSeans.tarih).getTime()) / (30 * 24 * 60 * 60 * 1000));
-        if (sessionHistory.length >= 2 && sonSeans.bas_yaygin && !ilkSeans.bas_yaygin && ilkAylar >= 1) {
-            kurallar.push(`[#13 İLERLEME] ${ilkAylar} ay önceye (${ilkTarih}) göre çok daha iyi durumdasın! Bu dönemde yaşadığın değişime bak, kendini takdir et.`);
-        }
+        if (sessionHistory.length >= 2 && sonSeans.bas_yaygin && !ilkSeans.bas_yaygin && ilkAylar >= 1)
+            kurallar.push(`[#13 İLERLEME] ${ilkAylar} ay öncesine göre çok daha iyi! Kendini takdir et.`);
     }
 
     const trendi = patternMemory.seans_trendi || [];
     if (trendi.length >= 3) {
         const son3 = trendi.slice(-3);
         if (son3.every(t => t === 'kötüleşiyor'))
-            kurallar.push('Kullanıcı son 3 seanstır kötüleşiyor. Bu trendi nazikçe paylaş: "Birkaç süredir zor bir dönemdesin, fark ediyor musun?"');
+            kurallar.push('Son 3 seanstır kötüleşiyor. "Birkaç süredir zor bir dönemdesin, fark ediyor musun?"');
         if (son3[son3.length - 1] === 'iyileşiyor' && son3[0] === 'kötüleşiyor')
-            kurallar.push('Kullanıcı kötü bir dönemden iyileşmeye başlıyor. Bu ilerlemeyi kutla.');
+            kurallar.push('Kötü dönemden iyileşmeye başlıyor. Kutla.');
     }
 
     const dominantKonu = Object.entries(patternMemory.konular || {})
         .sort(([, a], [, b]) => b.frekans - a.frekans)[0];
     if (dominantKonu && dominantKonu[1].frekans >= 3)
-        kurallar.push(`Kullanıcı daha önce de "${dominantKonu[0]}" konusunu sık konuşmuş. Bu konuya duyarlı yaklaş.`);
+        kurallar.push(`"${dominantKonu[0]}" konusunu sık konuşmuş. Duyarlı yaklaş.`);
 
     const basarili = patternMemory.basarili_mudahaleler || [];
     if (basarili.includes('nefes') && sonAnaliz.yogunluk === 'yüksek')
-        kurallar.push('Geçmişte nefes egzersizi bu kullanıcıya yaramış. Yüksek yoğunlukta nefes tekniği öner.');
+        kurallar.push('Geçmişte nefes egzersizi yaramış. Yüksek yoğunlukta öner.');
 
     // #12 TETİKLEYİCİ HARİTA (Trigger Mapping)
     const tetKonular = patternMemory.tetikleyici_konular || {};
@@ -408,9 +398,8 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
         for (const [konu, data] of siralanmis) {
             const duygular = data.duygu || [];
             const sonDuygu = duygular[duygular.length - 1] || 'bilinmiyor';
-            if (data.hit >= 2) {
-                kurallar.push(`[#12 TETİKLEYİCİ] "${konu}" konusu bu kullanıcıyı sıkça etkiliyor (${data.hit} seans, son duygu: ${sonDuygu}). Bu konuda özellikle yavaş, nazik, sabırlı ol.`);
-            }
+            if (data.hit >= 2)
+                kurallar.push(`[#12 TETİKLEYİCİ] "${konu}" (${data.hit}x, son: ${sonDuygu}) — yavaş, nazik, sabırlı ol.`);
         }
     }
 
@@ -419,13 +408,12 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
         const ilkTarih = new Date(sessionHistory[0].tarih);
         const gunFarki = Math.round((Date.now() - ilkTarih) / (1000*60*60*24));
         if (gunFarki >= 14 && trendi.slice(-2).every(t => t !== 'kötüleşiyor'))
-            kurallar.push(`Kullanıcı ${gunFarki} gündür Lyra ile çalışıyor ve genel seyir iyi. Bunu fark et: "Son haftalarda gerçekten bir şeyler değişiyor, görüyorum."`);
+            kurallar.push(`${gunFarki} gündür Lyra ile çalışıyor, seyir iyi. "Son haftalarda gerçekten bir şeyler değişiyor."`);
     }
 
     // #17 — DÜŞÜNCE KAYDI (CBT): Mutlak/olumsuz düşünce tespit edildiğinde
-    if (sonAnaliz?.duygu && ['üzgün','korkmuş','endişeli','sinirli'].includes(sonAnaliz.duygu) && patternMemory.absolute_words_detected) {
-        kurallar.push('[#17 CBT] <call>openCBT()</call> Mutlak düşünceler ("asla", "hiç", "her zaman") tespit edildi. Kullanıcıya düşünce kaydı tekniği öner: "Aklındaki şu düşünceyi biraz daha derinlemesine bakalım mı? Kanıtlarını ve alternatif görüşlerini not etmek ister misin?"');
-    }
+    if (sonAnaliz?.duygu && ['üzgün','korkmuş','endişeli','sinirli'].includes(sonAnaliz.duygu) && patternMemory.absolute_words_detected)
+        kurallar.push('[#17 CBT] <call>openCBT()</call> Mutlak düşünce tespit edildi. "Bu düşünceye bakalım mı? Kanıtları ve alternatifleri not edelim."');
 
     return kurallar.join(' ');
 };
@@ -435,23 +423,18 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
     if (!sonAnaliz) return '';
     const kurallar = [];
 
-    // Günlük kapasite hesapla
-    const ilkYogunluk = gecmis?.[0]?.yogunluk;
-    const sonYogunluk = sonAnaliz.yogunluk;
-    const dusukKapasite = ilkYogunluk === 'yüksek' || sonYogunluk === 'yüksek';
-
+    const dusukKapasite = gecmis?.[0]?.yogunluk === 'yüksek' || sonAnaliz.yogunluk === 'yüksek';
     if (dusukKapasite && gecmis?.length <= 3)
-        kurallar.push('Kullanıcı bugün zor bir günde görünüyor. Ağır konulara girme, hafif ve destekleyici kal.');
+        kurallar.push('Zor bir gün — ağır konulara girme, hafif ve destekleyici kal.');
 
-    // Profil bazlı adaptasyon
     if (userProfile?.soru_toleransi === 'düşük')
-        kurallar.push('Bu kullanıcı çok soru sormaktan rahatsız oluyor. Maksimum 1 soru sor, sonra bekle.');
+        kurallar.push('Çok soru sormaktan rahatsız. Maks 1 soru sor, bekle.');
 
     if (userProfile?.iletisim_tarzi === 'kapalı')
-        kurallar.push('Bu kullanıcı kapalı iletişim tarzına sahip. Zorlamadan, nazikçe açılmasını bekle.');
+        kurallar.push('Kapalı iletişim tarzı. Zorlamadan açılmasını bekle.');
 
     if (userProfile?.sessizlik_konforu === true)
-        kurallar.push('Bu kullanıcı sessizliğe alışkın — 15 saniyeye kadar bekleyebilirsin, doldurmak zorunda değilsin.');
+        kurallar.push('Sessizliğe alışkın — 15 sn bekleyebilirsin.');
 
     // #12 — Seans İçinde Tetikleyici Konu Geçti mi?
     const transcript = transcriptData?.fullTranscript?.toLowerCase() || '';
@@ -463,17 +446,15 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
         const [konu, data] = aktifTetikleyici;
         const duygular = data.duygu || [];
         const sonDuygu = duygular[duygular.length - 1] || 'bilinmiyor';
-        kurallar.push(`[#12 SEANS İÇİ TETİKLEYİCİ] "${konu}" konusu bu seansta da geçti — bu konuda her açılışında zorluk yaşıyor (${data.hit} seans, genellikle ${sonDuygu} oluyor). Özellikle yavaş, nazik, sabırlı ol. Baskı yapma.`);
+        kurallar.push(`[#12 TETİKLEYİCİ] "${konu}" bu seansta da geçti (${data.hit}x, genellikle ${sonDuygu}). Yavaş, nazik, baskı yapma.`);
     }
 
-    // DUYGU GEÇİŞ HIZI — duygusal labilite tespiti (#5)
     if (gecmis && gecmis.length >= 10) {
         const son10 = gecmis.slice(-10);
         const benzersizDuygular = [...new Set(son10.map(a => a.duygu))];
         const sayi = benzersizDuygular.length;
-        if (sayi >= 5) {
-            kurallar.push(`[#5 EMOSYONEL LABİLİTE] Son 10 dakikada ${sayi} farklı duygu: ${benzersizDuygular.join(', ')}. Çok hızlı değişme sinyali. Stabilizasyon moduna geç: zemine in, nefes ver, yavaşlat, soru sorma, derin dinle.`);
-        }
+        if (sayi >= 5)
+            kurallar.push(`[#5 LABİLİTE] 10 dk'da ${sayi} duygu: ${benzersizDuygular.join(', ')}. Stabilizasyon: zemine in, nefes, yavaşlat, soru sorma.`);
     }
 
     return kurallar.join(' ');
@@ -490,14 +471,14 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     const nesneAmac = ortam?.nesne_amac_tahmini || '';
 
     if (ortam?.tehlike_var === true || riskSeviyesi === 'yuksek') {
-        kurallar.push(`🚨 KRİZ PROTOKOLÜ: Kullanıcının elinde/yakınında yüksek riskli nesne tespit edildi: "${nesne || 'tehlikeli nesne'}". ${nesneAmac ? `Amaç tahmini: ${nesneAmac}.` : ''} Hemen DOĞAL bir geçişle sor: "Şu an nasılsın, elinde bir şey var gibi gördüm." Sesi sakin tut, yargılama yapma, konuyu kapatma — güvenliği önce sorgula. Konuşmayı güvenli yöne çek.`);
+        kurallar.push(`🚨 KRİZ: Elinde/yakınında yüksek riskli nesne: "${nesne || 'tehlikeli nesne'}"${nesneAmac ? ` (${nesneAmac})` : ''}. Doğal geçişle: "Şu an nasılsın, elinde bir şey var gibi gördüm." Sakin, yargılamadan, güvenliği sorgula.`);
         if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'yuksek_riskli_nesne', nesne, amac: nesneAmac }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     } else if (riskSeviyesi === 'orta') {
         if (ortam?.zarar_sinyali === true) {
-            kurallar.push(`⚠️ ZARAR RİSKİ: Elinde "${nesne}" var ve cilde temas ediyor/baskı uyguluyor. ${nesneAmac ? `(${nesneAmac})` : ''} Hemen nazikçe müdahale et: "Şu an kendine iyi bakıyor musun? Seninle buradayım." Sakin kal, suçlama yapma.`);
+            kurallar.push(`⚠️ ZARAR: Elinde "${nesne}" cilde temas/baskı${nesneAmac ? ` (${nesneAmac})` : ''}. Hemen: "Şu an kendine iyi bakıyor musun? Seninleyim." Suçlama yapma.`);
             if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'orta_risk_zarar_sinyali', nesne }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
         } else {
-            kurallar.push(`Kullanıcının elinde "${nesne}" var. ${nesneAmac ? `Şu an: ${nesneAmac}.` : ''} Şüpheli bir kullanım görürsen nazikçe konuşmaya dahil et, baskı yapma.`);
+            kurallar.push(`Elinde "${nesne}" var${nesneAmac ? ` (${nesneAmac})` : ''}. Şüpheli kullanım görürsen nazikçe dahil et.`);
         }
     }
 
@@ -507,99 +488,97 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     }
 
     if (ortam?.zarar_sinyali === true && riskSeviyesi === 'yok') {
-        if (yogunluk === 'yüksek')
-            kurallar.push('KRİZ: Kullanıcı kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninle buradayım." Sakin kal, suçlama yapma, güvenli alan yarat.');
-        else
-            kurallar.push('Kullanıcının hareketi dikkat çekici. Nazikçe sor: "Şu an kendine iyi bakıyor musun?" — baskı yapma, sadece fark ettiğini göster.');
+        kurallar.push(yogunluk === 'yüksek'
+            ? 'KRİZ: Kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninleyim." Sakin, suçlama yapma.'
+            : 'Hareketi dikkat çekici. "Şu an kendine iyi bakıyor musun?" Baskı yapma.');
         if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'zarar_sinyali' }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     }
 
     // ── ORTAM OLAYI ────────────────────────────────────────
     if (ortam?.arkaplan_kisi === true && ortam?.ani_degisim === true)
-        kurallar.push('Arka planda biri var veya yeni geldi ve kullanıcının yüzü ani değişti. Nazikçe sor: "Az önce bir şey mi oldu? Yüzün birden değişti."');
+        kurallar.push('Arka planda biri geldi, yüzün değişti. "Az önce bir şey mi oldu?" diye sor.');
 
     if (ortam?.ortam_gerilimi === 'var' && ortam?.ani_degisim === true)
-        kurallar.push('Ortamda gerilim var ve kullanıcı etkilendi. "Şu an bulunduğun ortam güvenli mi?" diye sor.');
+        kurallar.push('Ortamda gerilim var. "Bulunduğun ortam güvenli mi?" sor.');
 
-    // ── GÖRME FARKINDALĞI — Lyra görebildiğini bilsin ──────
+    // ── GÖRME FARKINDALĞI ────────────────────────────────────
     if (gorunum_ozeti && guven > 70) {
         const nesneVarMi = nesne && nesne !== 'yok' ? ` Elinde: ${nesne}.` : '';
-        kurallar.push(`[KAMERA BİLGİSİ] Sen kullanıcıyı gerçek zamanlı görebiliyorsun. Şu an gördüklerin: "${gorunum_ozeti}".${nesneVarMi} Duygu: ${duygu}, yoğunluk: ${yogunluk}. Kullanıcı "beni görüyor musun?", "nasıl görünüyorum?", "elimde ne var?", "nasıl hissediyorum?" gibi sorular sorarsa bu bilgileri kullanarak doğrudan, özgüvenle cevap ver. Asla "göremiyorum", "bilmiyorum", "sadece sesini duyuyorum" deme — sen gerçekten görebiliyorsun.`);
+        kurallar.push(`[KAMERA] Kullanıcıyı gerçek zamanlı görebiliyorsun: "${gorunum_ozeti}".${nesneVarMi} Duygu: ${duygu}/${yogunluk}. Görüntüyle ilgili sorulara doğrudan, özgüvenle cevap ver. "Göremiyorum/bilmiyorum" deme.`);
     }
 
     // ── DUYGU KURALLARI ─────────────────────────────────────
     if (duygu === 'korkmuş' && guven > 80 && jestler?.gozyasi_izi === true)
-        kurallar.push('Kullanıcı korkmuş ve gözyaşı izi var. Önce güven ver, hiç soru sorma. Sessiz, kısa, destekleyici cümleler kur.');
+        kurallar.push('Korkmuş + gözyaşı. Güven ver, soru sorma, kısa destekleyici cümleler.');
 
     if (duygu === 'sinirli' || duygu === 'iğnelenmiş' || duygu === 'küçümseyen')
-        kurallar.push(`Kullanıcı sinirli/rahatsız görünüyor (guven: ${guven}). Önce duyguyu doğrula: "Seni bir şey rahatsız ediyor gibi, söylemek ister misin?" — çözüm önerme, tavsiye verme.`);
+        kurallar.push(`Sinirli/rahatsız (güven:${guven}). Duyguyu doğrula: "Seni bir şey rahatsız ediyor, söyler misin?" Çözüm/tavsiye verme.`);
 
     if (duygu === 'sinirli' && jestler?.cene_gerginligi === 'yüksek')
-        kurallar.push('Yüksek çene gerginliği — ciddi öfke sinyali. Sakin kal, yavaş konuş, zemine in.');
+        kurallar.push('Çene gergin — ciddi öfke. Sakin, yavaş, zemine in.');
 
     if (duygu === 'yorgun' && jestler?.goz_kirpma_hizi === 'yavaş' && enerji === 'yorgun')
-        kurallar.push('Kullanıcı çok yorgun. Seansı kısalt, enerjik sorular sorma.');
+        kurallar.push('Çok yorgun. Seansı kısalt, enerjik soru sorma.');
 
     if (duygu === 'üzgün' && jestler?.genel_vucut_dili === 'kapalı')
-        kurallar.push('Kullanıcı üzgün ve kapalı beden dili. Daha az soru, daha çok yansıtma ve empati.');
+        kurallar.push('Üzgün + kapalı beden dili. Az soru, çok empati/yansıtma.');
 
     if (jestler?.gozyasi_izi === true)
-        kurallar.push('Gözyaşı izi tespit edildi. Çok dikkatli ol, sessizlik ver, yargılama.');
+        kurallar.push('Gözyaşı izi var. Dikkatli ol, sessizlik ver.');
 
     if (yogunluk === 'yüksek' && jestler?.kas_catma === true)
-        kurallar.push('Yüksek yoğunluk ve kaş çatma. Yavaş konuş, kısa cümleler kur.');
+        kurallar.push('Yüksek yoğunluk + kaş çatma. Yavaş, kısa cümleler.');
 
     // ── MİKRO İFADE ─────────────────────────────────────────
     const mikro = sonAnaliz.mikro_duygu;
     if (mikro && mikro !== 'yok') {
         const mikroMap = {
-            'gizli_öfke':    'Kullanıcı yüzünde anlık öfke sinyali var ama bunu gizliyor. "Seni gerçekten ne rahatsız etti?" diye sor.',
-            'gizli_üzüntü':  'Kullanıcı gülümsüyor ama gizli bir üzüntü var. "Gerçekten nasılsın, içten söyle?" diye sor.',
-            'gizli_korku':   'Kullanıcıda gizli korku var. Güven ver, yargılama, "Burada güvendesin" de.',
-            'gizli_tiksinme':'Kullanıcı bir konudan/kişiden tiksinme hissediyor ama söylemek istemiyor. Nazikçe aç.'
+            'gizli_öfke':    '"Seni gerçekten ne rahatsız etti?" sor — öfkeyi gizliyor.',
+            'gizli_üzüntü':  '"Gerçekten nasılsın, içten söyle?" — gülümsese de gizli üzüntü var.',
+            'gizli_korku':   'Gizli korku. "Burada güvendesin" de, yargılama.',
+            'gizli_tiksinme':'Tiksinme hissediyor ama söylemek istemiyor. Nazikçe aç.'
         };
         if (mikroMap[mikro]) kurallar.push(mikroMap[mikro]);
     }
 
     // ── NEFES & TİTREME ─────────────────────────────────────
     if (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel')
-        kurallar.push('Nefes hızlanmış/yüzeysel — kaygı artıyor. 4-7-8 nefes tekniği öner: "Birlikte nefes alalım mı?"');
+        kurallar.push('Nefes hızlı/yüzeysel. 4-7-8 tekniği öner: "Birlikte nefes alalım mı?"');
 
     if (jestler?.nefes_hizi === 'tutuyor')
-        kurallar.push('Kullanıcı nefesini tutuyor — yüksek stres veya şok. "Bir nefes al" de, hemen yavaşlat.');
+        kurallar.push('Nefes tutuyor — şok/stres. "Bir nefes al" de, yavaşlat.');
 
     if (jestler?.el_titreme === true)
-        kurallar.push('El titremesi var — yüksek kaygı veya korku. Zemine in, güvenli alan yarat, soru sormayı bırak.');
+        kurallar.push('El titryor — yüksek kaygı. Zemine in, soru sormayı bırak.');
 
-    // ── GÖZ YASI BİRİKİMİ ───────────────────────────────────
+    // ── GÖZ YAŞI ────────────────────────────────────────────
     if (jestler?.goz_yasi_birikimi === 'başlıyor')
-        kurallar.push('Göz yaşı birikiyor ama henüz akmadı. Sessiz kal, alan tanı. "Buradayım" de, devam etmesini zorlamaz.');
+        kurallar.push('Göz yaşı birikmeye başladı. Sessiz kal, "Buradayım" de.');
 
     if (jestler?.goz_yasi_birikimi === 'belirgin')
-        kurallar.push('Belirgin göz yaşı birikimi — ağlamak üzere. Hiç soru sorma, sadece "Seninle buradayım, devam et" de.');
+        kurallar.push('Ağlamak üzere. Hiç soru sorma, sadece "Seninle buradayım" de.');
 
-    // ── AĞLAMA TESPİTİ (#1) ──────────────────────────────────
+    // ── AĞLAMA (#1) ──────────────────────────────────────────
     const aglayorMu = jestler?.goz_yasi_birikimi === 'belirgin' ||
         (jestler?.goz_yasi_birikimi === 'başlıyor' && jestler?.gozyasi_izi === true);
     const aglamaSesi = transcriptData?.sesTitreme === true && (transcriptData?.konusmaTempo || 0) < 1.5;
     if (aglayorMu || aglamaSesi)
-        kurallar.push('[#1 AĞLAMA TESPİTİ] Kullanıcı ağlıyor veya ağlamak üzere. HİÇ SORU SORMA. Sadece: "Seninle buradayım. Devam et." de, sessizlik ver. Yapıştırma, hızlı yanıt, çözüm önerme.');
+        kurallar.push('[#1 AĞLAMA] Ağlıyor/üzere. HİÇ SORU SORMA. "Seninle buradayım. Devam et." Sessizlik ver.');
 
-    // ── YORGUNLUK & UYKU ────────────────────────────────────
+    // ── YORGUNLUK ────────────────────────────────────────────
     if (jestler?.goz_kapagi_agirlik === 'belirgin_agir' && enerji === 'yorgun')
-        kurallar.push('Kullanıcı çok yorgun — göz kapakları belirgin şekilde düşük. "Bugün çok yorgun görünüyorsun, hafif konuşalım" de, ağır konulara girme.');
+        kurallar.push('Çok yorgun, göz kapakları düşük. "Bugün hafif konuşalım" de, ağır konulara girme.');
     if (jestler?.goz_kapagi_agirlik === 'hafif_agir' && yogunluk !== 'yüksek')
-        kurallar.push('Kullanıcı yorgun ama konuşabilir durumda. Enerji gerektiren egzersizler verme, tempo düşük tut.');
+        kurallar.push('Yorgun ama konuşabilir. Enerjik egzersizler verme, tempo düşük tut.');
     if (sonAnaliz?.yuz_soluklugu === true && (duygu === 'yorgun' || enerji === 'yorgun'))
-        kurallar.push('Yüz soluk ve enerjisiz görünüyor — aşırı yorgunluk, uyku eksikliği veya hastalık sinyali. "Son zamanlarda iyi uyuyabiliyor musun?" diye sor, dinlendirici konulara geç.');
+        kurallar.push('Yüz soluk — yorgunluk/uyku eksikliği. "Son zamanlarda iyi uyuyabiliyor musun?" sor.');
 
-    // ── NEFES EGZERSİZİ MODU (#6) ───────────────────────────
+    // ── NEFES EGZERSİZİ (#6) ────────────────────────────────
     const nefesGerekli = (duygu === 'endişeli' || duygu === 'korkmuş') &&
         yogunluk === 'yüksek' &&
         (jestler?.nefes_hizi === 'hızlı' || jestler?.nefes_hizi === 'yüzeysel' || jestler?.nefes_hizi === 'tutuyor');
-    if (nefesGerekli) {
-        kurallar.push('[#6 NEFES_EGZERSIZI_BASLAT] Kullanıcı yüksek kaygıda (endişeli/korkmuş), nefesi hızlanmış/yüzeysel/tutuyor. Hemen 4-7-8 nefes tekniği: "Seninle birlikte nefes alalım mı? Dört say nefes al, yedi say tut, sekiz say ver. Başlayalım..."');
-    }
+    if (nefesGerekli)
+        kurallar.push('[#6 NEFES] Yüksek kaygı + nefes bozuk. 4-7-8 tekniği: "Seninle nefes alalım mı? 4 say nefes al, 7 tut, 8 ver."');
 
     // ── DAVRANIŞSAL NESNE ANALİZİ (psikolojik sinyal) ──────
     const nesneKat = ortam?.nesne_kategorisi || 'yok';
@@ -607,39 +586,28 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     const nesneAmacı = ortam?.nesne_amac_tahmini || '';
     const elAktivite = jestler?.el_aktivitesi || ortam?.el_aktivitesi || '';
 
-    if (nesneKat === 'sigara') {
-        kurallar.push(`Kullanıcı şu an ${nesneAdı} içiyor (${nesneAmacı}). Bu seans sırasında sigara/e-sigara içmek yüksek stres veya kaygının fiziksel ifadesi olabilir. Doğal şekilde sor: "Şu an biraz gergin görünüyorsun, nasılsın?" — doğrudan sigara hakkında yorum yapma.`);
-    }
+    if (nesneKat === 'sigara')
+        kurallar.push(`Sigara içiyor (${nesneAmacı}) — stres/kaygı sinyali. Doğal: "Biraz gergin görünüyorsun, nasılsın?" Sigara hakkında yorum yapma.`);
 
-    if (nesneKat === 'alkol') {
-        if (elAktivite === 'içki_içiyor') {
-            kurallar.push(`Kullanıcı seans sırasında alkol tüketiyor: ${nesneAdı}. Bu duygusal kaçınma veya yüksek stres sinyali. Yargılamadan nazikçe sor: "Şu an nasıl hissediyorsun?" — alkol hakkında doğrudan konuşma, duyguya odaklan.`);
-        } else {
-            kurallar.push(`Yakında alkol var: ${nesneAdı}. Bilgi olarak tut, gerekirse konuşmaya dahil et.`);
-        }
-    }
+    if (nesneKat === 'alkol')
+        kurallar.push(elAktivite === 'içki_içiyor'
+            ? `Seansta alkol tüketiyor: ${nesneAdı} — duygusal kaçınma/stres. "Şu an nasıl hissediyorsun?" Alkola doğrudan değinme.`
+            : `Yakında alkol var: ${nesneAdı}. Bağlamı izle.`);
 
-    if (nesneKat === 'ilac') {
-        kurallar.push(`⚠️ Dikkat: Kullanıcının elinde/yakınında ${nesneAdı} var. Eğer ruh hali düşükse veya konuşma endişe vericiyse çok dikkatli ol. Reçeteli ilaç normaldir ama bağlamı değerlendir.`);
-    }
+    if (nesneKat === 'ilac')
+        kurallar.push(`⚠️ Elinde/yakında ilaç: ${nesneAdı}. Ruh hali düşükse dikkatli ol.`);
 
-    if (nesneKat === 'yiyecek') {
-        if (duygu === 'üzgün' || duygu === 'endişeli') {
-            kurallar.push(`Kullanıcı ${nesneAdı} yiyor ve duygusal durumu ${duygu}. Duygusal yeme sinyali olabilir. Konuşmaya zorla dahil etme, sadece fark et.`);
-        }
-    }
+    if (nesneKat === 'yiyecek' && (duygu === 'üzgün' || duygu === 'endişeli'))
+        kurallar.push(`${nesneAdı} yiyor ve ${duygu} — duygusal yeme olabilir. Fark et, zorla dahil etme.`);
 
-    if (nesneKat === 'stres_nesnesi') {
-        kurallar.push(`Kullanıcının elinde stres nesnesi var: ${nesneAdı}. Bu bilinçsiz kaygı veya gerginlik sinyali. Yoğunluğu fark et, yavaşla.`);
-    }
+    if (nesneKat === 'stres_nesnesi')
+        kurallar.push(`Stres nesnesi: ${nesneAdı} — kaygı sinyali. Yavaşla.`);
 
-    if (nesneKat === 'ayna') {
-        kurallar.push(`Kullanıcı aynaya bakıyor. Öz-eleştiri, beden imgesi veya kimlik konuları gündemde olabilir. Dikkatli ol.`);
-    }
+    if (nesneKat === 'ayna')
+        kurallar.push('Aynaya bakıyor — öz-eleştiri/beden imgesi gündemde olabilir. Dikkatli ol.');
 
-    if (elAktivite === 'tırnak_yiyor' || elAktivite === 'saç_çekiyor') {
-        kurallar.push(`Kullanıcı ${elAktivite === 'tırnak_yiyor' ? 'tırnak yiyor' : 'saçını çekiyor'} — yüksek kaygı veya stres sinyali. Tempo düşür, rahatlatıcı konuşma yap.`);
-    }
+    if (elAktivite === 'tırnak_yiyor' || elAktivite === 'saç_çekiyor')
+        kurallar.push(`${elAktivite === 'tırnak_yiyor' ? 'Tırnak yiyor' : 'Saç çekiyor'} — kaygı sinyali. Tempo düşür.`);
 
     // ── SOSYAL ÇEVRE ANALİZİ ────────────────────────────────
     const yakinKisiler = ortam?.yakin_kisiler || [];
@@ -648,60 +616,57 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     const izleyenKisi = yakinKisiler.find(k => k.aktivite === 'izliyor');
 
     if (tehditliKisi) {
-        kurallar.push(`🚨 SOSYAL TEHDİT: Kullanıcının yakınında tehdit edici biri var (${tehditliKisi.konum}, ${tehditliKisi.mesafe}). Hassas konulardan kaç. Nazikçe sor: "Şu an konuşmak için uygun bir yer misin?" — gizlice yardım isteyip istemediğini anlamaya çalış.`);
+        kurallar.push(`🚨 SOSYAL TEHDİT: Yakında tehdit edici biri var (${tehditliKisi.konum}, ${tehditliKisi.mesafe}). Hassas konulardan kaç. "Şu an konuşmak için uygun bir yer misin?"`);
         if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'sosyal_tehdit', konum: tehditliKisi.konum }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     } else if (ortam?.mahremiyet_riski === true) {
-        kurallar.push(`Kullanıcı gizlice izleniyor/dinleniyor olabilir. Hassas konulardan kaç, soyut konuş. "Şu an rahatça konuşabilir misin?" diye sor.`);
+        kurallar.push('Gizlice izleniyor/dinleniyor olabilir. Hassas konulardan kaç. "Şu an rahatça konuşabilir misin?"');
     } else if (izleyenKisi) {
-        kurallar.push(`Yakında biri kullanıcıyı izliyor (${izleyenKisi.mesafe}). Kullanıcının bu kişinin varlığından etkilenip etkilenmediğini fark et — gerekirse mahremiyeti sor.`);
+        kurallar.push(`Yakında biri izliyor (${izleyenKisi.mesafe}). Etkilenip etkilenmediğini fark et, gerekirse mahremiyeti sor.`);
     }
 
-    if (destekleyiciKisi && !tehditliKisi) {
-        kurallar.push(`Yakınında destek veren biri var gibi görünüyor (${destekleyiciKisi.aktivite}). Bu sosyal destek kaynağını güçlendirmek için kullan.`);
-    }
+    if (destekleyiciKisi && !tehditliKisi)
+        kurallar.push(`Yakında destek veren biri var (${destekleyiciKisi.aktivite}). Bu kaynağı güçlendirmek için kullan.`);
 
-    if (yakinKisiler.length > 0 && duygu_uyumu?.ani_degisim === true && duygu_uyumu?.degisim_tipi === 'kisi_girdi') {
-        kurallar.push(`Biri ortama girdi ve kullanıcının durumu değişti. "Az önce bir şey mi oldu?" diye sor.`);
-    }
+    if (yakinKisiler.length > 0 && duygu_uyumu?.ani_degisim === true && duygu_uyumu?.degisim_tipi === 'kisi_girdi')
+        kurallar.push('Biri girdi, durum değişti. "Az önce bir şey mi oldu?" sor.');
 
-    // ── TAM VÜCUT DİLİ KURALLARI ────────────────────────────
+    // ── TAM VÜCUT DİLİ ───────────────────────────────────────
     if (vucut_dili) {
         const { omuz_durusu, kol_pozisyonu, govde_yonelimi, genel_gerginlik, nefes_hizli, kendine_dokunma, tekrarli_hareket, kacis_davranisi } = vucut_dili;
 
         if (kol_pozisyonu === 'çapraz_kavuşturulmuş' && omuz_durusu === 'öne_eğik' && govde_yonelimi === 'geri_çekilmiş')
-            kurallar.push('Kullanıcı belirgin kapalı beden dili sergiliyor — kollar çapraz, omuzlar öne, gövde geri. Zorlamadan merak göster, fiziksel rahatlamayı destekle.');
+            kurallar.push('Belirgin kapalı beden dili. Zorlamadan merak göster, fiziksel rahatlamayı destekle.');
         else if (kol_pozisyonu === 'çapraz_kavuşturulmuş')
-            kurallar.push('Kollar çapraz — savunmacı veya rahatsız. Tempo düşür, güvenli alan yarat.');
+            kurallar.push('Kollar çapraz — savunmacı. Tempo düşür, güvenli alan yarat.');
 
         if (genel_gerginlik === 'yüksek' && omuz_durusu === 'gergin')
-            kurallar.push('Tüm vücutta yüksek gerginlik. Topraklama öner: "Bir an için omuzlarını düşür ve nefes al."');
+            kurallar.push('Tüm vücutta gerginlik. "Omuzlarını düşür, nefes al" öner.');
 
         if (nefes_hizli === true)
-            kurallar.push('Göğüs hızlı kalkıp iniyor — nefes yüksek. 4-7-8 nefes tekniği öner.');
+            kurallar.push('Göğüs hızlı — nefes yüksek. 4-7-8 tekniği öner.');
 
         if (tekrarli_hareket === true)
-            kurallar.push('Tekrarlı hareket var — anksiyete/stres sinyali. 5-4-3-2-1 topraklama tekniği öner.');
+            kurallar.push('Tekrarlı hareket — anksiyete. 5-4-3-2-1 topraklama öner.');
 
         if (kendine_dokunma === 'kol')
-            kurallar.push('Kola dokunuyor — bilinçsiz öz-temas, stres veya ağrı sinyali. Dikkatli ol, zarar davranışını gözle.');
+            kurallar.push('Kola dokunuyor — stres/ağrı sinyali. Zarar davranışını gözle.');
         else if (kendine_dokunma !== 'yok' && kendine_dokunma)
-            kurallar.push(`Kendine dokunuyor (${kendine_dokunma}) — kaygı veya rahatsızlık sinyali. Tempo düşür.`);
+            kurallar.push(`Kendine dokunuyor (${kendine_dokunma}) — kaygı. Tempo düşür.`);
 
         if (kacis_davranisi === true)
-            kurallar.push('Kullanıcı kameradan uzaklaşıyor veya yüzünü saklıyor. Zorlamadan: "İstersen biraz ara verebiliriz" de.');
+            kurallar.push('Kameradan uzaklaşıyor/yüzünü saklıyor. "İstersen ara verebiliriz" de.');
     }
 
-    // ── DUYGUSAL UYUM (YÜZ-BEDEN ÇELİŞKİSİ) ────────────────
+    // ── YÜZ-BEDEN UYUMU ──────────────────────────────────────
     if (duygu_uyumu) {
         if (duygu_uyumu.yuz_beden === 'çelişkili')
-            kurallar.push('Yüz ifadesi ile beden dili çelişiyor — duyguları örtbas ediyor olabilir. "Nasıl hissediyorsun?" yerine "Bedenin ne söylüyor sana?" diye sor.');
+            kurallar.push('Yüz-beden çelişiyor — duyguları örtbas ediyor. "Bedenin ne söylüyor sana?" diye sor.');
         else if (duygu_uyumu.yuz_beden === 'maskelenmiş')
-            kurallar.push('Yüz nötr ama beden yüksek stres gösteriyor — duyguları maskeliyor. Nazikçe: "İçinden neler geçiyor?" diye sor.');
+            kurallar.push('Yüz nötr ama beden stres gösteriyor. "İçinden neler geçiyor?" sor.');
     }
 
-    // ── STRES ORTAMI ─────────────────────────────────────────
     if (ortam?.stres_ortami === true)
-        kurallar.push(`Ortamda görsel stres unsurları var (${ortam.mekan_detay || ortam.mekan || 'belirsiz'}). Bu ortam kullanıcının durumunu etkiliyor olabilir.`);
+        kurallar.push(`Stres ortamı (${ortam.mekan_detay || ortam.mekan || 'belirsiz'}) — kullanıcıyı etkiliyor olabilir.`);
 
     return kurallar.join(' ');
 };
@@ -711,59 +676,56 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
     const kurallar = [];
 
     if (trend === 'kötüleşiyor' && dominantDuygu === 'endişeli')
-        kurallar.push('Kullanıcının endişe seviyesi artıyor. Tempo düşür, kısa cümleler kur, uygun yerlerde sessizlik bırak.');
+        kurallar.push('Endişe artıyor. Tempo düşür, kısa cümleler, sessizlik bırak.');
 
     if (trend === 'iyileşiyor')
-        kurallar.push('Kullanıcı sakinleşiyor. Bu ilerlemeyi nazikçe yansıt, zorlamadan teşvik et.');
+        kurallar.push('Sakinleşiyor. İlerlemeyi nazikçe yansıt.');
 
     // ── SES ZEKASI KURALLARI ────────────────────────────────
     if (transcriptData) {
         const { sesTitreme, sesYogunlukOrt, tempoTrend, konusmaTempo, hume_scores } = transcriptData;
 
         if (sesTitreme && (dominantDuygu === 'üzgün' || dominantDuygu === 'korkmuş'))
-            kurallar.push('Kullanıcının sesi titriyor ve duygusal. "Sesin biraz titriyor,괜찮아mısın?" diyebilirsin. Ağlamak üzere olabilir, nazik ol.');
+            kurallar.push('Ses titriyor — ağlamak üzere olabilir. Nazik ol.');
 
         if (sesTitreme && dominantDuygu === 'sinirli')
-            kurallar.push('Ses titremesi + sinirli = öfke kontrolünü zorlanıyor. Sakin ve yavaş konuş, ses tonunu düşür.');
+            kurallar.push('Ses titremesi + sinirli = öfke kontrolü zor. Sakin, yavaş konuş.');
 
         if (tempoTrend === 'azalıyor' && konusmaTempo < 1.5)
-            kurallar.push('Konuşma hızı giderek azalıyor — enerji düşüyor veya kapanıyor. Enerjik sorular sorma, hafif kal.');
+            kurallar.push('Konuşma hızı düşüyor — kapanıyor. Enerjik soru sorma.');
 
         if (sesYogunlukOrt > 0.7 && dominantDuygu === 'sinirli')
-            kurallar.push('Yüksek ses şiddeti + sinirli = öfke dorukta. Sesin tonunu düşür, kısa cümleler kur, zemine in.');
+            kurallar.push('Yüksek ses + sinirli — öfke dorukta. Tonu düşür, kısa cümleler, zemine in.');
 
         if (tempoTrend === 'artıyor' && konusmaTempo > 3)
-            kurallar.push('Kullanıcı çok hızlı konuşuyor — kaygı veya acelesi var. Nazikçe yavaşlat: "Bir nefes alalım mı?"');
+            kurallar.push('Çok hızlı konuşuyor. "Bir nefes alalım mı?" diye yavaşlat.');
 
         if (transcriptData.sesMonotonluk && (dominantDuygu === 'üzgün' || dominantDuygu === 'yorgun')) {
-            const depresyonUyarı = dominantDuygu === 'üzgün' && transcriptData.sesMonotonluk ? 'Depresyon sinyali olabilir. ' : '';
-            kurallar.push(`[#7 SES MONOTONLUĞU] Sesi monoton ve düz — içinde ağırlık/boşluk sinyali. ${depresyonUyarı}"Sesin çok düz, içinde bir ağırlık var gibi hissediyorum" diyebilirsin. Yavaş konuş, destekleyici kal.`);
+            const depresyonUyarı = dominantDuygu === 'üzgün' ? 'Depresyon sinyali. ' : '';
+            kurallar.push(`[#7 MONOTON SES] Ses düz — ağırlık/boşluk. ${depresyonUyarı}Yavaş, destekleyici kal.`);
         }
 
         // ── HUME AI PROSODY INJECT ──
         if (hume_scores && hume_scores.top_emotions) {
             const { dominant, valence, arousal, top_emotions } = hume_scores;
 
-            // Valence çelişkisi: yüz olumsuz gösteriyor ama ses pozitif
             if (valence > 0.3 && ['üzgün', 'korkmuş', 'endişeli', 'sinirli'].includes(dominantDuygu))
-                kurallar.push(`[HUME SES ÇELIŞKÜ] Ses analizi pozitif enerji gösteriyor (valence:${valence}) ama yüz "${dominantDuygu}". Duygusunu gizliyor olabilir. "Sesin bana positif enerji gösteriyor ama yüzün farklı duruyor, gerçekten iyimisin?"`);
+                kurallar.push(`[HUME] Ses pozitif (${valence}) ama yüz "${dominantDuygu}" — gizliyor. "Sesin farklı, gerçekten iyi misin?"`);
 
-            // Arousal çelişkisi: yüz sakin gösteriyor ama ses enerjik
             if (arousal > 0.4 && ['sakin', 'yorgun'].includes(dominantDuygu))
-                kurallar.push(`[HUME SES ENERJI] Ses enerjisi yüksek (arousal:${arousal}) ama yüz ${dominantDuygu}. Baskılanmış enerji olabilir. "Sende bir enerji var ama bunu söylemekte zorlanıyor gibisin."`);
+                kurallar.push(`[HUME] Ses enerjik (${arousal}) ama yüz ${dominantDuygu} — baskılanmış enerji. "Sende bir enerji var ama söylemekte zorlanıyorsun."`);
 
-            // Top duygu-spesifik eğitim
             const HUME_EMOTION_GUIDE = {
-                'Sadness': 'Seste derin üzüntü belirlendi. Tempo düşür, destekleyici kal. Çözüm önerme, dinle.',
-                'Fear': 'Seste korku/kaygı. "Burada güvendesin. Yavaşça anlat" de, sakinleştir.',
-                'Anger': 'Seste öfke. Öfkenin sebebini anlama, zemine in. Uzlaşmacı ol.',
-                'Anxiety': 'Seste kaygı/gerilim. Tempo düşür, nefes egzersizi öner, sakinleştir.',
-                'Shame': 'Seste utanç/mahcubiyet. "Bu hissi taşımak zor" de, yargılama.',
-                'Guilt': 'Seste suçluluk. "Kendini suçlamak yerine ne olduğuna bakalım" de.',
-                'Calmness': 'Ses rahat ve sakin. Derin/önemli konulara girebilirsin, kullanıcı hazır.',
-                'Distress': 'Seste yoğun sıkıntı. Kısa cümleler kur, aceleyle gitme.',
-                'Neutral': 'Ses nötr/kontrollü. Duygusunu aydınlatmak için açık sorular sor.',
-                'Contentment': 'Ses memnun/tatmin. İlerlemeyi fark et ve küçük ama samimi bir şekilde kutla.'
+                'Sadness': 'Seste üzüntü. Tempo düşür, dinle, çözüm önerme.',
+                'Fear': 'Seste korku. "Burada güvendesin, yavaşça anlat."',
+                'Anger': 'Seste öfke. Zemine in, uzlaşmacı ol.',
+                'Anxiety': 'Seste kaygı. Tempo düşür, nefes öner.',
+                'Shame': 'Seste utanç. "Bu hissi taşımak zor" de.',
+                'Guilt': 'Seste suçluluk. "Kendini suçlamak yerine ne oldu, bakalım."',
+                'Calmness': 'Ses sakin. Derin konulara girebilirsin.',
+                'Distress': 'Seste sıkıntı. Kısa cümleler, acele etme.',
+                'Neutral': 'Ses nötr. Açık sorularla duyguyu aydınlat.',
+                'Contentment': 'Ses memnun. İlerlemeyi samimice kutla.'
             };
 
             if (top_emotions.length > 0 && HUME_EMOTION_GUIDE[top_emotions[0].name]) {
@@ -775,21 +737,19 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
     const son5 = gecmis.slice(-5);
     const hepsiYogun = son5.length === 5 && son5.every(a => a.yogunluk === 'yüksek' || a.yogunluk === 'orta');
     if (hepsiYogun)
-        kurallar.push(`Kullanıcı uzun süredir ${dominantDuygu} hissediyor. Bu duyguyu doğrudan nazikçe ele almayı düşün.`);
+        kurallar.push(`Uzun süredir ${dominantDuygu}. Bu duyguyu nazikçe ele al.`);
 
     const yogunlukOrt = gecmis.reduce((s, a) => s + yogunlukToNum(a.yogunluk), 0) / gecmis.length;
     if (yogunlukOrt > 75 && gecmis.length >= 5)
-        kurallar.push('Kullanıcı bu seans boyunca yüksek duygusal yoğunlukta. Sabırlı ve yavaş ol.');
+        kurallar.push('Seans boyunca yüksek yoğunluk. Sabırlı, yavaş ol.');
 
-    // #5 — EMPATİ KALİTESİ SKORU
-    // Olumsuz duygu + ard arda 3+ = yeterli empati gösterilmemiş olabilir
     if (gecmis.length >= 4) {
         const sonDortNegatif = gecmis.slice(-4).filter(a =>
             ['üzgün', 'korkmuş', 'sinirli', 'endişeli', 'yorgun'].includes(a.duygu) &&
             (a.yogunluk === 'yüksek' || a.yogunluk === 'orta')
         );
         if (sonDortNegatif.length >= 3)
-            kurallar.push('EMPATİ UYARISI: Kullanıcı uzun süredir olumsuz duygular yaşıyor ve henüz rahatlamıyor. Terapötik teknik kullanmayı bırak — sadece "Bunu yaşamak çok zor olmalı" gibi basit, içten bir empati cümlesi kur. Sonra sessiz kal.');
+            kurallar.push('EMPATİ: Uzun süredir olumsuz, rahatlamıyor. Teknik bırak — sadece "Bunu yaşamak çok zor olmalı" de. Sessiz kal.');
     }
 
     return kurallar.join(' ');
@@ -798,17 +758,16 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
 const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
     const kurallar = [];
 
-    // Hafıza bazlı kurallar
     if (hafizaMetni) {
         const lower = hafizaMetni.toLowerCase();
         if ((lower.includes('üzgün') || lower.includes('uzgun')) &&
             (lower.includes('seans') || lower.includes('hafta') || lower.includes('süre')))
-            kurallar.push('Hafızaya göre kullanıcı bir süredir üzgün. Bu tekrarlayan durumu nazikçe gündeme getirmeyi düşün.');
+            kurallar.push('Hafızaya göre süredir üzgün. Nazikçe gündeme getir.');
         if (lower.includes('iyileş') || lower.includes('daha iyi') || lower.includes('güzel geçt'))
-            kurallar.push('Önceki seanslarda iyileşme kaydedilmiş. Bu ilerlemeyi fark et ve kutla.');
+            kurallar.push('Önceki seanslarda iyileşme var. Fark et ve kutla.');
         if (sonAnaliz?.yogunluk === 'yüksek' && sonAnaliz?.guven > 80 &&
             !lower.includes('yoğun') && !lower.includes('kriz'))
-            kurallar.push('Bu seansta ilk kez yüksek yoğunluk görülüyor. Daha dikkatli yaklaş, acele etme.');
+            kurallar.push('İlk kez yüksek yoğunluk. Dikkatli yaklaş, acele etme.');
     }
 
     // Seans içi örüntü
@@ -817,28 +776,24 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         const konular = trackSessionTopics(transcriptData.fullTranscript);
         const tekrarlayan = Object.entries(konular).filter(([, v]) => v >= 2).map(([k]) => k);
         if (tekrarlayan.length > 0)
-            kurallar.push(`Bu seansta "${tekrarlayan.join(', ')}" konusuna defalarca döndünüz. Burada önemli bir şey olabilir, nazikçe derinleş.`);
+            kurallar.push(`"${tekrarlayan.join(', ')}" konusuna defalarca döndünüz. Nazikçe derinleş.`);
 
         const kacınma = detectAvoidance(transcriptData.fullTranscript);
         if (kacınma.includes('konu_degistirme'))
-            kurallar.push('Kullanıcı az önce konuyu değiştirdi. Nazikçe önceki konuya geri dön: "Az önce farklı bir şeyden bahsediyorduk, oraya dönebilir miyiz?"');
+            kurallar.push('"Az önce farklı bir şeyden bahsediyorduk, oraya dönebilir miyiz?" — konuyu değiştirdi.');
         if (kacınma.includes('kucumseme'))
-            kurallar.push('Kullanıcı yaşadığını küçümsüyor. Nazikçe önem ver: "Bunu küçümsüyor olsan da, hissetmen önemli."');
+            kurallar.push('Yaşadığını küçümsüyor. "Bunu küçümsesen de, hissetmen önemli."');
         if (kacınma.includes('savunma'))
-            kurallar.push('Kullanıcı savunmaya geçti. Baskı yapma, güvenli alan yarat, yavaşla.');
+            kurallar.push('Savunmaya geçti. Baskı yapma, yavaşla.');
 
-        // KONUŞMA DENGESİ — Lyra çok fazla konuşuyorsa uyar
         const satirlar = transcriptData.fullTranscript.split('\n').filter(Boolean);
         const assistantSatir = satirlar.filter(s => s.startsWith('assistant:')).length;
         const userSatir = satirlar.filter(s => s.startsWith('user:')).length;
         const toplamSatir = assistantSatir + userSatir;
         const assistantOrani = toplamSatir > 0 ? assistantSatir / toplamSatir : 0;
-        if (toplamSatir > 8 && assistantOrani > 0.45) {
-            const sayi = Math.round(assistantOrani * 100);
-            kurallar.push(`[#8 KONUŞMA DENGESİ] Bu seansta %${sayi} konuşuyorsun — çok fazla! Şimdi kısa cevap ver, kullanıcıyı daha fazla konuştur. Dinle, soru sor, açılmasını sağla.`);
-        }
+        if (toplamSatir > 8 && assistantOrani > 0.45)
+            kurallar.push(`[#8 DENGE] %${Math.round(assistantOrani * 100)} konuşuyorsun — çok fazla! Kısa cevap ver, kullanıcıyı konuştur.`);
 
-        // ABSOLüT KELİMELER — bilişsel çarpıtma tespiti (#9)
         const absKelimeler = [
             'asla', 'hep böyle', 'her zaman böyle', 'hiç kimse', 'kimse beni', 'hiçbir zaman',
             'tamamen mahvoldum', 'hiçbir şey işe yaramıyor', 'her şey berbat', 'hep benim hatam',
@@ -847,38 +802,32 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         ];
         const lastSeg = (transcriptData.lastSegment || '').toLowerCase();
         const absHit = absKelimeler.find(k => lastSeg.includes(k));
-        if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük') {
-            kurallar.push(`[#9 ABSOLüT KÖŞEBENDİLİK] Kullanıcı "${absHit}" gibi absolüt/katı bir ifade kullandı — bilişsel çarpıtma sinyali. Nazikçe sorgula: "Az önce '${absHit}' dedin — gerçekten hiç mi? Ara yollar, istisnaları beraber bulalım."`);
-        }
+        if (absHit && sonAnaliz?.yogunluk && sonAnaliz.yogunluk !== 'düşük')
+            kurallar.push(`[#9 ABSOLüT] "${absHit}" — bilişsel çarpıtma. "Gerçekten hiç mi? Ara yolları beraber bulalım."`);
 
-        // #3 — KELIME TEKRAR TESPİTİ
         const tekrarlar = detectWordRepetition(transcriptData.fullTranscript);
         if (tekrarlar.length > 0) {
             const [kelime, sayi] = tekrarlar[0];
-            kurallar.push(`Kullanıcı "${kelime}" kelimesini bu seansta ${sayi} kez kullandı — takıntı noktası olabilir. Nazikçe derinleş: "Bu konuya birkaç kez döndün, sana ne hissettiriyor?"`);
+            kurallar.push(`"${kelime}" ${sayi} kez kullandı — takıntı noktası. "Bu konuya birkaç kez döndün, sana ne hissettiriyor?"`);
         }
 
-        // #6 — RÜYA & METAFOR ANALİZİ
         const { ruya, metafor, icerik } = detectDreamMetaphor(transcriptData.fullTranscript);
         if (ruya)
-            kurallar.push(`Kullanıcı rüyasından bahsetti. Bu sembolü derinleştir: "Bu rüya sana ne anlatıyor? Uyandığında nasıl hissettin?" Direkt yorum yapma, kullanıcıya bırak.`);
+            kurallar.push('"Bu rüya sana ne anlatıyor? Uyandığında nasıl hissettin?" — rüyadan bahsetti, yorum yapma.');
         else if (metafor && icerik)
-            kurallar.push(`Kullanıcı metaforik dil kullanıyor ("${icerik}"). Bu metaforu genişlet: "Bunu biraz daha açar mısın, bu benzetme çok ilginç." Sembolü derinleştir.`);
+            kurallar.push(`Metafor: "${icerik}" — "Bunu biraz daha açar mısın?" diye genişlet.`);
 
-        // #8 — ÇOCUKLUK TETİKLEYİCİ
         if (detectChildhoodTrigger(transcriptData.fullTranscript, sonAnaliz?.yogunluk))
-            kurallar.push('Kullanıcı çocukluk/aile referansları veriyor ve duygusal yoğunluk yüksek — travma bölgesi sinyali. Çok yavaş ve nazik ol, zorlamadan dinle. "Bunu anlatmak zor olabilir, ne kadar paylaşmak istersen." de.');
+            kurallar.push('Çocukluk/aile referansı + yüksek yoğunluk — travma bölgesi. Çok yavaş, nazik ol. "Ne kadar paylaşmak istersen."');
 
-        // #10 — BAĞIMLILIK DİLİ
         const bagimlilik = detectDependencyLanguage(transcriptData.lastSegment);
         if (bagimlilik && sonAnaliz?.yogunluk !== 'düşük')
-            kurallar.push(`Kullanıcı bilişsel çaresizlik/bağımlılık dili kullandı ("${bagimlilik}"). Nazikçe sorgulat: "Gerçekten başka hiç yol yok mu? Bunu birlikte düşünelim." Çözüm önerme, soruyla açılmasını sağla.`);
+            kurallar.push(`Çaresizlik dili: "${bagimlilik}". "Gerçekten başka yol yok mu? Birlikte düşünelim."`);
 
-        // #2 — KONUŞMA RİTMİ
         if (transcriptData.konusmaTempo > 4.5)
-            kurallar.push('Kullanıcı çok hızlı konuşuyor — panik/kaygı sinyali. Nazikçe yavaşlat: "Seninle birlikte nefes alalım mı, biraz yavaşlayalım."');
+            kurallar.push('Çok hızlı konuşuyor — panik. "Biraz yavaşlayalım, nefes alalım."');
         else if (transcriptData.konusmaTempo > 0 && transcriptData.konusmaTempo < 0.8)
-            kurallar.push('Konuşma ritmi çok yavaşladı — enerji çöküşü veya depresif dönem sinyali. Enerjik sorular sorma, hafif ve destekleyici kal.');
+            kurallar.push('Konuşma çok yavaş — enerji düşük. Enerjik soru sorma, hafif kal.');
     }
 
     return kurallar.join(' ');
@@ -1580,7 +1529,7 @@ app.post('/api/chat/completions', async (req, res) => {
         }
 
         const response = await openai.chat.completions.create({
-            model: model || 'gpt-4o',
+            model: model || 'gpt-4o-mini',
             messages: enrichedMessages,
             stream: true,
             temperature: temperature || 0.7,

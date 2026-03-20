@@ -1246,6 +1246,7 @@
         // Adaptif interval
         let adaptifInterval = 6000;
         let tehlikeModu = false;        // Tehlike anında 1sn'ye düşer
+        let sonFrameData = null;        // Frame diff için önceki frame
         let tehlikeModuSayac = 0;       // Kaç kere üst üste tehlike geldi
         let sonDuygu = null;
         let sessionId = null;
@@ -1353,6 +1354,16 @@
             return 6000;
         }
 
+        function frameDegisMiKontrol(yeniBase64) {
+            if (!sonFrameData) return true;
+            let fark = 0;
+            const adim = Math.floor(yeniBase64.length / 200);
+            for (let i = 0; i < yeniBase64.length; i += adim) {
+                if (yeniBase64[i] !== sonFrameData[i]) fark++;
+            }
+            return (fark / 200) > 0.05; // %5+ değişim varsa analiz et
+        }
+
         function scheduleNextAnalysis() {
             clearTimeout(emotionTimer);
             emotionTimer = setTimeout(analyzeEmotion, adaptifInterval);
@@ -1400,6 +1411,13 @@
             if (!userVideo || userVideo.readyState < 2) { scheduleNextAnalysis(); return; }
             try {
                 const { base64 } = await captureAndPreprocess();
+
+                // Tehlike modunda her zaman analiz et; normal modda frame değişmediyse atla
+                if (!tehlikeModu && !frameDegisMiKontrol(base64)) {
+                    scheduleNextAnalysis();
+                    return;
+                }
+                sonFrameData = base64;
 
                 // MediaPipe landmark çalıştır (tek seferlik, retry yok)
                 let landmarkFeatures = null;
