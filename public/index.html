@@ -1592,7 +1592,7 @@
         // Lyra karakter tanımı
         const character = {
             name: "Lyra",
-            model: "tony.glb",
+            model: "xbot.glb",
             animMap: {
                 'Yes':'Agreeing', 'No':'Disagreeing', 'Wave':'Wave',
                 'Jump':'Joyful Jump', 'Dance':'Wave Hip Hop Dance',
@@ -1817,14 +1817,15 @@
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
-                    // assimp FBX→GLB dönüşümünde kemik isimlerine _$AssimpFbx$_ suffix ekliyor
-                    // Bu fonksiyon track isimlerini temizleyerek model kemiğiyle eşleştirir
+                    // Animasyon track isimlerini model kemik isimleriyle eşleştir
+                    // mixamorigHips → mixamorig:Hips (Mixamo FBX export farkı)
                     function fixTrackName(trackName) {
-                        return trackName
-                            .replace(/_\$AssimpFbx\$_Rotation/g, '')
-                            .replace(/_\$AssimpFbx\$_Translation/g, '')
-                            .replace(/_\$AssimpFbx\$_Scaling/g, '')
-                            .replace(/_\$AssimpFbx\$/g, '');
+                        const dot = trackName.lastIndexOf('.');
+                        const prop = dot !== -1 ? trackName.slice(dot) : '';
+                        let bone = dot !== -1 ? trackName.slice(0, dot) : trackName;
+                        // mixamorigXxx → mixamorig:Xxx
+                        bone = bone.replace(/^mixamorig([A-Z])/, 'mixamorig:$1');
+                        return bone + prop;
                     }
 
                     Promise.all(extraAnims.map(({ file, name }) =>
