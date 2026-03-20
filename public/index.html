@@ -1827,10 +1827,8 @@
                         const dot = trackName.lastIndexOf('.');
                         const prop = dot !== -1 ? trackName.slice(dot) : '';
                         let bone = dot !== -1 ? trackName.slice(0, dot) : trackName;
-                        // _$AssimpFbx$_xxx suffix'lerini temizle
-                        bone = bone.replace(/_\$AssimpFbx\$_[A-Za-z]+$/, '');
-                        // mixamorigHips → mixamorig:Hips
-                        bone = bone.replace(/^mixamorig([A-Z])/, 'mixamorig:$1');
+                        // mixamorig:Hips → mixamorigHips (model : kullanmıyor)
+                        bone = bone.replace(/^mixamorig:/, 'mixamorig');
                         return bone + prop;
                     }
 
