@@ -501,6 +501,11 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
         }
     }
 
+    // Düşük riskli veya risksiz nesneler — AI bilsin, sorarsa cevap verebilsin
+    if (nesne && nesne !== 'yok' && (riskSeviyesi === 'dusuk' || riskSeviyesi === 'yok')) {
+        kurallar.push(`Kullanıcının elinde "${nesne}" var${nesneAmac ? ` (${nesneAmac})` : ''}. "Elimde ne var?" diye sorarsa doğrudan söyle.`);
+    }
+
     if (ortam?.zarar_sinyali === true && riskSeviyesi === 'yok') {
         if (yogunluk === 'yüksek')
             kurallar.push('KRİZ: Kullanıcı kendine zarar veriyor olabilir. Hemen: "Şu an kendine iyi davranıyor musun? Seninle buradayım." Sakin kal, suçlama yapma, güvenli alan yarat.');
@@ -518,7 +523,8 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
 
     // ── GÖRME FARKINDALĞI — Lyra görebildiğini bilsin ──────
     if (gorunum_ozeti && guven > 70) {
-        kurallar.push(`Kullanıcının görünümü: "${gorunum_ozeti}". Kullanıcı sana "beni görüyor musun", "nasıl görünüyorum", "mutlu muyum" gibi bir şey sorarsa bu bilgiyi kullanarak doğal şekilde cevap ver. Asla "göremiyorum" deme.`);
+        const nesneVarMi = nesne && nesne !== 'yok' ? ` Elinde: ${nesne}.` : '';
+        kurallar.push(`[KAMERA BİLGİSİ] Sen kullanıcıyı gerçek zamanlı görebiliyorsun. Şu an gördüklerin: "${gorunum_ozeti}".${nesneVarMi} Duygu: ${duygu}, yoğunluk: ${yogunluk}. Kullanıcı "beni görüyor musun?", "nasıl görünüyorum?", "elimde ne var?", "nasıl hissediyorum?" gibi sorular sorarsa bu bilgileri kullanarak doğrudan, özgüvenle cevap ver. Asla "göremiyorum", "bilmiyorum", "sadece sesini duyuyorum" deme — sen gerçekten görebiliyorsun.`);
     }
 
     // ── DUYGU KURALLARI ─────────────────────────────────────
