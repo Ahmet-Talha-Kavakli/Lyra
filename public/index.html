@@ -1783,13 +1783,13 @@
                     avatar.rotation.y = 0;
                     avatar.userData.baseRotY = 0;
 
-                    // Kamera: göğüs/baş hizasında, avatarın önünde
-                    const camY  = fy + charH * 0.65;
-                    const camZ  = charH * 2.2;
+                    // Kamera: yüz/baş hizasında, avatarın önünde
+                    const camY  = fy + charH * 0.82;
+                    const camZ  = charH * 1.6;
                     camera.position.set(0, camY, camZ);
-                    cameraTarget.set(0, fy + charH * 0.55, 0);
+                    cameraTarget.set(0, fy + charH * 0.78, 0);
                     camera.lookAt(cameraTarget);
-                    window.defaultCam = { y: camY, z: camZ, tgtY: fy + charH * 0.55 };
+                    window.defaultCam = { y: camY, z: camZ, tgtY: fy + charH * 0.78 };
 
                     console.log('[CHAR] pos:', avatar.position, 'charH:', charH, 'fy:', fy);
                     scene.add(avatar);
@@ -1817,21 +1817,28 @@
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
+                    // Model kemik adlarını topla
+                    const avatarBoneNames = new Set();
+                    avatar.traverse(n => { if (n.isBone || n.type === 'Bone') avatarBoneNames.add(n.name); });
+                    console.log('[ANIM] Model kemik sayısı:', avatarBoneNames.size, '| Örnek:', [...avatarBoneNames].slice(0,5));
+
                     Promise.all(extraAnims.map(({ file, name }) =>
                         new Promise(res => {
                             extraLoader.load('/' + file, (a) => {
                                 if (a.animations.length) {
                                     const clip = a.animations[0];
+                                    // Kemik eşleşmesi varsa filtrele, yoksa tüm track'leri kullan
                                     const ft = clip.tracks.filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
-                                    if (ft.length > 0) {
-                                        const nc = new THREE.AnimationClip(name, clip.duration, ft);
-                                        animationsMap[name] = mixer.clipAction(nc);
-                                    }
+                                    const tracksToUse = ft.length > 0 ? ft : clip.tracks;
+                                    console.log(`[ANIM] ${name}: toplam=${clip.tracks.length} eşleşen=${ft.length} kullanılan=${tracksToUse.length}`);
+                                    const nc = new THREE.AnimationClip(name, clip.duration, tracksToUse);
+                                    animationsMap[name] = mixer.clipAction(nc);
                                 }
                                 res();
-                            }, undefined, () => res());
+                            }, undefined, () => { console.warn('[ANIM] Yüklenemedi:', file); res(); });
                         })
                     )).then(() => {
+                        console.log('[ANIM] Yüklenen animasyonlar:', Object.keys(animationsMap));
                         resolve();
                     });
 
