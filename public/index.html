@@ -1817,22 +1817,36 @@
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
-                    // Model kemik adlarını topla
-                    const avatarBoneNames = new Set();
-                    avatar.traverse(n => { if (n.isBone || n.type === 'Bone') avatarBoneNames.add(n.name); });
-                    console.log('[ANIM] Model kemik sayısı:', avatarBoneNames.size, '| Örnek:', [...avatarBoneNames].slice(0,5));
+                    // assimp FBX→GLB dönüşümünde kemik isimlerine _$AssimpFbx$_ suffix ekliyor
+                    // Bu fonksiyon track isimlerini temizleyerek model kemiğiyle eşleştirir
+                    function fixTrackName(trackName) {
+                        return trackName
+                            .replace(/_\$AssimpFbx\$_Rotation/g, '')
+                            .replace(/_\$AssimpFbx\$_Translation/g, '')
+                            .replace(/_\$AssimpFbx\$_Scaling/g, '')
+                            .replace(/_\$AssimpFbx\$/g, '');
+                    }
 
                     Promise.all(extraAnims.map(({ file, name }) =>
                         new Promise(res => {
                             extraLoader.load('/' + file, (a) => {
                                 if (a.animations.length) {
                                     const clip = a.animations[0];
-                                    // Kemik eşleşmesi varsa filtrele, yoksa tüm track'leri kullan
-                                    const ft = clip.tracks.filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
-                                    const tracksToUse = ft.length > 0 ? ft : clip.tracks;
-                                    console.log(`[ANIM] ${name}: toplam=${clip.tracks.length} eşleşen=${ft.length} kullanılan=${tracksToUse.length}`);
-                                    const nc = new THREE.AnimationClip(name, clip.duration, tracksToUse);
-                                    animationsMap[name] = mixer.clipAction(nc);
+                                    // Track isimlerini düzelt ve modelde var mı kontrol et
+                                    const fixedTracks = clip.tracks.map(t => {
+                                        const fixed = fixTrackName(t.name);
+                                        if (fixed !== t.name) {
+                                            t = t.clone();
+                                            t.name = fixed;
+                                        }
+                                        return t;
+                                    }).filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
+
+                                    console.log(`[ANIM] ${name}: toplam=${clip.tracks.length} eşleşen=${fixedTracks.length}`);
+                                    if (fixedTracks.length > 0) {
+                                        const nc = new THREE.AnimationClip(name, clip.duration, fixedTracks);
+                                        animationsMap[name] = mixer.clipAction(nc);
+                                    }
                                 }
                                 res();
                             }, undefined, () => { console.warn('[ANIM] Yüklenemedi:', file); res(); });
