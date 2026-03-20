@@ -1745,17 +1745,6 @@
                         if (!n.isMesh) return;
                         n.castShadow = true;
                         n.receiveShadow = true;
-
-                        const origColor = n.material?.color
-                            ? n.material.color.clone()
-                            : new THREE.Color(0xc8a882);
-                        const origMap = n.material?.map || null;
-
-                        n.material = new THREE.MeshToonMaterial({
-                            color: origColor,
-                            map: origMap,
-                            gradientMap: gradientTex,
-                        });
                     });
 
                     // Ölç ve boyutlandır
