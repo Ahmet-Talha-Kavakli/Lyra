@@ -2068,7 +2068,7 @@
                     body: JSON.stringify({
                         userId: persistentUserId,
                         currentTopic: extractedTopic,
-                        currentDuygu: son_analiz?.duygu || 'sakin',
+                        currentDuygu: sonDuygu || 'sakin',
                         sessionId
                     })
                 }).then(r => r.json())
