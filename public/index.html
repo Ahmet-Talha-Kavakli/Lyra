@@ -1592,31 +1592,19 @@
         // Lyra karakter tanımı
         const character = {
             name: "Lyra",
-            model: "xbot.glb",
+            model: "avatar.glb",
             animMap: {
-                'Yes':'Agreeing', 'No':'Disagreeing', 'Wave':'Wave',
-                'Jump':'Joyful Jump', 'Dance':'Wave Hip Hop Dance',
-                'Surprise':'Surprised', 'Looking':'Looking Around', 'Talk':'Talk',
-                'Sad':'Sad Idle',
-                'Angry':'Angry Gesture'
+                'Yes':'Yes', 'No':'No', 'Wave':'Wave',
+                'Jump':'Jump', 'Dance':'Dance',
+                'Surprise':'ThumbsUp', 'Looking':'Idle', 'Talk':'Idle',
+                'Sad':'Sitting',
+                'Angry':'Punch'
             },
             scaleMult: 1.0
         };
 
-        // Extra animasyon dosyaları
-        const extraAnims = [
-            { file:'Agreeing.glb',           name:'Agreeing' },
-            { file:'Joyful Jump.glb',        name:'Joyful Jump' },
-            { file:'Waving.glb',             name:'Wave' },
-            { file:'Talking.glb',            name:'Talk' },
-            { file:'Shaking Head No.glb',    name:'Disagreeing' },
-            { file:'Surprised.glb',          name:'Surprised' },
-            { file:'Looking Around.glb',     name:'Looking Around' },
-            { file:'Breathing Idle.glb',     name:'Idle' },
-            { file:'Sad Idle.glb',           name:'Sad Idle' },
-            { file:'Wave Hip Hop Dance.glb', name:'Wave Hip Hop Dance' },
-            { file:'Angry Gesture.glb',      name:'Angry Gesture' },
-        ];
+        // avatar.glb kendi animasyonlarını içeriyor — extra yükleme yok
+        const extraAnims = [];
 
         function initScene() {
             // MediaPipe'ı başlat
