@@ -482,7 +482,7 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
 const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => {
     if (!sonAnaliz || !sonAnaliz.yuz_var) return '';
     const kurallar = [];
-    const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti } = sonAnaliz;
+    const { duygu, yogunluk, enerji, jestler, guven, ortam, gorunum_ozeti, vucut_dili, duygu_uyumu } = sonAnaliz;
 
     // ── TEHLİKE & ZARAR PROTOKOLÜ (en yüksek öncelik) ─────
     const nesne = ortam?.el_nesnesi || ortam?.tehlikeli_nesne || '';
@@ -640,6 +640,68 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
     if (elAktivite === 'tırnak_yiyor' || elAktivite === 'saç_çekiyor') {
         kurallar.push(`Kullanıcı ${elAktivite === 'tırnak_yiyor' ? 'tırnak yiyor' : 'saçını çekiyor'} — yüksek kaygı veya stres sinyali. Tempo düşür, rahatlatıcı konuşma yap.`);
     }
+
+    // ── SOSYAL ÇEVRE ANALİZİ ────────────────────────────────
+    const yakinKisiler = ortam?.yakin_kisiler || [];
+    const tehditliKisi = yakinKisiler.find(k => k.tehdit_var === true);
+    const destekleyiciKisi = yakinKisiler.find(k => k.etki === 'olumlu');
+    const izleyenKisi = yakinKisiler.find(k => k.aktivite === 'izliyor');
+
+    if (tehditliKisi) {
+        kurallar.push(`🚨 SOSYAL TEHDİT: Kullanıcının yakınında tehdit edici biri var (${tehditliKisi.konum}, ${tehditliKisi.mesafe}). Hassas konulardan kaç. Nazikçe sor: "Şu an konuşmak için uygun bir yer misin?" — gizlice yardım isteyip istemediğini anlamaya çalış.`);
+        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'sosyal_tehdit', konum: tehditliKisi.konum }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    } else if (ortam?.mahremiyet_riski === true) {
+        kurallar.push(`Kullanıcı gizlice izleniyor/dinleniyor olabilir. Hassas konulardan kaç, soyut konuş. "Şu an rahatça konuşabilir misin?" diye sor.`);
+    } else if (izleyenKisi) {
+        kurallar.push(`Yakında biri kullanıcıyı izliyor (${izleyenKisi.mesafe}). Kullanıcının bu kişinin varlığından etkilenip etkilenmediğini fark et — gerekirse mahremiyeti sor.`);
+    }
+
+    if (destekleyiciKisi && !tehditliKisi) {
+        kurallar.push(`Yakınında destek veren biri var gibi görünüyor (${destekleyiciKisi.aktivite}). Bu sosyal destek kaynağını güçlendirmek için kullan.`);
+    }
+
+    if (yakinKisiler.length > 0 && duygu_uyumu?.ani_degisim === true && duygu_uyumu?.degisim_tipi === 'kisi_girdi') {
+        kurallar.push(`Biri ortama girdi ve kullanıcının durumu değişti. "Az önce bir şey mi oldu?" diye sor.`);
+    }
+
+    // ── TAM VÜCUT DİLİ KURALLARI ────────────────────────────
+    if (vucut_dili) {
+        const { omuz_durusu, kol_pozisyonu, govde_yonelimi, genel_gerginlik, nefes_hizli, kendine_dokunma, tekrarli_hareket, kacis_davranisi } = vucut_dili;
+
+        if (kol_pozisyonu === 'çapraz_kavuşturulmuş' && omuz_durusu === 'öne_eğik' && govde_yonelimi === 'geri_çekilmiş')
+            kurallar.push('Kullanıcı belirgin kapalı beden dili sergiliyor — kollar çapraz, omuzlar öne, gövde geri. Zorlamadan merak göster, fiziksel rahatlamayı destekle.');
+        else if (kol_pozisyonu === 'çapraz_kavuşturulmuş')
+            kurallar.push('Kollar çapraz — savunmacı veya rahatsız. Tempo düşür, güvenli alan yarat.');
+
+        if (genel_gerginlik === 'yüksek' && omuz_durusu === 'gergin')
+            kurallar.push('Tüm vücutta yüksek gerginlik. Topraklama öner: "Bir an için omuzlarını düşür ve nefes al."');
+
+        if (nefes_hizli === true)
+            kurallar.push('Göğüs hızlı kalkıp iniyor — nefes yüksek. 4-7-8 nefes tekniği öner.');
+
+        if (tekrarli_hareket === true)
+            kurallar.push('Tekrarlı hareket var — anksiyete/stres sinyali. 5-4-3-2-1 topraklama tekniği öner.');
+
+        if (kendine_dokunma === 'kol')
+            kurallar.push('Kola dokunuyor — bilinçsiz öz-temas, stres veya ağrı sinyali. Dikkatli ol, zarar davranışını gözle.');
+        else if (kendine_dokunma !== 'yok' && kendine_dokunma)
+            kurallar.push(`Kendine dokunuyor (${kendine_dokunma}) — kaygı veya rahatsızlık sinyali. Tempo düşür.`);
+
+        if (kacis_davranisi === true)
+            kurallar.push('Kullanıcı kameradan uzaklaşıyor veya yüzünü saklıyor. Zorlamadan: "İstersen biraz ara verebiliriz" de.');
+    }
+
+    // ── DUYGUSAL UYUM (YÜZ-BEDEN ÇELİŞKİSİ) ────────────────
+    if (duygu_uyumu) {
+        if (duygu_uyumu.yuz_beden === 'çelişkili')
+            kurallar.push('Yüz ifadesi ile beden dili çelişiyor — duyguları örtbas ediyor olabilir. "Nasıl hissediyorsun?" yerine "Bedenin ne söylüyor sana?" diye sor.');
+        else if (duygu_uyumu.yuz_beden === 'maskelenmiş')
+            kurallar.push('Yüz nötr ama beden yüksek stres gösteriyor — duyguları maskeliyor. Nazikçe: "İçinden neler geçiyor?" diye sor.');
+    }
+
+    // ── STRES ORTAMI ─────────────────────────────────────────
+    if (ortam?.stres_ortami === true)
+        kurallar.push(`Ortamda görsel stres unsurları var (${ortam.mekan_detay || ortam.mekan || 'belirsiz'}). Bu ortam kullanıcının durumunu etkiliyor olabilir.`);
 
     return kurallar.join(' ');
 };
@@ -2017,9 +2079,9 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
                 content: [
                     {
                         type: 'text',
-                        text: `Sen bir online terapi sisteminin görüntü analiz modülüsün. İki şeyi analiz et: yüz ifadesi ve elde/yakında görünen nesneler.
+                        text: `Sen bir online terapi sisteminin gelişmiş görüntü analiz modülüsün. Kameradaki TÜM sahneyi analiz et: kullanıcı, ortam, nesneler ve yakındaki kişiler dahil.
 
-── YÜZ TESPİTİ (DÜRÜST OL, UYDURMA) ──
+── YÜZ TESPİTİ ──
 - Görüntüde NET insan yüzü (göz+burun+ağız) varsa → yuz_var: true
 - Kamera kapalı, karanlık, el önde, nesne kaplıyor → yuz_var: false, guven: 0
 - Şüphe durumunda → yuz_var: false
@@ -2031,51 +2093,56 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
 - Rahat yüz + açık göz teması = sakin
 - Yanak kası + dudak köşesi = gerçek gülümseme (mutlu)
 
-── NESNE TESPİTİ (ÇOK ÖNEMLİ) ──
-Görüntüde elle tutulan veya yakında duran TÜM nesneleri tespit et. Birden fazla nesne varsa hepsini listele (max 4).
+── TAM VÜCUT DİLİ ──
+Kullanıcının (ön plandaki kişi) tüm vücudunu analiz et:
+- omuz_durusu: "öne_eğik|dik|geri_yaslanmış|gergin|çökmüş"
+- kol_pozisyonu: "çapraz_kavuşturulmuş|açık|dizde|yüzde|belirsiz"
+- govde_yonelimi: "kameraya_dönük|yana_dönük|geri_çekilmiş"
+- genel_gerginlik: "yüksek|orta|düşük"
+- nefes_hizli: Göğüs hızlı kalkıp iniyorsa → true
+- kendine_dokunma: Saça/yüze/kola/boyuna dokunma → "saç|yüz|kol|boyun|yok"
+- tekrarli_hareket: Aynı hareketi tekrarlıyor mu? → true/false
+- kacis_davranisi: Kameradan uzaklaşma, yüzü saklama girişimi? → true/false
 
-AÇI BAĞIMSIZ TESPİT: Nesne yana dönük, kısmi görünür veya bulanık olsa bile tahmin et.
-Emin değilsen nesne adının sonuna "?" ekle (örn: "makas?"). Hiç tahmin yapamamıyorsan "yok" yaz.
+── DUYGUSAL UYUM ──
+- yuz_beden: Yüz ifadesi ile beden dili tutarlı mı? → "uyumlu|çelişkili|maskelenmiş|belirsiz"
+  * çelişkili: Yüz gülüyor ama beden kapalı/gergin
+  * maskelenmiş: Yüz nötr ama beden yüksek stres gösteriyor
+- ani_degisim: Bu frame'de belirgin değişim var mı? → true/false
+- degisim_tipi: "kisi_girdi|kisi_cikti|kullanici_kalktı|isik_degisti|kullanici_aglamaya_basladı|belirsiz"
 
-Her nesne için:
-- ad: Tam nesne adı (örnekler aşağıda)
-- kategori: "sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok"
-- risk: "yuksek|orta|davranissal|dusuk|yok"
-- zarar_sinyali: Nesne cilde temas ediyor veya baskı uygulanıyor mu? → true/false
-- emin: Tespitte emin misin? → true/false
+── SOSYAL ÇEVRE ──
+Kamera alanında kullanıcı DIŞINDA başka kişi var mı? (max 3 kişi)
+Her kişi için:
+- konum: "arkaplanda_geçiyor|yakında_oturuyor|kapıda_duruyor|belirsiz"
+- mesafe: "çok_yakın|yakın|uzak"
+- aktivite: "geçiyor|izliyor|konuşuyor|yaklaşıyor|uzaklaşıyor|belirsiz"
+- etki: Kullanıcıya etkisi → "olumlu|olumsuz|nötr|belirsiz"
+  * olumlu: gülümseme, destek jesti, nazik davranış
+  * olumsuz: bağırma, tehdit jesti, zorla yaklaşma, baskı uygulama
+- tehdit_var: Kullanıcıya fiziksel/psikolojik baskı uyguluyorsa → true
 
-Nesne örnekleri:
-  SİGARA: "sigara", "elektronik sigara", "vape", "iqos", "nargile"
-  ALKOL: "bira", "şarap", "rakı", "viski", "şişe"
-  İLAÇ: "ilaç kutusu", "hap", "şırınga", "ilaç şişesi"
-  KESICI: "bıçak", "makas", "jilet", "cam parçası", "tırnak makası"
-  DELICI: "iğne", "çivi", "kalem ucu", "pergel"
-  BAĞLAYICI: "ip", "tel", "kablo", "kemer"
-  YAZMA: "kalem", "kurşun kalem", "marker"
-  TEKNOLOJİ: "telefon", "tablet", "kulaklık", "laptop"
-  STRES: "stres topu", "fidget spinner", "boncuk", "tesbih"
-  AYNA: "ayna", "kompakt ayna"
-  DİĞER: gördüğünü tam adıyla yaz
+── ORTAM KALİTESİ ──
+- mekan_detay: "yatak_odası|salon|mutfak|banyo|ofis|araba|dışarı|belirsiz"
+- aydinlik: "karanlık|loş|normal|parlak"
+- mahremiyet_riski: Başka biri kullanıcıyı izliyor/dinliyor olabilir mi? → true/false
+- stres_ortami: Görsel stres unsurları var mı (dağınık, karanlık, sigara dumanı)? → true/false
 
-Risk seviyeleri:
-- "yuksek": Doğrudan kendine zarar aracı — bıçak, jilet, iğne, makas, ip, cam, şırınga
-- "orta": Zarar için kullanılabilir ama günlük — kalem, tırnak makası, pergel, maket bıçağı
-- "davranissal": Psikolojik sinyal — sigara, alkol, ilaç, yiyecek, ayna
-- "dusuk": Nötr — telefon, kitap, bardak
-- "yok": Nesne yok
-
-tehlike_var: Herhangi bir nesnenin riski "yuksek" ise → true
-el_aktivitesi: "nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"
+── NESNE TESPİTİ ──
+Elle tutulan veya yakındaki TÜM nesneler (max 4). Açı bağımsız — kısmi görünümde "?" ekle.
+Her nesne: ad, kategori, risk ("yuksek|orta|davranissal|dusuk|yok"), zarar_sinyali, emin
+  Kategoriler: sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok
+  Yüksek risk: bıçak, jilet, iğne, makas, ip, cam, şırınga
+  Orta risk: kalem, tırnak makası, pergel
+  Davranışsal: sigara, alkol, ilaç, yiyecek, ayna
 
 ── GÜVEN SKORU ──
-- Net görüntü → 75-95
-- Bulanık/karanlık ama yüz var → 50-74
-- Yüz yok → 0
+- Net görüntü → 75-95 | Bulanık/karanlık ama yüz var → 50-74 | Yüz yok → 0
 
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":[{"ad":"yok","kategori":"yok","risk":"yok","zarar_sinyali":false,"emin":true}],"tehlike_var":false,"el_aktivitesi":"boşta"},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"vucut_dili":{"omuz_durusu":"öne_eğik|dik|geri_yaslanmış|gergin|çökmüş","kol_pozisyonu":"çapraz_kavuşturulmuş|açık|dizde|yüzde|belirsiz","govde_yonelimi":"kameraya_dönük|yana_dönük|geri_çekilmiş","genel_gerginlik":"yüksek|orta|düşük","nefes_hizli":false,"kendine_dokunma":"saç|yüz|kol|boyun|yok","tekrarli_hareket":false,"kacis_davranisi":false},"duygu_uyumu":{"yuz_beden":"uyumlu|çelişkili|maskelenmiş|belirsiz","ani_degisim":false,"degisim_tipi":"belirsiz"},"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","mekan_detay":"yatak_odası|salon|mutfak|banyo|ofis|araba|dışarı|belirsiz","aydinlik":"karanlık|loş|normal|parlak","mahremiyet_riski":false,"stres_ortami":false,"nesneler":[{"ad":"yok","kategori":"yok","risk":"yok","zarar_sinyali":false,"emin":true}],"tehlike_var":false,"el_aktivitesi":"boşta","yakin_kisiler":[]},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
@@ -2083,7 +2150,7 @@ Yalnızca geçerli JSON döndür:
                     }
                 ]
             }],
-            max_tokens: 1000
+            max_tokens: 1200
         });
 
         let result = { duygu: 'sakin', guven: 0, yuz_var: false };
