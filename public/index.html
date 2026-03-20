@@ -1814,6 +1814,11 @@
                         });
                     }
 
+                    // Model kemik isimlerini logla
+                    const allBones = [];
+                    avatar.traverse(n => { if (n.isBone || n.type === 'Bone') allBones.push(n.name); });
+                    console.log('[BONES] Model kemikleri:', allBones.slice(0, 20));
+
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
@@ -1844,6 +1849,7 @@
                                         return t;
                                     }).filter(t => !!avatar.getObjectByName(t.name.split('.')[0]));
 
+                                    if (name === 'Idle') console.log('[ANIM DEBUG] Idle track örneği (ilk 3):', clip.tracks.slice(0,3).map(t => fixTrackName(t.name)));
                                     console.log(`[ANIM] ${name}: toplam=${clip.tracks.length} eşleşen=${fixedTracks.length}`);
                                     if (fixedTracks.length > 0) {
                                         const nc = new THREE.AnimationClip(name, clip.duration, fixedTracks);
