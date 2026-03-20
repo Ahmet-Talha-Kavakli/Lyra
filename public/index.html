@@ -1811,14 +1811,27 @@
                     // Extra animasyonları yükle
                     loaderStatus.textContent = "ANİMASYONLAR YÜKLENİYOR...";
                     const extraLoader = new GLTFLoader();
+                    // $AssimpFbx$ suffix'ini temizle: mixamorigSpine2_$AssimpFbx$_Rotation → mixamorigSpine2
+                    function cleanTrackName(trackName) {
+                        return trackName.replace(/_\$AssimpFbx\$_[^.]+/g, '');
+                    }
+
                     Promise.all(extraAnims.map(({ file, name }) =>
                         new Promise(res => {
                             extraLoader.load('/' + file, (a) => {
                                 if (a.animations.length) {
-                                    const clip = THREE.AnimationClip.findByName(a.animations, a.animations[0].name) || a.animations[0];
-                                    const nc = new THREE.AnimationClip(name, clip.duration, clip.tracks);
+                                    const clip = a.animations[0];
+                                    const cleanedTracks = clip.tracks.map(t => {
+                                        const cleaned = cleanTrackName(t.name);
+                                        if (cleaned !== t.name) {
+                                            t = t.clone();
+                                            t.name = cleaned;
+                                        }
+                                        return t;
+                                    });
+                                    const nc = new THREE.AnimationClip(name, clip.duration, cleanedTracks);
                                     animationsMap[name] = mixer.clipAction(nc);
-                                    console.log(`[ANIM] Yüklendi: ${name} (${clip.tracks.length} track)`);
+                                    console.log(`[ANIM] Yüklendi: ${name} (${cleanedTracks.length} track)`);
                                 }
                                 res();
                             }, undefined, () => { console.warn('[ANIM] Yüklenemedi:', file); res(); });
