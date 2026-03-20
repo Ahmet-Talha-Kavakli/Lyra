@@ -440,7 +440,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            transition: opacity 1.2s ease;
+            transition: opacity 0.4s ease;
         }
 
         .loader-ring {
@@ -1661,7 +1661,6 @@
             window.avatarSpot = avatarSpot;
 
             setupPostProcessing();
-            animate();
 
             setProgress(10, "ODA YÜKLENİYOR...");
             loadRoom().then(() => {
@@ -1670,6 +1669,7 @@
             }).then(() => {
                 setProgress(100, "HAZIR");
                 playAnimation('Idle', true);
+                animate();
                 hideLoader();
             });
         }
@@ -1840,7 +1840,7 @@
 
         function hideLoader() {
             loaderOverlay.style.opacity = '0';
-            setTimeout(() => loaderOverlay.classList.add('hidden'), 1000);
+            setTimeout(() => loaderOverlay.classList.add('hidden'), 300);
         }
 
         function playAnimation(name, loop = false) {
