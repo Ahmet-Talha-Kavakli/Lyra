@@ -2032,36 +2032,40 @@ app.post('/analyze-emotion', emotionRateLimit, async (req, res) => {
 - Yanak kası + dudak köşesi = gerçek gülümseme (mutlu)
 
 ── NESNE TESPİTİ (ÇOK ÖNEMLİ) ──
-Görüntüde elle tutulan veya yakında duran her nesneyi tespit et. Mümkün olduğu kadar spesifik ol.
+Görüntüde elle tutulan veya yakında duran TÜM nesneleri tespit et. Birden fazla nesne varsa hepsini listele (max 4).
 
-el_nesnesi: Tam nesne adını yaz. Örnekler:
-  SİGARA: "sigara", "elektronik sigara", "vape", "pipo", "puro", "iqos", "nargile"
-  ALKOL: "bira", "şarap", "rakı", "viski", "votka", "alkollü içecek", "şişe"
-  İLAÇ: "ilaç kutusu", "hap", "şırınga", "ilaç şişesi", "uyuşturucu"
-  YIYECEK: "çikolata", "cips", "fast food", "tatlı", "yiyecek"
-  KESICI: "bıçak", "makas", "jilet", "cam parçası", "neşter", "tırnak makası"
-  DELICI: "iğne", "çivi", "vida", "kalem ucu", "pergel"
-  BAĞLAYICI: "ip", "tel", "kablo", "kemer", "kordon"
-  YAZMA: "kalem", "kurşun kalem", "marker", "tükenmez"
-  TEKNOLOJİ: "telefon", "tablet", "kulaklık", "laptop", "oyun konsolu"
-  STRES: "stres topu", "fidget spinner", "boncuk", "tesbih", "küçük nesne"
+AÇI BAĞIMSIZ TESPİT: Nesne yana dönük, kısmi görünür veya bulanık olsa bile tahmin et.
+Emin değilsen nesne adının sonuna "?" ekle (örn: "makas?"). Hiç tahmin yapamamıyorsan "yok" yaz.
+
+Her nesne için:
+- ad: Tam nesne adı (örnekler aşağıda)
+- kategori: "sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok"
+- risk: "yuksek|orta|davranissal|dusuk|yok"
+- zarar_sinyali: Nesne cilde temas ediyor veya baskı uygulanıyor mu? → true/false
+- emin: Tespitte emin misin? → true/false
+
+Nesne örnekleri:
+  SİGARA: "sigara", "elektronik sigara", "vape", "iqos", "nargile"
+  ALKOL: "bira", "şarap", "rakı", "viski", "şişe"
+  İLAÇ: "ilaç kutusu", "hap", "şırınga", "ilaç şişesi"
+  KESICI: "bıçak", "makas", "jilet", "cam parçası", "tırnak makası"
+  DELICI: "iğne", "çivi", "kalem ucu", "pergel"
+  BAĞLAYICI: "ip", "tel", "kablo", "kemer"
+  YAZMA: "kalem", "kurşun kalem", "marker"
+  TEKNOLOJİ: "telefon", "tablet", "kulaklık", "laptop"
+  STRES: "stres topu", "fidget spinner", "boncuk", "tesbih"
   AYNA: "ayna", "kompakt ayna"
   DİĞER: gördüğünü tam adıyla yaz
 
-nesne_kategorisi: "sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok"
+Risk seviyeleri:
+- "yuksek": Doğrudan kendine zarar aracı — bıçak, jilet, iğne, makas, ip, cam, şırınga
+- "orta": Zarar için kullanılabilir ama günlük — kalem, tırnak makası, pergel, maket bıçağı
+- "davranissal": Psikolojik sinyal — sigara, alkol, ilaç, yiyecek, ayna
+- "dusuk": Nötr — telefon, kitap, bardak
+- "yok": Nesne yok
 
-nesne_risk_seviyesi:
-- "yuksek": Doğrudan kendine zarar aracı — bıçak, jilet, iğne, makas, ip, tel, cam, şırınga
-- "orta": Zarar için kullanılabilir ama günlük nesne — kalem, kurşun kalem, tırnak makası, pergel, maket bıçağı
-- "davranissal": Zarar vermez ama psikolojik sinyal — sigara, alkol, ilaç, yiyecek, ayna
-- "dusuk": Nötr — telefon, kitap, bardak, yastık
-- "yok": Elde nesne yok
-
-zarar_sinyali: Nesne cilde temas ediyor, baskı uygulanıyor veya tekrarlı hareket var mı? → true/false
-tehlike_var: nesne_risk_seviyesi "yuksek" ise → true
-
+tehlike_var: Herhangi bir nesnenin riski "yuksek" ise → true
 el_aktivitesi: "nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"
-nesne_amac_tahmini: Nesnenin şu anki kullanım amacı hakkında kısa yorum. Spesifik ol. Örn: "sigara içiyor", "elektronik sigara çekiyor", "bira yudumlıyor", "kalem parmaklarında döndürüyor"
 
 ── GÜVEN SKORU ──
 - Net görüntü → 75-95
@@ -2071,7 +2075,7 @@ nesne_amac_tahmini: Nesnenin şu anki kullanım amacı hakkında kısa yorum. Sp
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","el_nesnesi":"yok","nesne_kategorisi":"sigara|alkol|ilac|kesici|delici|baglayici|yiyecek|teknoloji|stres_nesnesi|ayna|yazma|diger|yok","nesne_risk_seviyesi":"yuksek|orta|davranissal|dusuk|yok","nesne_amac_tahmini":"","zarar_sinyali":false,"tehlike_var":false},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","omuz_durusu":"yüksek|normal|düşük","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir","el_aktivitesi":"nesne_tutuyor|içiyor|içki_içiyor|ilaç_alıyor|yiyor|yüze_dokunuyor|kendine_dokunuyor|saç_çekiyor|tırnak_yiyor|aynaya_bakıyor|boşta"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","nesneler":[{"ad":"yok","kategori":"yok","risk":"yok","zarar_sinyali":false,"emin":true}],"tehlike_var":false,"el_aktivitesi":"boşta"},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
                     },
                     {
                         type: 'image_url',
@@ -2079,7 +2083,7 @@ Yalnızca geçerli JSON döndür:
                     }
                 ]
             }],
-            max_tokens: 800
+            max_tokens: 1000
         });
 
         let result = { duygu: 'sakin', guven: 0, yuz_var: false };
@@ -2093,6 +2097,19 @@ Yalnızca geçerli JSON döndür:
             }
             result = JSON.parse(raw);
             result.timestamp = Date.now();
+
+            // Çoklu nesne → geriye dönük uyumluluk: en yüksek riskli nesneyi öne çıkar
+            if (result.ortam?.nesneler?.length > 0) {
+                const riskSirasi = ['yuksek','orta','davranissal','dusuk','yok'];
+                const enRiskli = [...result.ortam.nesneler].sort(
+                    (a,b) => riskSirasi.indexOf(a.risk) - riskSirasi.indexOf(b.risk)
+                )[0];
+                result.ortam.el_nesnesi = enRiskli.ad;
+                result.ortam.nesne_risk_seviyesi = enRiskli.risk;
+                result.ortam.nesne_kategorisi = enRiskli.kategori;
+                result.ortam.zarar_sinyali = result.ortam.nesneler.some(n => n.zarar_sinyali);
+            }
+
             console.log(`[DUYGU PARSE] OK: ${result.duygu} yuz:${result.yuz_var} guven:${result.guven}`);
         } catch (parseErr) {
             console.warn('[DUYGU PARSE] Hata:', parseErr.message, '| raw:', response.choices[0]?.message?.content?.slice(0, 100));
