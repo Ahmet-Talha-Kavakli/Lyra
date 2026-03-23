@@ -14,6 +14,25 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ─── FEATURE FLAGS ─────────────────────────────────────────
+const FEATURE_FLAGS = {
+    CROSS_SESSION_LINKS: true,
+    TOPIC_DEPTH: true,
+    PARALINGUISTIC: true,
+    ROLEPLAY: true,
+    CLINICAL_SCREENING: true,
+    REFERRAL_PROTOCOL: true,
+    SILENCE_MANAGEMENT: true,
+    GUIDED_IMAGERY: true,
+    CULTURAL_NUANCE: true,
+    OBSERVATIONAL_EMPATHY: true,
+    SESSION_PREP: true,
+    CYCLE_DETECTION: true,
+    VOICE_BASELINE: true,
+    IFS: true,
+    NARRATIVE_THERAPY: true,
+};
+
 const app = express();
 const port = process.env.PORT || 3001;
 
@@ -261,6 +280,77 @@ const getDominantDuygu = (gecmis) => {
     return adaylar[0];
 };
 
+// ─── KLİNİK TARAMA SABİTLERİ ─────────────────────────────
+const PHQ9_QUESTIONS = [
+    { id: 'phq1', soru: 'Son iki haftada bir şeylerden zevk almakta ya da ilgi duymakta zorlandın mı?', tetikleyici: ['zevk almıyorum', 'ilgim kalmadı', 'hiçbir şey istemiyorum', 'keyif almıyorum'] },
+    { id: 'phq2', soru: 'Son iki haftada kendini umutsuz, mutsuz ya da çaresiz hissettin mi?', tetikleyici: ['umutsuz', 'mutsuz', 'çaresiz', 'bunalım', 'sıkıntı'] },
+    { id: 'phq3', soru: 'Son iki haftada uyumakta zorlandın mı ya da çok mu uyudun?', tetikleyici: ['uyuyamıyorum', 'çok uyuyorum', 'uyku sorunu', 'uykusuzluk', 'gece kalkıyorum'] },
+    { id: 'phq4', soru: 'Son iki haftada kendin hakkında olumsuz düşünceler yaşadın mı?', tetikleyici: ['kendimi suçluyorum', 'değersizim', 'başarısızım', 'işe yaramaz'] },
+    { id: 'phq5', soru: 'Son iki haftada konsantrasyon güçlüğü çekiyor musun?', tetikleyici: ['odaklanamıyorum', 'konsantre olamıyorum', 'dikkatim dağılıyor', 'düşünemiyorum'] },
+];
+
+const GAD7_QUESTIONS = [
+    { id: 'gad1', soru: 'Son iki haftada sinirli, gergin ya da gergin hissediyor musun?', tetikleyici: ['gerginim', 'sinirli', 'huzursuzum', 'rahat değilim'] },
+    { id: 'gad2', soru: 'Son iki haftada endişelerini kontrol etmekte zorlanıyor musun?', tetikleyici: ['durduramıyorum', 'sürekli düşünüyorum', 'kafamı meşgul ediyor', 'endişe'] },
+    { id: 'gad3', soru: 'Son iki haftada kötü bir şey olacakmış gibi hissediyor musun?', tetikleyici: ['kötü bir şey olacak', 'felaket', 'korku', 'kaygı', 'tehlike'] },
+];
+
+// ─── GÖRSELLEŞTIRME SCRİPTLERİ ───────────────────────────
+const VISUALIZATION_SCRIPTS = {
+    guvenli_yer: {
+        sure: '5-7 dakika',
+        tetikleyici: ['endişeli', 'korkmuş'],
+        adimlar: [
+            'Gözlerini yavaşça kapat. Omuzlarını düşür. Bir nefes al.',
+            'Kendini tamamen güvende hissettiğin bir yeri hayal et. Gerçek ya da düşsel, fark etmez.',
+            'O yerde ne görüyorsun? Renkleri, ışığı, etrafındaki şeyleri fark et.',
+            'O yerde ne duyuyorsun? Sessizlik mi, doğa sesleri mi, müzik mi?',
+            'O yerde nasıl hissediyorsun? O hissin vücudunda nerede oturduğunu fark et.',
+            'Burada güvendesin. İstediğin zaman buraya dönebilirsin.',
+            'Hazır olduğunda gözlerini yavaşça aç.'
+        ]
+    },
+    nehir_seyri: {
+        sure: '4-5 dakika',
+        tetikleyici: ['bloke', 'donmus'],
+        adimlar: [
+            'Gözlerini kapat. Bir nehrin kıyısında oturduğunu hayal et.',
+            'Nehir sakin akıyor. Sesi var, ama sert değil.',
+            'Aklına gelen her düşünceyi bir yaprak gibi suya bırak. Gitmesine izin ver.',
+            'Sen sadece izliyorsun. Yapraklar geliyor, gidiyor. Sen burada, güvendesin.',
+            'Şu an sadece bu an var. Nehir akıyor, sen burada oturuyorsun.',
+            'Hazır olduğunda derin bir nefes al ve gözlerini aç.'
+        ]
+    },
+    ic_huzur: {
+        sure: '5-6 dakika',
+        tetikleyici: ['sinirli', 'öfkeli'],
+        adimlar: [
+            'Gözlerini kapat. Ellerini kucağına koy, avuçların yukarı baksın.',
+            'Şu an ne hissediyorsan, onu reddetmene gerek yok. Sadece fark et.',
+            'Dört say nefes al. Yedi say tut. Sekiz say ver. Birlikte.',
+            'Bir kez daha. Dört, yedi, sekiz.',
+            'O duygunun vücudunda nerede oturduğunu fark et. Ona biraz alan ver.',
+            'Alan verilince, duygular geçer. Sen ondan büyüksün.',
+            'Hazır olduğunda gözlerini aç.'
+        ]
+    },
+    kaynak_arama: {
+        sure: '6-7 dakika',
+        tetikleyici: ['yorgun', 'tükenmiş'],
+        adimlar: [
+            'Gözlerini kapat. Sırtını dik tut ama rahat.',
+            'Şu an yorgunluğun tam olarak nerede hissediyorsun? Omuzlarda mı, kafanda mı, göğsünde mi?',
+            'O yere nazikçe nefes gönder. Çıkarken birlikte biraz yorgunluk da gitsin.',
+            'Hayatında seni dolduran, güç veren bir şey var. Küçük de olur.',
+            'O şeyi aklına getir. Bir renk, bir yer, bir insan, bir an.',
+            'O hissin içinden sana bir enerji kaynağı gibi aktığını hayal et.',
+            'Sen yorulabilirsin, ama tükenmiş değilsin. Kaynak hâlâ orada.',
+            'Hazır olduğunda derin bir nefes al ve gözlerini aç.'
+        ]
+    }
+};
+
 // ─── SEANS İÇİ ÖRÜNTÜ YARDIMCILARI ──────────────────────
 const KONU_GRUPLARI = {
     'aile': ['anne', 'baba', 'kardeş', 'aile', 'ebeveyn', 'çocuk', 'family', 'mother', 'father'],
@@ -434,8 +524,17 @@ const buildLayer5Rules = (silenceDuration, sessizlikTipi, dominantDuygu) => {
     else if (silenceDuration >= 8 && !kurallar.length)
         kurallar.push('8+ sn sessizlik. "Hazır olduğunda devam et, acele yok."');
 
+    // ── GELİŞMİŞ SESSİZLİK YÖNETİMİ (Özellik 7) ─────────────
+    if (sessizlikTipi === 'derin_isleme' || (silenceDuration >= 15 && silenceDuration < 25 && !sessizlikTipi))
+        kurallar.push('[SESSİZLİK-DERİN] İçinde bir şeyler işleniyor. "Ben buradayım, sözcükler gelmeyebilir, bu tamam." Sessizliği doldurma.');
+    if (silenceDuration >= 20 && dominantDuygu === 'üzgün')
+        kurallar.push('[SESSİZLİK-ÜZÜNTÜ] Bu sessizliği doldurma. Sadece "Seninleyim" de ve bekle. Terapötik araç olarak kullan.');
+
+    // ── GUIDED IMAGERY (Özellik 8) ────────────────────────────
     if ((dominantDuygu === 'endişeli' || dominantDuygu === 'korkmuş') && silenceDuration >= 12)
-        kurallar.push('[#16] <call>visualizationStart()</call> Kaygı + sessizlik. "Sakinleştirici bir deneyime davet etmek istiyorum."');
+        kurallar.push('[GÖRSELLEŞTİRME] <call>visualizationStart(guvenli_yer)</call> Kaygı + sessizlik. "Seni kısa bir zihinsel egzersize davet etmek istiyorum, ister misin?"');
+    if (sessizlikTipi === 'bloke' && silenceDuration >= 15)
+        kurallar.push('[GÖRSELLEŞTİRME] <call>visualizationStart(nehir_seyri)</call> Bloke + uzun sessizlik. "Zihnini biraz dinlendirmek ister misin?"');
 
     return kurallar.join(' ');
 };
@@ -525,6 +624,46 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
             kurallar.push(`[SAVUNMA-HAFIZA] ${savunmaRehber[savunmaTipi]}`);
     }
 
+    // ── DÖNGÜSEL ÖRÜNTÜ TESPİTİ (Özellik 12) ─────────────────
+    if (FEATURE_FLAGS.CYCLE_DETECTION) {
+        const donguler = patternMemory.dongusel_oruntuler || [];
+        for (const dongu of donguler) {
+            if (dongu.seans_sayisi >= 3)
+                kurallar.push(`[DÖNGÜ] "${dongu.konu}" → "${dongu.duygu}" döngüsü ${dongu.seans_sayisi} seanstır kırılmadı. Nazikçe işaret et: "Fark ettim ki bu konuya her döndüğümüzde aynı yere geliyoruz. Bu döngüyü birlikte inceleyebiliriz."`);
+        }
+    }
+
+    // ── ÇAPRAZ SEANS ANLAM BAĞLANTISI (Özellik 1) ─────────────
+    if (FEATURE_FLAGS.CROSS_SESSION_LINKS) {
+        const baglantilar = patternMemory.cross_session_baglantilar || [];
+        const son30Gun = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const guncelBaglantilar = baglantilar.filter(b => new Date(b.tarih).getTime() > son30Gun);
+        for (const b of guncelBaglantilar.slice(0, 2)) {
+            kurallar.push(`[ÇAPRAZ SEANS] "${b.tema_a}" ve "${b.tema_b}" arasında bağlantı var — ikisinde de "${b.ortak_duygu}" hissi. Nazikçe işaret et.`);
+        }
+    }
+
+    // ── NARATİF ÇAPRAZ SEANS (Özellik 15 seanslar arası) ──────
+    if (FEATURE_FLAGS.NARRATIVE_THERAPY) {
+        const anaHikaye = patternMemory.anlatilan_hikaye?.ana_kimlik_ifadesi;
+        if (anaHikaye)
+            kurallar.push(`[NARATİV-HAFIZA] Önceki seanslarda ana kimlik ifadesi: "${anaHikaye}". Bugünkü konuşmada buna aykırı bir şey söylerse işaret et.`);
+    }
+
+    // ── AKILLI SEVK PROTOKOLÜ (Özellik 6) ────────────────────
+    if (FEATURE_FLAGS.REFERRAL_PROTOCOL) {
+        const sevk = assessReferralNeed(patternMemory);
+        if (sevk?.aciliyet === 'yuksek')
+            kurallar.push('[ACİL SEVK] Yüksek klinik risk. "Seninle bu yolculuğu sürdürmek istiyorum ama bazı konularda profesyonel biriyle yüz yüze konuşmak çok daha güçlü olabilir. 182 ALO hattını arayabilirsin." Seans sonunda söyle.');
+        else if (sevk?.aciliyet === 'orta')
+            kurallar.push('[SEVK ÖNERİSİ] Seans sonunda nazikçe: "Son birkaç haftada konuştuklarımız, bir uzmanla çalışmanın işe yarayabileceğini gösteriyor. Bu konuda ne düşünüyorsun?" Baskı yapma.');
+    }
+
+    // ── SEANS ÖNCESİ HAZIRLIK (Özellik 11) ──────────────────
+    if (FEATURE_FLAGS.SESSION_PREP && patternMemory.seans_oncesi_hazirlik?.hedef) {
+        kurallar.push(`[SEANS HEDEFİ] Bu seans kullanıcı şunu hedefledi: "${patternMemory.seans_oncesi_hazirlik.hedef}". Seansı bu hedefe göre şekillendir.`);
+    }
+
     return kurallar.join(' ');
 };
 
@@ -565,6 +704,29 @@ const buildLayer7Rules = (userProfile, sonAnaliz, gecmis, transcriptData) => {
         const sayi = benzersizDuygular.length;
         if (sayi >= 5)
             kurallar.push(`[#5 LABİLİTE] 10 dk'da ${sayi} duygu: ${benzersizDuygular.join(', ')}. Stabilizasyon: zemine in, nefes, yavaşlat, soru sorma.`);
+    }
+
+    // ── SESSİZLİK TOLERANSI (Özellik 7) ─────────────────────
+    if (FEATURE_FLAGS.SILENCE_MANAGEMENT)
+        kurallar.push('Sessizlik terapötik bir araçtır. 20 saniyeye kadar bozmaktan çekinme — kullanıcı işliyor olabilir.');
+
+    // ── KÜLTÜREL PROFİL (Özellik 9 — kalıcı) ────────────────
+    if (FEATURE_FLAGS.CULTURAL_NUANCE && userProfile?.kulturel_profil) {
+        const kp = userProfile.kulturel_profil;
+        const notlar = [];
+        if (kp.dini_referans_toleransi === 'var') notlar.push('dini referanslara saygılı yaklaş');
+        if (kp.utanc_kulturel_hassasiyet === 'yüksek') notlar.push('utanç/ayıp kültürüne duyarlı ol, normalleştirme yaparken acele etme');
+        if (kp.aile_hiyerarsisi_onemi === 'yüksek') notlar.push('aile kararlarını eleştirme, hiyerarşiyi dikkate al');
+        if (notlar.length > 0)
+            kurallar.push(`[KÜLTÜREL PROFİL] Bu kullanıcı için: ${notlar.join(', ')}.`);
+    }
+
+    // ── SES NORMU SAPMASI (Özellik 13) ───────────────────────
+    if (FEATURE_FLAGS.VOICE_BASELINE && transcriptData) {
+        const sesNormali = userProfile?.ses_normali;
+        const sapma = detectVoiceDeviation(transcriptData, sesNormali);
+        if (sapma && sapma.tempo_sapma > 0.5)
+            kurallar.push(`[SES NORMU] Normalde çok farklı konuşuyor — bugün ${sapma.hizlandi ? 'çok hızlı' : 'çok yavaş'}. "Bir şey mi oldu, bugün biraz farklı konuşuyorsun" diyebilirsin.`);
     }
 
     return kurallar.join(' ');
@@ -862,6 +1024,15 @@ const buildLayer2Rules = (trend, dominantDuygu, gecmis, transcriptData) => {
             kurallar.push('EMPATİ: Uzun süredir olumsuz, rahatlamıyor. Teknik bırak — sadece "Bunu yaşamak çok zor olmalı" de. Sessiz kal.');
     }
 
+    // ── PROSODİ ANALİZİ (Özellik 3) ─────────────────────────
+    const prosodi = analyzeProsody(transcriptData);
+    if (prosodi.sesKirilmasi && (dominantDuygu === 'üzgün' || dominantDuygu === 'endişeli'))
+        kurallar.push('[PROSODİ] Sesin kırıldı. "Bunu söylemek zordu, değil mi? Seninleyim." Baskı yapma.');
+    if (prosodi.fisildama)
+        kurallar.push('[PROSODİ] Neredeyse fısıldıyordun. "Bu konuşmak zor muydu?" diye nazikçe sor.');
+    if (prosodi.aniHizDegisimi && prosodi.hizArti)
+        kurallar.push('[PROSODİ] Tempo aniden arttı — bir şey tetikledi. "Az önce bir şey oldu, ne hissettirdi?"');
+
     return kurallar.join(' ');
 };
 
@@ -982,6 +1153,61 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
             kurallar.push('[MOTİVASYON] Değişim başlamış. Güçlendir: "Bunu başardın — bu kolay değildi."');
     }
 
+    // ── KÜLTÜREL ÇERÇEVE (Özellik 9) ─────────────────────────
+    const kaynakMetinTum = (transcriptData?.fullTranscript || '') + ' ' + (hafizaMetni || '');
+    const kulturel = detectCulturalFrame(kaynakMetinTum);
+    if (kulturel.dini)
+        kurallar.push('[KÜLTÜREL-DİNİ] Dini çerçeve içinde konuşuyor. Yargılamadan karşıla. "İnanç bu süreçte sana nasıl destek oluyor?" diyebilirsin. Dini referanslarına karşı çıkma.');
+    if (kulturel.utanc)
+        kurallar.push('[KÜLTÜREL-UTANÇ] Utanç/ayıp kültürü çerçevesi var. "İnsanların ne düşüneceği" kaygısını doğrula, "önemli değil" deme. Kademeli normalizasyon uygula.');
+    if (kulturel.aile_hiyerarsisi)
+        kurallar.push('[KÜLTÜREL-AİLE] Aile hiyerarşisi önemli. Aile otoritesini eleştirme. Aile içi uyum çerçevesinde yaklaş.');
+
+    // ── IFS PARÇA TESPİTİ (Özellik 14) ──────────────────────
+    if (transcriptData?.fullTranscript) {
+        const ifs = detectIFSParts(transcriptData.fullTranscript);
+        if (ifs.elestirel)
+            kurallar.push(`[IFS-ELEŞTİREL] İçindeki eleştirmen ses konuşuyor: "${ifs.parca_metni}". "Bu sesi duyuyorum — seni korumaya çalışan bir parçan. Ona sormak ister misin, senden ne istiyor?"`);
+        if (ifs.koruyucu)
+            kurallar.push('[IFS-KORUYUCU] Koruyucu parça devrede — "göstermeme" isteği var. "Bu korumaya şu an gerçekten ihtiyacın var mı?" diye nazikçe sor.');
+        if (ifs.surugucu)
+            kurallar.push('[IFS-SÜRÜCÜ] Kaçış isteği var. Kriz olmayabilir ama yakından takip et. "Bu his ne kadar süredir böyle?" diye sor.');
+    }
+
+    // ── NARATİV TERAPİ (Özellik 15) ─────────────────────────
+    if (transcriptData?.fullTranscript) {
+        const narativ = detectNarrativePattern(transcriptData.fullTranscript);
+        if (narativ.egemen)
+            kurallar.push(`[NARATİV] Egemen hikaye tespit: "${narativ.egemen}". İstisna ara: "Hiç böyle olmadığın, bunun farklı gittiği bir an oldu mu?"`);
+        if (narativ.istisna)
+            kurallar.push(`[NARATİV] İstisna an var: "${narativ.istisna}". Genişlet: "O anda ne farklıydı? Nasıl başardın?"`);
+    }
+
+    // ── ROL YAPMA TEKNİĞİ (Özellik 4) ───────────────────────
+    if (transcriptData?.fullTranscript) {
+        const rolYapma = detectRoleplayOpportunity(transcriptData.fullTranscript);
+        const rolYapmaYapildi = transcriptData?.kural_sayaci?.rol_yapma > 0;
+        if (rolYapma && !rolYapmaYapildi) {
+            kurallar.push(`[ROL-YAPMA] Boş sandalye fırsatı. Teklif et: "Sanki ${rolYapma.karakter} şu an karşında otursa, ona ne söylemek isterdin?" — Reddetme hakkı tanı. Bu seans sadece bir kez teklif et.`);
+        }
+    }
+
+    // ── KLİNİK TARAMA (Özellik 5) ────────────────────────────
+    if (transcriptData?.lastSegment) {
+        const taramaSayisi = transcriptData?.kural_sayaci?.tarama || 0;
+        if (taramaSayisi < 2) {
+            const mevcutCevaplar = transcriptData?.phq9_cevaplar || {};
+            const tarama = detectScreeningOpportunity(transcriptData.lastSegment, mevcutCevaplar);
+            if (tarama)
+                kurallar.push(`[TARAMA] Doğal geçişle sor: "${tarama.soru_metni}" — Klinik değil, kişisel farkındalık sorusu olarak sun. Cevabı zorla değil.`);
+        }
+    }
+
+    // ── GÖZLEM TEMELLİ EMPATİ (Özellik 10) ──────────────────
+    const gozlemYansitma = buildObservationalReflection(sonAnaliz, transcriptData);
+    if (gozlemYansitma && (sonAnaliz?.yogunluk === 'yüksek' || sonAnaliz?.jestler?.gozyasi_izi === true))
+        kurallar.push(`[GÖZLEM YANSITMA] Şu an gördüğüm: ${gozlemYansitma}. Bunu doğal şekilde yansıt — "fark ettim ki..." ile başla. Formüle kalıp kullanma.`);
+
     return kurallar.join(' ');
 };
 
@@ -1066,6 +1292,168 @@ const detectDependencyLanguage = (segment) => {
     const lower = segment.toLowerCase();
     const kaliplar = ['yapamam', 'yapamıyorum', 'zorundayım', 'mecburum', 'başka seçeneğim yok', 'kaçış yok', 'çaresizim', 'elimde değil', 'her zaman böyle olacak', 'hiçbir zaman değişmeyecek'];
     return kaliplar.find(k => lower.includes(k)) || null;
+};
+
+// ─── YENİ DETECT FONKSİYONLARI ──────────────────────────────
+
+// Rol yapma fırsatı tespiti
+const detectRoleplayOpportunity = (transcript) => {
+    if (!FEATURE_FLAGS.ROLEPLAY || !transcript) return null;
+    try {
+        const lower = transcript.toLowerCase();
+        const kaliplar = [
+            { tetik: ['annem sürekli', 'annem hep', 'annem her zaman'], karakter: 'annen' },
+            { tetik: ['babam sürekli', 'babam hep', 'babam her zaman'], karakter: 'baban' },
+            { tetik: ['patronum sürekli', 'patronum hep', 'müdürüm hep'], karakter: 'patronun' },
+            { tetik: ['sevgilim hep', 'sevgilim sürekli', 'eşim hep', 'partnerim hep'], karakter: 'sevgilin' },
+            { tetik: ['arkadaşım hep', 'arkadaşım sürekli'], karakter: 'arkadaşın' },
+        ];
+        for (const { tetik, karakter } of kaliplar) {
+            if (tetik.some(k => lower.includes(k))) return { tip: 'bos_sandalye', karakter };
+        }
+    } catch { /* devam */ }
+    return null;
+};
+
+// Klinik tarama fırsatı tespiti
+const detectScreeningOpportunity = (lastSegment, mevcutCevaplar = {}) => {
+    if (!FEATURE_FLAGS.CLINICAL_SCREENING || !lastSegment) return null;
+    try {
+        const lower = lastSegment.toLowerCase();
+        const tumSorular = [...PHQ9_QUESTIONS, ...GAD7_QUESTIONS];
+        for (const soru of tumSorular) {
+            if (mevcutCevaplar[soru.id] !== undefined) continue;
+            if (soru.tetikleyici.some(t => lower.includes(t))) {
+                return { tip: soru.id.startsWith('phq') ? 'phq9' : 'gad7', soru_id: soru.id, soru_metni: soru.soru };
+            }
+        }
+    } catch { /* devam */ }
+    return null;
+};
+
+// Kültürel çerçeve tespiti
+const detectCulturalFrame = (transcript) => {
+    if (!FEATURE_FLAGS.CULTURAL_NUANCE || !transcript) return { dini: false, utanc: false, aile_hiyerarsisi: false };
+    try {
+        const lower = transcript.toLowerCase();
+        const diniKelimeler = ['allah', 'dua', 'namaz', 'kader', 'inşallah', 'tevekkel', 'günah', 'sevap', 'helal', 'haram', 'ibadet', 'tanrı', 'din'];
+        const utancKelimeler = ['ayıp', 'utanç', 'utandım', 'yüz kızartıcı', 'namus', 'mahcup', 'rezil', 'ne der insanlar', 'ne diyecekler', 'dedikodu'];
+        const aileKelimeler = ['büyüklere saygı', 'büyüklerim', 'aile baskısı', 'babam söylerse', 'annem izin verse', 'aile kararı', 'aile dedi'];
+        return {
+            dini: diniKelimeler.some(k => lower.includes(k)),
+            utanc: utancKelimeler.some(k => lower.includes(k)),
+            aile_hiyerarsisi: aileKelimeler.some(k => lower.includes(k)),
+        };
+    } catch { return { dini: false, utanc: false, aile_hiyerarsisi: false }; }
+};
+
+// IFS parça tespiti
+const detectIFSParts = (transcript) => {
+    if (!FEATURE_FLAGS.IFS || !transcript) return { elestirel: false, koruyucu: false, surugucu: false, parca_metni: '' };
+    try {
+        const lower = transcript.toLowerCase();
+        const elestirel = ['aptalın tekiyim', 'neden hep ben', 'beceremedim yine', 'hep yanlış yapıyorum', 'kendimden iğreniyorum', 'yetersizim', 'hiçbir şeyi doğru yapamıyorum'];
+        const koruyucu = ['göstermemem lazım', 'kimse bilmemeli', 'zayıf görünmek istemiyorum', 'ağlamamam lazım', 'güçlü olmam lazım', 'kimse anlayamaz'];
+        const surugucu = ['her şeyi bırakmak istiyorum', 'kaçmak istiyorum', 'yok olmak istiyorum', 'kaybolmak istiyorum', 'hepsinden uzaklaşmak'];
+        const e = elestirel.some(k => lower.includes(k));
+        const k = koruyucu.some(k => lower.includes(k));
+        const s = surugucu.some(k => lower.includes(k));
+        const parca_metni = e ? elestirel.find(k => lower.includes(k)) || '' :
+                            k ? koruyucu.find(k => lower.includes(k)) || '' :
+                            s ? surugucu.find(k => lower.includes(k)) || '' : '';
+        return { elestirel: e, koruyucu: k, surugucu: s, parca_metni };
+    } catch { return { elestirel: false, koruyucu: false, surugucu: false, parca_metni: '' }; }
+};
+
+// Narativ örüntü tespiti
+const detectNarrativePattern = (transcript) => {
+    if (!FEATURE_FLAGS.NARRATIVE_THERAPY || !transcript) return { egemen: null, istisna: null };
+    try {
+        const lower = transcript.toLowerCase();
+        const egemenKaliplar = [
+            'ben hep böyleyim', 'benim için hiçbir şey', 'hep başarısız oluyorum',
+            'hiçbir zaman iyi olmayacak', 'ben hep yalnızım', 'kimse beni sevmiyor',
+            'ben olmadım hiç', 'hep böyle kalacak'
+        ];
+        const istisnalKaliplar = [
+            'bir keresinde', 'bir zamanlar', 'o gün yaptım', 'bir kez başardım',
+            'o zaman iyiydi', 'bir an için', 'hatırlıyorum o anı'
+        ];
+        const egemen = egemenKaliplar.find(k => lower.includes(k)) || null;
+        const istisna = istisnalKaliplar.find(k => lower.includes(k)) || null;
+        return { egemen, istisna };
+    } catch { return { egemen: null, istisna: null }; }
+};
+
+// Prosodi analizi
+const analyzeProsody = (transcriptData) => {
+    if (!FEATURE_FLAGS.PARALINGUISTIC || !transcriptData) return { sesKirilmasi: false, fisildama: false, aniHizDegisimi: false, hizArti: false };
+    try {
+        const { vokalBreak, isWhisper, tempoSpike, konusmaTempo, tempoTrend } = transcriptData;
+        return {
+            sesKirilmasi: vokalBreak === true,
+            fisildama: isWhisper === true,
+            aniHizDegisimi: tempoSpike === true,
+            hizArti: tempoTrend === 'artıyor' && (konusmaTempo || 0) > 3,
+        };
+    } catch { return { sesKirilmasi: false, fisildama: false, aniHizDegisimi: false, hizArti: false }; }
+};
+
+// Ses normali sapma tespiti
+const detectVoiceDeviation = (transcriptData, sesNormali) => {
+    if (!FEATURE_FLAGS.VOICE_BASELINE || !transcriptData || !sesNormali || sesNormali.olcum_sayisi < 3) return null;
+    try {
+        const { konusmaTempo, sesYogunlukOrt } = transcriptData;
+        const tempoSapma = sesNormali.ortalama_tempo > 0
+            ? Math.abs((konusmaTempo - sesNormali.ortalama_tempo) / sesNormali.ortalama_tempo)
+            : 0;
+        const yogunlukSapma = sesNormali.ortalama_yogunluk > 0
+            ? Math.abs((sesYogunlukOrt - sesNormali.ortalama_yogunluk) / sesNormali.ortalama_yogunluk)
+            : 0;
+        if (tempoSapma < 0.3 && yogunlukSapma < 0.3) return null;
+        return {
+            tempo_sapma: tempoSapma,
+            yogunluk_sapma: yogunlukSapma,
+            hizlandi: konusmaTempo > sesNormali.ortalama_tempo,
+        };
+    } catch { return null; }
+};
+
+// Gözlem temelli yansıtma cümlesi oluştur
+const buildObservationalReflection = (sonAnaliz, transcriptData) => {
+    if (!FEATURE_FLAGS.OBSERVATIONAL_EMPATHY) return null;
+    try {
+        const gozlemler = [];
+        if (sonAnaliz?.jestler?.gozyasi_izi === true) gozlemler.push('gözlerinde yaş birikti');
+        if (transcriptData?.sesTitreme === true) gozlemler.push('sesin titredi');
+        if (transcriptData?.konusmaTempo && transcriptData.konusmaTempo < 0.8) gozlemler.push('konuşman yavaşladı');
+        if (sonAnaliz?.vucut_dili?.kol_pozisyonu === 'çapraz_kavuşturulmuş') gozlemler.push('kolların kapandı');
+        if (sonAnaliz?.jestler?.dudak_sikistirma === true) gozlemler.push('dudaklarını sıkıştırdın');
+        if (gozlemler.length === 0) return null;
+        return gozlemler.slice(0, 2).join(' ve ');
+    } catch { return null; }
+};
+
+// Sevk gerekliliği değerlendirmesi
+const assessReferralNeed = (patternMemory) => {
+    if (!FEATURE_FLAGS.REFERRAL_PROTOCOL || !patternMemory) return null;
+    try {
+        const trendi = patternMemory.seans_trendi || [];
+        const phq9Puan = patternMemory.phq9_takip?.son_puan;
+        const gad7Puan = patternMemory.gad7_takip?.son_puan;
+        const krizGecmisi = patternMemory.kriz_log;
+
+        if (phq9Puan >= 15 || gad7Puan >= 15 || krizGecmisi) {
+            return { sevk_gerekli: true, aciliyet: 'yuksek', tip: 'klinik_risk' };
+        }
+        if (phq9Puan >= 10 || gad7Puan >= 10) {
+            return { sevk_gerekli: true, aciliyet: 'orta', tip: 'klinik_tarama' };
+        }
+        if (trendi.length >= 5 && trendi.slice(-5).every(t => t === 'kötüleşiyor')) {
+            return { sevk_gerekli: true, aciliyet: 'orta', tip: 'kronik_kötüleşme' };
+        }
+        return null;
+    } catch { return null; }
 };
 
 // --- DUYGU DURUMU TAKİBİ ---
@@ -1271,6 +1659,71 @@ const updatePatternMemory = async (userId, sessionData) => {
 
         existing.session_history = [...existing.session_history, seansEntry].slice(-5);
 
+        // ── DÖNGÜSEL ÖRÜNTÜ KAYIT (Özellik 12) ───────────────
+        if (FEATURE_FLAGS.CYCLE_DETECTION && sessionData.dominantDuygu) {
+            if (!existing.dongusel_oruntuler) existing.dongusel_oruntuler = [];
+            for (const [konu, sayi] of Object.entries(sessionData.konular || {})) {
+                if (sayi > 0) {
+                    const mevcutDongu = existing.dongusel_oruntuler.find(d => d.konu === konu && d.duygu === sessionData.dominantDuygu);
+                    if (mevcutDongu) {
+                        mevcutDongu.seans_sayisi++;
+                    } else {
+                        existing.dongusel_oruntuler.push({ konu, duygu: sessionData.dominantDuygu, seans_sayisi: 1, ilk_tespit: new Date().toISOString() });
+                    }
+                }
+            }
+            existing.dongusel_oruntuler = existing.dongusel_oruntuler.slice(-20);
+        }
+
+        // ── SES BASELINE KAYIT (Özellik 13) ──────────────────
+        if (FEATURE_FLAGS.VOICE_BASELINE && sessionData.sesVerisi) {
+            if (!existing.ses_normali) existing.ses_normali = { ortalama_tempo: 0, ortalama_yogunluk: 0, titreme_orani: 0, olcum_sayisi: 0 };
+            const sn = existing.ses_normali;
+            const n = sn.olcum_sayisi;
+            // Ağırlıklı ortalama — eski değerlere daha fazla ağırlık
+            sn.ortalama_tempo = n < 3
+                ? (sn.ortalama_tempo * n + sessionData.sesVerisi.tempo) / (n + 1)
+                : sn.ortalama_tempo * 0.8 + sessionData.sesVerisi.tempo * 0.2;
+            sn.ortalama_yogunluk = n < 3
+                ? (sn.ortalama_yogunluk * n + sessionData.sesVerisi.yogunluk) / (n + 1)
+                : sn.ortalama_yogunluk * 0.8 + sessionData.sesVerisi.yogunluk * 0.2;
+            sn.olcum_sayisi = n + 1;
+        }
+
+        // ── IFS PARÇA KAYIT (Özellik 14) ─────────────────────
+        if (FEATURE_FLAGS.IFS && sessionData.fullTranscript) {
+            const ifs = detectIFSParts(sessionData.fullTranscript);
+            if (!existing.ifs_parcalar) existing.ifs_parcalar = { elestirel_ses: 0, koruyucu_parca: 0, surugucu_parca: 0 };
+            if (ifs.elestirel) existing.ifs_parcalar.elestirel_ses++;
+            if (ifs.koruyucu) existing.ifs_parcalar.koruyucu_parca++;
+            if (ifs.surugucu) existing.ifs_parcalar.surugucu_parca++;
+        }
+
+        // ── ÇAPRAZ SEANS ANLAM BAĞLANTISI (Özellik 1) ────────
+        // Asenkron çalışır, bloklamamak için fire-and-forget
+        if (FEATURE_FLAGS.CROSS_SESSION_LINKS && (existing.toplam_seans || 0) >= 3 && existing.session_history?.length >= 2) {
+            const ozecler = existing.session_history.slice(0, 3).map(s => s.ozet || s.dominant_duygu).filter(Boolean).join(' | ');
+            if (ozecler.length > 20) {
+                openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: [{ role: 'user', content: `Bu terapi seansları özetlerinde tekrarlayan anlamsal temalar ve duygusal bağlantıları bul. JSON array döndür:\n"${ozecler}"\n\n[{"tema_a":"...","tema_b":"...","ortak_duygu":"..."}]` }],
+                    max_tokens: 200
+                }).then(r => {
+                    try {
+                        const text = r.choices[0].message.content || '[]';
+                        const match = text.match(/\[[\s\S]*\]/);
+                        if (match) {
+                            const baglantilar = JSON.parse(match[0]);
+                            if (!existing.cross_session_baglantilar) existing.cross_session_baglantilar = [];
+                            const yeniler = baglantilar.map(b => ({ ...b, tarih: new Date().toISOString() }));
+                            existing.cross_session_baglantilar = [...yeniler, ...existing.cross_session_baglantilar].slice(-10);
+                            supabase.from('memories').upsert({ user_id: userId, pattern_memory: existing, updated_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+                        }
+                    } catch { /* ignore */ }
+                }).catch(() => {});
+            }
+        }
+
         await supabase.from('memories').upsert({
             user_id: userId,
             pattern_memory: existing,
@@ -1293,6 +1746,56 @@ app.get('/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
 });
 
+// ─── GÖRSELLEŞTİRME (Özellik 8) ──────────────────────────
+app.get('/start-visualization', (req, res) => {
+    const { tip } = req.query;
+    const script = VISUALIZATION_SCRIPTS[tip];
+    if (!script) return res.status(404).json({ error: 'Senaryo bulunamadı', mevcutlar: Object.keys(VISUALIZATION_SCRIPTS) });
+    res.json({ tip, sure: script.sure, adimlar: script.adimlar });
+});
+
+// ─── SEANS ÖNCESİ HAZIRLIK (Özellik 11) ───────────────────
+app.post('/session-prep', async (req, res) => {
+    try {
+        const { userId, sessionId, soru1, soru2, soru3 } = req.body;
+        if (!userId) return res.status(400).json({ error: 'userId gerekli' });
+
+        const ozet = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: `Kullanıcının seans öncesi cevapları:\n1. ${soru1 || '-'}\n2. ${soru2 || '-'}\n3. ${soru3 || '-'}\n\nBu seansın ana hedefini 1 cümlede özetle:` }],
+            max_tokens: 80
+        });
+        const hazirlikOzeti = ozet.choices[0].message.content?.trim() || '';
+        const hedef = soru2 || soru1 || '';
+
+        await supabase.from('session_preparation').insert({
+            user_id: userId,
+            session_id: sessionId || null,
+            soru1_cevap: soru1 || null,
+            soru2_cevap: soru2 || null,
+            soru3_cevap: soru3 || null,
+            hazirlik_ozeti: hazirlikOzeti
+        });
+
+        // pattern_memory'ye de kaydet
+        const { data } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
+        const pm = data?.pattern_memory || {};
+        pm.seans_oncesi_hazirlik = { son_hazirlik_tarihi: new Date().toISOString(), hazirlik_notu: hazirlikOzeti, hedef };
+        await supabase.from('memories').upsert({ user_id: userId, pattern_memory: pm, updated_at: new Date().toISOString() });
+
+        res.json({ success: true, hazirlik_ozeti: hazirlikOzeti });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/session-prep', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        if (!userId) return res.status(400).json({ error: 'userId gerekli' });
+        const { data } = await supabase.from('session_preparation').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
+        res.json(data || {});
+    } catch { res.json({}); }
+});
+
 // ─── FRONTEND ERROR LOGLAMA (#43) ──────────────────────────
 app.post('/log-error', async (req, res) => {
     const { userId, error, source, line, col } = req.body;
@@ -1303,8 +1806,16 @@ app.post('/log-error', async (req, res) => {
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
 app.post('/update-transcript', (req, res) => {
-    const { userId, fullTranscript, silenceDuration, lastSegment, sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk, sessizlikTipi, hume_scores } = req.body;
+    const {
+        userId, fullTranscript, silenceDuration, lastSegment,
+        sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk,
+        sessizlikTipi, hume_scores,
+        // Yeni alanlar (Özellik 3, 5)
+        vokalBreak, isWhisper, tempoSpike, phq9_cevaplar
+    } = req.body;
     if (!userId) return res.sendStatus(400);
+
+    const mevcut = sessionTranscriptStore.get(userId) || {};
     sessionTranscriptStore.set(userId, {
         fullTranscript: fullTranscript || '',
         silenceDuration: silenceDuration || 0,
@@ -1316,6 +1827,11 @@ app.post('/update-transcript', (req, res) => {
         tempoTrend: tempoTrend || 'stabil',
         sessizlikTipi: sessizlikTipi || 'normal',
         hume_scores: hume_scores || null,
+        vokalBreak: vokalBreak || false,
+        isWhisper: isWhisper || false,
+        tempoSpike: tempoSpike || false,
+        phq9_cevaplar: { ...(mevcut.phq9_cevaplar || {}), ...(phq9_cevaplar || {}) },
+        kural_sayaci: mevcut.kural_sayaci || { rol_yapma: 0, tarama: 0, visualizasyon: 0 },
         updatedAt: Date.now()
     });
     res.sendStatus(200);
