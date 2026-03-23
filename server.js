@@ -294,6 +294,90 @@ const detectAvoidance = (transcript) => {
     return sinyaller;
 };
 
+// ─── SAVUNMA MEKANİZMASI TESPİTİ ─────────────────────────
+const detectDefenseMechanisms = (transcript) => {
+    if (!transcript) return [];
+    const lower = transcript.toLowerCase();
+    const bulunan = [];
+
+    // Projeksiyon — kendi hissini başkasına yükleme
+    const projeksiyon = ['o sinirli', 'o benden nefret', 'herkes beni', 'hep onlar', 'onlar yüzünden', 'başkaları hep'];
+    if (projeksiyon.some(k => lower.includes(k))) bulunan.push('projeksiyon');
+
+    // İnkar — olan şeyi yok saymak
+    const inkar = ['hiçbir şey olmadı', 'sorun yok ki', 'neden bahsediyorsun', 'yok öyle bir şey', 'saçmalama'];
+    if (inkar.some(k => lower.includes(k))) bulunan.push('inkar');
+
+    // Rasyonalizasyon — mantık perdesi ardına gizlenme
+    const rasyonalizasyon = ['zaten mantıklı', 'doğrusu bu', 'normal bu', 'herkes yapar', 'mecbur kaldım', 'başka türlü olamazdı'];
+    if (rasyonalizasyon.some(k => lower.includes(k))) bulunan.push('rasyonalizasyon');
+
+    // Entelektüalizasyon — duyguyu kavramsal tartışmayla kaçmak
+    const entellekt = ['istatistiksel', 'araştırmalara göre', 'teorik olarak', 'nesnel bakarsak', 'bilimsel olarak'];
+    if (entellekt.some(k => lower.includes(k))) bulunan.push('entelektüalizasyon');
+
+    // Yüceltme / Mizah — ağır şeyi hafife almak
+    const hafifletme = ['ha ha', 'neyse güldüm', 'komik aslında', 'ironik değil mi', 'şaka gibi'];
+    if (hafifletme.some(k => lower.includes(k))) bulunan.push('hafifletme');
+
+    // Geri çekilme — pasif kapanma
+    const geriCekilme = ['bilmiyorum artık', 'ne fark eder', 'bıraktım artık', 'umurumda değil', 'fark etmez'];
+    if (geriCekilme.some(k => lower.includes(k))) bulunan.push('geri_cekilme');
+
+    return bulunan;
+};
+
+// ─── BAĞLANMA STİLİ SİNYALLERİ ───────────────────────────
+const detectAttachmentSignals = (transcript) => {
+    if (!transcript) return null;
+    const lower = transcript.toLowerCase();
+    const skorlar = { guvenli: 0, kacınan: 0, kaygiLi: 0, korkulu: 0 };
+
+    // Kaçınan bağlanma sinyalleri
+    const kacınan = ['ihtiyacım yok', 'tek başıma hallederim', 'kimseye muhtaç değilim', 'yalnız daha iyi', 'insanlara güvenmiyorum'];
+    kacınan.forEach(k => { if (lower.includes(k)) skorlar.kacınan++; });
+
+    // Kaygılı bağlanma sinyalleri
+    const kaygiLi = ['beni terk eder mi', 'hep yanımda olacak mı', 'beni seviyor mu', 'ya giderse', 'yalnız kalacağım', 'onaysız hissetiyorum'];
+    kaygiLi.forEach(k => { if (lower.includes(k)) skorlar.kaygiLi++; });
+
+    // Korkulu bağlanma sinyalleri
+    const korkulu = ['yaklaşmak istemiyorum', 'zarar verir', 'insanlar yaralıyor', 'güvenemiyorum ama yalnız kalmak da istemiyorum'];
+    korkulu.forEach(k => { if (lower.includes(k)) skorlar.korkulu++; });
+
+    // Güvenli bağlanma sinyalleri
+    const guvenli = ['güveniyorum', 'konuşabilirim', 'yanımda hissediyorum', 'destek alıyorum'];
+    guvenli.forEach(k => { if (lower.includes(k)) skorlar.guvenli++; });
+
+    const maxSkor = Math.max(...Object.values(skorlar));
+    if (maxSkor === 0) return null;
+    return Object.keys(skorlar).find(k => skorlar[k] === maxSkor);
+};
+
+// ─── MOTİVASYONEL GÖRÜŞME — DEĞİŞİME HAZIRLIK ───────────
+const detectChangeReadiness = (transcript) => {
+    if (!transcript) return null;
+    const lower = transcript.toLowerCase();
+
+    // Eylem — zaten değişmeye başlamış
+    const eylem = ['yapmaya başladım', 'denedim', 'değiştirdim', 'artık yapıyorum', 'işe yarıyor'];
+    if (eylem.some(k => lower.includes(k))) return 'eylem';
+
+    // Hazırlık — değişmeye karar verdi
+    const hazırlik = ['yapmaya karar verdim', 'değişmem lazım', 'yapacağım', 'plan yapıyorum'];
+    if (hazırlik.some(k => lower.includes(k))) return 'hazırlık';
+
+    // Düşünme — değişmeyi düşünüyor ama kararsız
+    const dusunme = ['belki yapmalıyım', 'bilmiyorum', 'düşünüyorum', 'yapabilir miyim', 'değişsem mi'];
+    if (dusunme.some(k => lower.includes(k))) return 'düşünme';
+
+    // Ön düşünme — değişime dirençli
+    const onDusunme = ['değiştirmek istemiyorum', 'böyle iyiyim', 'gerek yok', 'neden değişeyim'];
+    if (onDusunme.some(k => lower.includes(k))) return 'ön_düşünme';
+
+    return null;
+};
+
 // ─── KURAL MOTORU ─────────────────────────────────────────
 // L4: Söz-Yüz Çelişkisi
 const OLUMLU_KELIMELER = ['iyiyim', 'iyi', 'tamam', 'sorun yok', 'normalim', 'mutluyum', 'güzel', 'harika', 'fena değil', "i'm fine", 'fine', 'okay', 'good'];
@@ -414,6 +498,32 @@ const buildLayer6Rules = (patternMemory, sonAnaliz, dominantDuygu, sessionHistor
     // #17 — DÜŞÜNCE KAYDI (CBT): Mutlak/olumsuz düşünce tespit edildiğinde
     if (sonAnaliz?.duygu && ['üzgün','korkmuş','endişeli','sinirli'].includes(sonAnaliz.duygu) && patternMemory.absolute_words_detected)
         kurallar.push('[#17 CBT] <call>openCBT()</call> Mutlak düşünce tespit edildi. "Bu düşünceye bakalım mı? Kanıtları ve alternatifleri not edelim."');
+
+    // ── HAFIZADAN: BAĞLANMA STİLİ ───────────────────────────
+    const dominantBaglanma = patternMemory.dominant_baglanma_stili;
+    if (dominantBaglanma === 'kacınan')
+        kurallar.push('[BAĞLANMA-HAFIZA] Geçmişte kaçınan bağlanma stili baskın. Bağımsızlığına saygı göster, destek al demeden önce seçenek sun.');
+    else if (dominantBaglanma === 'kaygiLi')
+        kurallar.push('[BAĞLANMA-HAFIZA] Kaygılı bağlanma stili. Terk edilme duyarlılığı var, sabit ve tutarlı ol.');
+    else if (dominantBaglanma === 'korkulu')
+        kurallar.push('[BAĞLANMA-HAFIZA] Korkulu bağlanma. İlişkilerde hem istiyor hem korkuyor — sabırla güven inşa et.');
+
+    // ── HAFIZADAN: SAVUNMA MEKANİZMALARI ────────────────────
+    const savunmalar = patternMemory.savunma_mekanizmalari || {};
+    const enSikSavunma = Object.entries(savunmalar).sort(([,a],[,b]) => b-a)[0];
+    if (enSikSavunma && enSikSavunma[1] >= 2) {
+        const [savunmaTipi] = enSikSavunma;
+        const savunmaRehber = {
+            'projeksiyon': 'Sık sık başkalarını suçluyor — kendi duygusunu keşfetmesine nazikçe alan aç.',
+            'inkar': 'İnkar mekanizması güçlü — kabul zorsa yavaşla, yargılama.',
+            'rasyonalizasyon': 'Hissi mantıkla örtüyor — kalp-kafa farkını nazikçe işaret et.',
+            'entelektüalizasyon': 'Duygudan teoriye kaçıyor — somut hislere döndür.',
+            'hafifletme': 'Ağır şeyleri mizahla geçiştiriyor — güldükten sonra "ama bu zor, değil mi?" de.',
+            'geri_cekilme': 'Pasif kapanma eğilimi — vazgeçmiş gibi görününce "gerçekten mi?" diye nazikçe sor.'
+        };
+        if (savunmaRehber[savunmaTipi])
+            kurallar.push(`[SAVUNMA-HAFIZA] ${savunmaRehber[savunmaTipi]}`);
+    }
 
     return kurallar.join(' ');
 };
@@ -830,6 +940,48 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
             kurallar.push('Konuşma çok yavaş — enerji düşük. Enerjik soru sorma, hafif kal.');
     }
 
+    // ── SAVUNMA MEKANİZMALARI ────────────────────────────────
+    if (hafizaMetni || transcriptData?.fullTranscript) {
+        const kaynakMetin = (transcriptData?.fullTranscript || '') + ' ' + (hafizaMetni || '');
+        const savunmalar = detectDefenseMechanisms(kaynakMetin);
+        if (savunmalar.includes('projeksiyon'))
+            kurallar.push('[SAVUNMA] Projeksiyon: başkalarını suçluyor. "Peki sen o anda ne hissettin?" diye kendi duygusuna çek.');
+        if (savunmalar.includes('inkar'))
+            kurallar.push('[SAVUNMA] İnkar: olanı yok sayıyor. Zorlamadan: "Bazen kabul etmek çok zor olabiliyor." de.');
+        if (savunmalar.includes('rasyonalizasyon'))
+            kurallar.push('[SAVUNMA] Rasyonalizasyon: mantıkla kendini ikna ediyor. "Peki kalbin ne diyor?" diye sor.');
+        if (savunmalar.includes('entelektüalizasyon'))
+            kurallar.push('[SAVUNMA] Duygudan uzaklaşıp teoriye kaçıyor. "Bunu hissedince içinde ne oluyor?" ile duyguya döndür.');
+        if (savunmalar.includes('hafifletme'))
+            kurallar.push('[SAVUNMA] Ağır şeyi mizahla geçiştiriyor. Nazikçe: "Güldün ama bu zor bir şeydi, değil mi?"');
+        if (savunmalar.includes('geri_cekilme'))
+            kurallar.push('[SAVUNMA] Pasif kapanma — vazgeçmiş gibi. "Bir şeyden vazgeçmek mi, yoksa sadece yorgunluk mu?" sor.');
+    }
+
+    // ── BAĞLANMA STİLİ ───────────────────────────────────────
+    if (transcriptData?.fullTranscript) {
+        const stil = detectAttachmentSignals(transcriptData.fullTranscript);
+        if (stil === 'kacınan')
+            kurallar.push('[BAĞLANMA] Kaçınan stil: bağımsızlığını vurguluyor, yakınlıktan kaçıyor. Zorlamadan güven ver, soru sayısını düşür.');
+        else if (stil === 'kaygiLi')
+            kurallar.push('[BAĞLANMA] Kaygılı stil: terk edilme korkusu var. "Seninleyim, buraya geldim" diye güvence ver.');
+        else if (stil === 'korkulu')
+            kurallar.push('[BAĞLANMA] Korkulu stil: bağlanmak istiyor ama zarar görmekten korkuyor. Çok yavaş, çok sabırlı ol.');
+    }
+
+    // ── MOTİVASYONEL GÖRÜŞME — DEĞİŞİME HAZIRLIK ────────────
+    if (transcriptData?.fullTranscript) {
+        const hazirlik = detectChangeReadiness(transcriptData.fullTranscript);
+        if (hazirlik === 'ön_düşünme')
+            kurallar.push('[MOTİVASYON] Değişime dirençli. Baskı yapma — "Bu seni nasıl etkiliyor?" diye farkındalık yarat.');
+        else if (hazirlik === 'düşünme')
+            kurallar.push('[MOTİVASYON] Değişmeyi düşünüyor ama kararsız. Avantaj/dezavantajı keşfet: "Bu değişse hayatında ne farklı olurdu?"');
+        else if (hazirlik === 'hazırlık')
+            kurallar.push('[MOTİVASYON] Değişmeye karar verdi. Somut küçük adım öner: "Bu hafta tek bir küçük şey ne olabilir?"');
+        else if (hazirlik === 'eylem')
+            kurallar.push('[MOTİVASYON] Değişim başlamış. Güçlendir: "Bunu başardın — bu kolay değildi."');
+    }
+
     return kurallar.join(' ');
 };
 
@@ -1078,6 +1230,28 @@ const updatePatternMemory = async (userId, sessionData) => {
                     existing.tetikleyici_konular[konu].hit++;
                     existing.tetikleyici_konular[konu].duygu = [...(existing.tetikleyici_konular[konu].duygu || []), sessionData.dominantDuygu].slice(-5);
                 }
+            }
+        }
+
+        // BAĞLANMA STİLİ — transcript'ten tespit et ve hafızaya kaydet
+        if (sessionData.fullTranscript) {
+            const stil = detectAttachmentSignals(sessionData.fullTranscript);
+            if (stil) {
+                if (!existing.baglanma_stili_gecmis) existing.baglanma_stili_gecmis = [];
+                existing.baglanma_stili_gecmis = [...existing.baglanma_stili_gecmis, stil].slice(-5);
+                // En sık görülen stil dominant olarak kaydet
+                const stilSayac = {};
+                existing.baglanma_stili_gecmis.forEach(s => { stilSayac[s] = (stilSayac[s] || 0) + 1; });
+                existing.dominant_baglanma_stili = Object.keys(stilSayac).sort((a,b) => stilSayac[b] - stilSayac[a])[0];
+            }
+
+            // SAVUNMA MEKANİZMALARI — seans boyunca görülenleri kaydet
+            const savunmalar = detectDefenseMechanisms(sessionData.fullTranscript);
+            if (savunmalar.length > 0) {
+                if (!existing.savunma_mekanizmalari) existing.savunma_mekanizmalari = {};
+                savunmalar.forEach(s => {
+                    existing.savunma_mekanizmalari[s] = (existing.savunma_mekanizmalari[s] || 0) + 1;
+                });
             }
         }
 
@@ -1336,7 +1510,8 @@ app.post('/vapi-webhook', async (req, res) => {
                     trend: emotionState?.trend || 'stabil',
                     konular,
                     dominantDuygu: emotionState?.dominant_duygu || 'sakin',
-                    bedenDiliPuan
+                    bedenDiliPuan,
+                    fullTranscript: sessionTranscriptStore.get(userId)?.fullTranscript || ''
                 });
                 sessionTranscriptStore.delete(userId);
             }
