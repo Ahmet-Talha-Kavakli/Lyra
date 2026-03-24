@@ -1776,14 +1776,22 @@
                         if (n.material) {
                             const mat = n.material;
                             console.log('[MAT]', n.name, mat.type, 'map:', !!mat.map, 'color:', mat.color?.getHexString(), 'metalness:', mat.metalness, 'roughness:', mat.roughness);
-                            // MetaHuman PBR fix: envMap yoksa roughness yüksek tut, metalness düşür
+                            // MetaHuman PBR fix: texture embed yok, renk siyah — mesh adına göre renk ata
                             if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
-                                if (!mat.map && !mat.color) {
-                                    mat.color = new THREE.Color(0xc8a882);
+                                const nm = n.name.toLowerCase();
+                                if (nm.includes('face') || nm.includes('head')) {
+                                    mat.color = new THREE.Color(0xc8956c);
+                                } else if (nm.includes('eye')) {
+                                    mat.color = new THREE.Color(0x6b4c3b);
+                                } else if (nm.includes('hair')) {
+                                    mat.color = new THREE.Color(0x2c1a0e);
+                                } else if (nm.includes('teeth') || nm.includes('tooth')) {
+                                    mat.color = new THREE.Color(0xf0ece0);
+                                } else {
+                                    mat.color = new THREE.Color(0xc8956c);
                                 }
-                                // Siyah görünümü engellemek için minimum roughness
-                                if (mat.roughness === undefined || mat.roughness < 0.3) mat.roughness = 0.5;
-                                if (mat.metalness === undefined || mat.metalness > 0.8) mat.metalness = 0.1;
+                                mat.roughness = 0.6;
+                                mat.metalness = 0.0;
                             }
                             mat.needsUpdate = true;
                         }
