@@ -371,6 +371,27 @@ const trackSessionTopics = (transcript) => {
     return counts;
 };
 
+// Konu derinlik seviyesi hesapla (Özellik 2)
+// Seviye 1: sadece anılıyor, 2: duygu ile, 3: geçmiş/bağlam ile, 4: fiziksel his/somut olay ile
+const trackTopicDepth = (transcript) => {
+    if (!FEATURE_FLAGS.TOPIC_DEPTH || !transcript) return {};
+    const lower = transcript.toLowerCase();
+    const derinlik = {};
+    const duyguKelimeler = ['hissediyorum', 'üzüldüm', 'korktum', 'sinirli', 'endişeli', 'sevinçli', 'mutlu', 'korkuyorum'];
+    const gegmisKelimeler = ['eskiden', 'çocukken', 'bir zamanlar', 'hatırlıyorum', 'o zaman', 'geçmişte', 'daha önce'];
+    const fizikselKelimeler = ['vücudumda', 'göğsümde', 'midem', 'başım', 'ellerim', 'nefes', 'ağırlık', 'sıkışma'];
+    for (const [konu, kelimeler] of Object.entries(KONU_GRUPLARI)) {
+        const konuGecti = kelimeler.some(k => lower.includes(k));
+        if (!konuGecti) continue;
+        let seviye = 1;
+        if (duyguKelimeler.some(k => lower.includes(k))) seviye = Math.max(seviye, 2);
+        if (gegmisKelimeler.some(k => lower.includes(k))) seviye = Math.max(seviye, 3);
+        if (fizikselKelimeler.some(k => lower.includes(k))) seviye = Math.max(seviye, 4);
+        derinlik[konu] = seviye;
+    }
+    return derinlik;
+};
+
 const detectAvoidance = (transcript) => {
     if (!transcript) return [];
     const lower = transcript.toLowerCase();
@@ -1059,6 +1080,17 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         if (tekrarlayan.length > 0)
             kurallar.push(`"${tekrarlayan.join(', ')}" konusuna defalarca döndünüz. Nazikçe derinleş.`);
 
+        // ── KONU DERİNLİK TAKİBİ (Özellik 2) ────────────────
+        if (FEATURE_FLAGS.TOPIC_DEPTH) {
+            const derinlik = trackTopicDepth(transcriptData.fullTranscript);
+            for (const [konu, seviye] of Object.entries(derinlik)) {
+                if (seviye === 1 && (konular[konu] || 0) >= 1)
+                    kurallar.push(`[DERİNLİK] "${konu}" konusu sadece anıldı, derine girilmedi. "Bu konuya değindin ama geçtin, istersen oraya dönebiliriz."`);
+                else if (seviye >= 3)
+                    kurallar.push(`[DERİNLİK] "${konu}" konusunda derinleşiyor. Dinliyorum, yönlendirme yapma.`);
+            }
+        }
+
         const kacınma = detectAvoidance(transcriptData.fullTranscript);
         if (kacınma.includes('konu_degistirme'))
             kurallar.push('"Az önce farklı bir şeyden bahsediyorduk, oraya dönebilir miyiz?" — konuyu değiştirdi.');
@@ -1186,9 +1218,15 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
     // ── ROL YAPMA TEKNİĞİ (Özellik 4) ───────────────────────
     if (transcriptData?.fullTranscript) {
         const rolYapma = detectRoleplayOpportunity(transcriptData.fullTranscript);
-        const rolYapmaYapildi = transcriptData?.kural_sayaci?.rol_yapma > 0;
+        const rolYapmaYapildi = (transcriptData?.kural_sayaci?.rol_yapma || 0) > 0;
         if (rolYapma && !rolYapmaYapildi) {
             kurallar.push(`[ROL-YAPMA] Boş sandalye fırsatı. Teklif et: "Sanki ${rolYapma.karakter} şu an karşında otursa, ona ne söylemek isterdin?" — Reddetme hakkı tanı. Bu seans sadece bir kez teklif et.`);
+            // Sayacı artır
+            if (userId) {
+                const mevcut = sessionTranscriptStore.get(userId) || {};
+                mevcut.kural_sayaci = { ...(mevcut.kural_sayaci || {}), rol_yapma: (mevcut.kural_sayaci?.rol_yapma || 0) + 1 };
+                sessionTranscriptStore.set(userId, mevcut);
+            }
         }
     }
 
@@ -1198,8 +1236,15 @@ const buildLayer3Rules = (hafizaMetni, sonAnaliz, userId) => {
         if (taramaSayisi < 2) {
             const mevcutCevaplar = transcriptData?.phq9_cevaplar || {};
             const tarama = detectScreeningOpportunity(transcriptData.lastSegment, mevcutCevaplar);
-            if (tarama)
+            if (tarama) {
                 kurallar.push(`[TARAMA] Doğal geçişle sor: "${tarama.soru_metni}" — Klinik değil, kişisel farkındalık sorusu olarak sun. Cevabı zorla değil.`);
+                // Sayacı artır
+                if (userId) {
+                    const mevcut = sessionTranscriptStore.get(userId) || {};
+                    mevcut.kural_sayaci = { ...(mevcut.kural_sayaci || {}), tarama: taramaSayisi + 1 };
+                    sessionTranscriptStore.set(userId, mevcut);
+                }
+            }
         }
     }
 
@@ -1577,6 +1622,17 @@ Sadece JSON döndür.`
             }
         } catch { /* isim çıkarımı başarısız → geç */ }
 
+        // ── KÜLTÜREL PROFİL GÜNCELLE (Özellik 9) ─────────────
+        if (FEATURE_FLAGS.CULTURAL_NUANCE) {
+            const kulturel = detectCulturalFrame(transcript);
+            const mevcutKP = mevcutProfil.kulturel_profil || {};
+            yeniProfil.kulturel_profil = {
+                dini_referans_toleransi: kulturel.dini ? 'var' : (mevcutKP.dini_referans_toleransi || 'belirsiz'),
+                utanc_kulturel_hassasiyet: kulturel.utanc ? 'yüksek' : (mevcutKP.utanc_kulturel_hassasiyet || 'belirsiz'),
+                aile_hiyerarsisi_onemi: kulturel.aile_hiyerarsisi ? 'yüksek' : (mevcutKP.aile_hiyerarsisi_onemi || 'belirsiz'),
+            };
+        }
+
         await supabase.from('memories').upsert({ user_id: userId, user_profile: yeniProfil, updated_at: new Date().toISOString() });
         console.log(`[PROFİL] ✅ Kişilik profili güncellendi: ${userId}`);
     } catch (e) { console.error('[PROFİL] Hata:', e.message); }
@@ -1729,6 +1785,29 @@ const updatePatternMemory = async (userId, sessionData) => {
             pattern_memory: existing,
             updated_at: new Date().toISOString()
         });
+        // ── NARATİV HİKAYE SEANS SONU EXTRACT (Özellik 15) ──
+        if (FEATURE_FLAGS.NARRATIVE_THERAPY && sessionData.fullTranscript && sessionData.fullTranscript.length > 100) {
+            openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: `Bu terapi konuşmasında kullanıcının kendine anlattığı egemen kimlik ifadesini bul (örn: "ben hep başarısızım", "kimse beni sevmiyor"). Yoksa null döndür. Sadece JSON: {"kimlik_ifadesi": "..." veya null}\n\n${sessionData.fullTranscript.slice(-1500)}` }],
+                max_tokens: 80
+            }).then(r => {
+                try {
+                    const text = r.choices[0].message.content || '{}';
+                    const match = text.match(/\{[\s\S]*\}/);
+                    if (match) {
+                        const parsed = JSON.parse(match[0]);
+                        if (parsed.kimlik_ifadesi) {
+                            if (!existing.anlatilan_hikaye) existing.anlatilan_hikaye = { ana_kimlik_ifadesi: null, tekrarlayan_temalar: [] };
+                            existing.anlatilan_hikaye.ana_kimlik_ifadesi = parsed.kimlik_ifadesi;
+                            existing.anlatilan_hikaye.son_guncelleme = new Date().toISOString();
+                            supabase.from('memories').upsert({ user_id: userId, pattern_memory: existing, updated_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+                        }
+                    }
+                } catch { /* ignore */ }
+            }).catch(() => {});
+        }
+
         console.log(`[PATTERN] ✅ Pattern memory güncellendi: ${userId}`);
     } catch (e) { console.error('[PATTERN] Güncelleme hatası:', e.message); }
 };
@@ -2022,12 +2101,19 @@ app.post('/vapi-webhook', async (req, res) => {
                     }
                 } catch (e) { /* beden dili hesap hatası → 50 kullan */ }
 
+                // ── SES VERİSİ SEANS SONU TOPLAMA (Özellik 13) ──
+                const transcriptStore = sessionTranscriptStore.get(userId) || {};
+                const sesVerisi = (transcriptStore.konusmaTempo || transcriptStore.sesYogunlukOrt)
+                    ? { tempo: transcriptStore.konusmaTempo || 0, yogunluk: transcriptStore.sesYogunlukOrt || 0 }
+                    : null;
+
                 await updatePatternMemory(userId, {
                     trend: emotionState?.trend || 'stabil',
                     konular,
                     dominantDuygu: emotionState?.dominant_duygu || 'sakin',
                     bedenDiliPuan,
-                    fullTranscript: sessionTranscriptStore.get(userId)?.fullTranscript || ''
+                    fullTranscript: transcriptStore.fullTranscript || '',
+                    sesVerisi
                 });
                 sessionTranscriptStore.delete(userId);
             }
