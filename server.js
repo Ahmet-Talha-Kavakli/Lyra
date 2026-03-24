@@ -4828,6 +4828,181 @@ app.get('/cron-test/:job', async (req, res) => {
     }
 });
 
+// ─── AVATAR: AZURE TTS + VİSEME SENTEZİ ──────────────────────────────────
+app.post('/synthesize', async (req, res) => {
+    const { text, userId } = req.body;
+    if (!text) return res.status(400).json({ error: 'text zorunlu' });
+
+    const azureKey    = process.env.AZURE_SPEECH_KEY;
+    const azureRegion = process.env.AZURE_SPEECH_REGION;
+
+    if (!azureKey || !azureRegion) {
+        return res.status(503).json({ error: 'Azure TTS yapılandırılmamış — AZURE_SPEECH_KEY ve AZURE_SPEECH_REGION gerekli' });
+    }
+
+    try {
+        // Azure TTS REST API — viseme dahil SSML isteği
+        const ssml = `
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+       xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="tr-TR">
+  <voice name="tr-TR-EmelNeural">
+    <mstts:viseme type="FacialExpression"/>
+    ${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  </voice>
+</speak>`.trim();
+
+        const ttsResponse = await fetch(
+            `https://${azureRegion}.tts.speech.microsoft.com/cognitiveservices/v1`,
+            {
+                method: 'POST',
+                headers: {
+                    'Ocp-Apim-Subscription-Key': azureKey,
+                    'Content-Type': 'application/ssml+xml',
+                    'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3',
+                    'X-Microsoft-Viseme': 'true',
+                },
+                body: ssml,
+            }
+        );
+
+        if (!ttsResponse.ok) {
+            const errText = await ttsResponse.text();
+            console.error('[/synthesize] Azure hata:', errText);
+            return res.status(502).json({ error: 'Azure TTS hatası', detail: errText });
+        }
+
+        // Azure viseme'leri response header'da JSON olarak döner
+        const visemeHeader = ttsResponse.headers.get('x-microsoft-viseme');
+        let visemes = [];
+        if (visemeHeader) {
+            try { visemes = JSON.parse(visemeHeader); } catch { /* ignore */ }
+        }
+
+        const audioBuffer = await ttsResponse.arrayBuffer();
+        const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+
+        res.json({
+            audio: audioBase64,        // base64 MP3
+            audioMimeType: 'audio/mp3',
+            visemes,                   // [{ AudioOffset: ms, VisemeId: 0-21 }]
+        });
+    } catch (err) {
+        console.error('[/synthesize] Hata:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── AVATAR: KARAKTER DURUMU ───────────────────────────────────────────────
+
+// Karakter kütüphanesi — profil trait'lerine göre seçim yapılır
+const CHARACTER_LIBRARY = [
+    { id: 'lyra_warm_f_30',    warmth: 0.90, formality: 0.25, energy: 0.65 },
+    { id: 'lyra_warm_f_40',    warmth: 0.85, formality: 0.35, energy: 0.55 },
+    { id: 'lyra_warm_f_50',    warmth: 0.80, formality: 0.45, energy: 0.45 },
+    { id: 'lyra_neutral_f_30', warmth: 0.60, formality: 0.55, energy: 0.60 },
+    { id: 'lyra_neutral_f_40', warmth: 0.55, formality: 0.65, energy: 0.50 },
+    { id: 'lyra_calm_f_35',    warmth: 0.70, formality: 0.40, energy: 0.35 },
+    { id: 'lyra_warm_m_30',    warmth: 0.85, formality: 0.30, energy: 0.70 },
+    { id: 'lyra_warm_m_40',    warmth: 0.80, formality: 0.40, energy: 0.60 },
+    { id: 'lyra_neutral_m_35', warmth: 0.55, formality: 0.60, energy: 0.55 },
+    { id: 'lyra_calm_m_45',    warmth: 0.65, formality: 0.50, energy: 0.30 },
+];
+
+function selectCharacterForProfile(profile) {
+    const attachmentWarmth = { 'güvenli': 0.9, 'kaçınan': 0.5, 'kaygılı': 0.7 };
+    const languageFormality = { 'resmi': 0.8, 'samimi': 0.2, 'nötr': 0.5 };
+    const healingEnergy = { 'aktif': 0.8, 'yavaş': 0.3, 'dengeli': 0.55 };
+
+    const warmth    = attachmentWarmth[profile.attachment_style]  ?? 0.65;
+    const formality = languageFormality[profile.language_style]   ?? 0.45;
+    const energy    = healingEnergy[profile.healing_style]        ?? 0.55;
+
+    let best = CHARACTER_LIBRARY[0];
+    let minDist = Infinity;
+    for (const char of CHARACTER_LIBRARY) {
+        const dist = Math.sqrt(
+            Math.pow(char.warmth - warmth, 2) +
+            Math.pow(char.formality - formality, 2) +
+            Math.pow(char.energy - energy, 2)
+        );
+        if (dist < minDist) { minDist = dist; best = char; }
+    }
+    return best.id;
+}
+
+// GET /character?userId=xxx — kullanıcının karakter durumunu döner
+app.get('/character', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+
+    try {
+        const { data, error } = await supabase
+            .from('character_states')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+            // Henüz karakter yok → maskot
+            return res.json({
+                character_id: 'lyra_mascot',
+                character_version: 1,
+                clothing_variant: 'casual_warm',
+                animation_style: 'balanced',
+                is_transitioning: false,
+                is_mascot: true,
+            });
+        }
+
+        res.json(data);
+    } catch (err) {
+        console.error('[/character GET] Hata:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /character/assign — ilk seans sonrası karakter ata
+app.post('/character/assign', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+
+    try {
+        // Profili çek
+        const { data: profile } = await supabase
+            .from('psychological_profiles')
+            .select('attachment_style, language_style, healing_style')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        const characterId = profile
+            ? selectCharacterForProfile(profile)
+            : 'lyra_warm_f_35';
+
+        const { data, error } = await supabase
+            .from('character_states')
+            .upsert({
+                user_id: userId,
+                character_id: characterId,
+                character_version: 1,
+                clothing_variant: 'casual_warm',
+                animation_style: 'balanced',
+                is_transitioning: false,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.json({ success: true, character_id: characterId, data });
+    } catch (err) {
+        console.error('[/character/assign] Hata:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── SUNUCU BAŞLAT ─────────────────────────────────────────
 // Vercel serverless için app export ediliyor, lokal için listen
 if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {

@@ -1609,12 +1609,18 @@
             }
         }
 
+        // ── AVATAR MOTORLARI ──
+        import('/js/LipSyncEngine.js').then(m => { window._LipSyncEngine = m.LipSyncEngine; });
+        import('/js/ProceduralLayers.js').then(m => { window._ProceduralLayers = m.ProceduralLayers; });
+        import('/js/AnimationLayerSystem.js').then(m => { window._AnimationLayerSystem = m.AnimationLayerSystem; });
+        let lipSync = null, proceduralLayers = null, animLayerSystem = null;
+
         // ── THREE.JS ──
         let scene, camera, renderer, composer, clock;
         let avatar, mixer, currentAction;
         let animationsMap = {};
         let cameraTarget = new THREE.Vector3(0, 0.5, 0);
-        let blinkTime = 0, emotionState = 'neutral';
+        let emotionState = 'neutral';
         const container = document.getElementById('canvas-container');
 
         // Lyra karakter tanımı
@@ -1858,6 +1864,21 @@
                     )).then(() => {
                         // mixamo.com adlı varsayılan animasyonu sil — kendi isimlerimizi kullanıyoruz
                     delete animationsMap['mixamo.com'];
+
+                    // ── YENİ MOTORLARI BAŞLAT ──
+                    if (window._LipSyncEngine) {
+                        lipSync = new window._LipSyncEngine();
+                        lipSync.init(avatar);
+                    }
+                    if (window._ProceduralLayers) {
+                        proceduralLayers = new window._ProceduralLayers();
+                        proceduralLayers.init(avatar);
+                    }
+                    if (window._AnimationLayerSystem) {
+                        animLayerSystem = new window._AnimationLayerSystem(avatar);
+                        animLayerSystem.loadClips(animationsMap);
+                    }
+
                         resolve();
                     });
 
@@ -1966,25 +1987,19 @@
                 // Hafif doğal sallantı
                 avatar.rotation.y = avatar.userData.baseRotY + Math.sin(time * 0.35) * 0.03;
 
-                // A) Lip sync: morph target varsa kullan, yoksa head nod ile simüle et
-                let hasMorph = false;
-                avatar.traverse(node => {
-                    if (node.isMesh && node.morphTargetInfluences && node.morphTargetDictionary) {
-                        const d = node.morphTargetDictionary;
-                        const mIdx = d['MouthOpen'] ?? d['viseme_aa'] ?? d['Surprised'];
-                        if (mIdx !== undefined) { node.morphTargetInfluences[mIdx] = currentVolume * 3.5; hasMorph = true; }
-                        const bIdx = d['EyeBlink'] ?? d['Blink'];
-                        if (bIdx !== undefined) {
-                            node.morphTargetInfluences[bIdx] = (time > blinkTime && time < blinkTime + 0.1) ? 1 : 0;
-                            if (time >= blinkTime + 0.1) blinkTime = time + 2.5 + Math.random() * 3.5;
-                        }
-                    }
-                });
-                // Morph target yoksa: konuşurken hafif baş hareketi
-                if (!hasMorph && currentVolume > 0.05) {
+                // A) Lip sync + Prosedürel katmanlar
+                if (lipSync) {
+                    lipSync.setVolume(currentVolume);  // Vapi fallback
+                    lipSync.update();
+                }
+                if (proceduralLayers) {
+                    proceduralLayers.update(delta, time, emotionState);
+                }
+                // Morph target yoksa eski fallback: hafif baş hareketi
+                if (!lipSync && currentVolume > 0.05) {
                     avatar.rotation.x = Math.sin(time * 8) * currentVolume * 0.04;
-                } else {
-                    avatar.rotation.x *= 0.9; // sıfıra dön
+                } else if (!lipSync) {
+                    avatar.rotation.x *= 0.9;
                 }
 
                 // #14 — AVATAR BAKIŞ: Kullanıcı konuşunca Lyra hafifçe sola bakar (kameraya)
@@ -2227,6 +2242,7 @@
         const micBars = document.querySelectorAll('#mic-indicator span');
         vapiInstance.on('volume-level', vol => {
             targetVolume = vol;
+            if (lipSync) lipSync.setVolume(vol);
 
             // Waveform bar heights driven by volume
             if (micBars.length > 0) {
