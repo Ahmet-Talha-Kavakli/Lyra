@@ -1768,17 +1768,11 @@
 
                     avatar = gltf.scene;
 
-                    // Toon gradient map (3 bant: gölge / orta / aydınlık)
-                    const gradientData = new Uint8Array([40, 140, 255]);
-                    const gradientTex = new THREE.DataTexture(gradientData, 3, 1, THREE.RedFormat);
-                    gradientTex.needsUpdate = true;
-
-                    // Toon shader uygula
+                    // MetaHuman materyallerini koru, sadece shadow ayarla
                     avatar.traverse(n => {
                         if (!n.isMesh) return;
                         n.castShadow = true;
                         n.receiveShadow = true;
-                        // Materyalin envMap ve ışık tepkisi için güncelle
                         if (n.material) {
                             n.material.needsUpdate = true;
                         }
