@@ -5,16 +5,9 @@
 //   - session_records
 //   - technique_effectiveness
 //   - progress_metrics
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
+import { supabase } from '../lib/supabase.js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
-export const EMPTY_PROFILE = {
+export const EMPTY_PROFILE = Object.freeze({
   attachment_style: 'belirsiz',
   triggers: [],
   core_values: [],
@@ -27,19 +20,41 @@ export const EMPTY_PROFILE = {
   strengths: [],
   hope_map: {},
   session_count: 0
-};
+});
+
+export const createEmptyProfile = (userId) => ({
+  user_id: userId,
+  attachment_style: 'belirsiz',
+  triggers: [],
+  core_values: [],
+  defense_mechanisms: [],
+  language_style: {},
+  unconscious_patterns: [],
+  relationship_map: [],
+  life_schemas: [],
+  healing_style: {},
+  strengths: [],
+  hope_map: {},
+  session_count: 0
+});
 
 /**
  * Kullanıcı profilini getirir. Yoksa boş profil döner.
  */
 export const getProfile = async (userId) => {
+  if (!userId) throw new Error('userId zorunlu');
+
   const { data, error } = await supabase
     .from('psychological_profiles')
     .select('*')
     .eq('user_id', userId)
     .single();
 
-  if (error || !data) return { ...EMPTY_PROFILE, user_id: userId };
+  if (error) {
+    if (error.code === 'PGRST116') return createEmptyProfile(userId);
+    throw new Error(`Profil okunamadı: ${error.message}`);
+  }
+  if (!data) return createEmptyProfile(userId);
   return data;
 };
 
@@ -47,6 +62,8 @@ export const getProfile = async (userId) => {
  * Profili günceller. Mevcut verilerle merge yapar.
  */
 export const updateProfile = async (userId, updates) => {
+  if (!userId) throw new Error('userId zorunlu');
+
   const existing = await getProfile(userId);
 
   const merged = {
@@ -62,7 +79,7 @@ export const updateProfile = async (userId, updates) => {
     healing_style: { ...existing.healing_style, ...(updates.healing_style || {}) },
     strengths: mergeArrayById(existing.strengths, updates.strengths || [], 'guc'),
     hope_map: { ...existing.hope_map, ...(updates.hope_map || {}) },
-    session_count: (existing.session_count || 0) + 1,
+    session_count: existing.session_count || 0,
     last_updated: new Date().toISOString()
   };
 
@@ -77,6 +94,17 @@ export const updateProfile = async (userId, updates) => {
 };
 
 /**
+ * Oturum sayısını artırır. Her seans sonunda çağrılmalı.
+ */
+export const incrementSessionCount = async (userId) => {
+  const existing = await getProfile(userId);
+  const { error } = await supabase
+    .from('psychological_profiles')
+    .upsert({ user_id: userId, session_count: (existing.session_count || 0) + 1, last_updated: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) throw new Error(`Session count güncellenemedi: ${error.message}`);
+};
+
+/**
  * İki diziyi id alanına göre merge eder.
  * Yeni eleman varsa ekler, varsa günceller.
  */
@@ -85,9 +113,11 @@ const mergeArrayById = (existing, incoming, idField) => {
   const map = {};
   (existing || []).forEach(item => { map[item[idField]] = item; });
   incoming.forEach(item => {
-    if (item[idField]) {
-      map[item[idField]] = { ...map[item[idField]], ...item };
+    if (!item[idField]) {
+      console.warn(`[mergeArrayById] "${idField}" alanı eksik, item atlandı:`, item);
+      return;
     }
+    map[item[idField]] = { ...map[item[idField]], ...item };
   });
   return Object.values(map);
 };
