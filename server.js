@@ -9,6 +9,13 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from 'express-rate-limit';
 import crypto from 'crypto';
 import multer from 'multer';
+import { getProfile, updateProfile, incrementSessionCount } from './profile/profileManager.js';
+import { extractProfileUpdates, analyzeSession } from './profile/profileExtractor.js';
+import { buildSystemPrompt } from './therapy/promptBuilder.js';
+import { runTherapyEngine } from './therapy/therapyEngine.js';
+import { saveSessionRecord, getTechniqueEffectiveness, updateTechniqueEffectiveness } from './progress/sessionAnalyzer.js';
+import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTracker.js';
+import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2182,6 +2189,51 @@ app.post('/api/chat/completions', async (req, res) => {
 
         // Serverless ortamda activeSessionUserId güvenilmez — Vapi'nin call.assistantOverrides'ından al
         const userId = call?.assistantOverrides?.variableValues?.userId || activeSessionUserId;
+        // ─── LYRA AI TERAPİST — DİNAMİK PROMPT SİSTEMİ ─────────────────
+        let dynamicSystemPrompt = null;
+        let therapyEngineOutput = null;
+        let psychProfile = null;
+        try {
+            if (userId) {
+                // 1. Psikolojik profili yükle
+                psychProfile = await getProfile(userId);
+
+                // 2. Teknik etkinlik verisi
+                const effectivenessData = await getTechniqueEffectiveness(userId);
+
+                // 3. Son kullanıcı mesajını al
+                const lastUserMessage = messages?.[messages.length - 1]?.content || '';
+
+                // 4. Kriz değerlendirmesi
+                const crisisEval = evaluateCrisis(lastUserMessage);
+
+                // 5. Terapi motorunu çalıştır
+                therapyEngineOutput = runTherapyEngine({
+                    currentEmotion: 'sakin',
+                    messageContent: lastUserMessage,
+                    sessionHistory: messages || [],
+                    profile: psychProfile,
+                    topics: [],
+                    effectivenessData
+                });
+
+                // 6. Kriz varsa motoru override et
+                if (crisisEval.level && crisisEval.instruction) {
+                    therapyEngineOutput.modeInstruction = crisisEval.instruction + '\n' + (therapyEngineOutput.modeInstruction || '');
+                }
+
+                // 7. İlerleme bağlamı
+                const progressContext = await buildProgressContext(userId);
+
+                // 8. Dinamik sistem promptunu oluştur
+                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput);
+                if (progressContext) {
+                    dynamicSystemPrompt += '\n\n' + progressContext;
+                }
+            }
+        } catch (promptErr) {
+            console.warn('[LYRA ENGINE] Dinamik prompt oluşturulamadı, devam ediliyor:', promptErr.message);
+        }
         console.log(`[CUSTOM LLM] Kullanıcı ID: ${userId}`);
 
         const userMemory = await getMemory(userId);
@@ -2230,6 +2282,20 @@ app.post('/api/chat/completions', async (req, res) => {
             console.warn('[RAG INJECTION] Hata:', e.message);
         }
 
+        // ─── DİNAMİK PROMPT INJECT ───────────────────────────────────────
+        if (dynamicSystemPrompt) {
+            const sysIdx = enrichedMessages.findIndex(m => m.role === 'system');
+            if (sysIdx !== -1) {
+                // Mevcut sistem mesajının başına ekle
+                enrichedMessages[sysIdx] = {
+                    ...enrichedMessages[sysIdx],
+                    content: dynamicSystemPrompt + '\n\n' + enrichedMessages[sysIdx].content
+                };
+            } else {
+                enrichedMessages.unshift({ role: 'system', content: dynamicSystemPrompt });
+            }
+            console.log(`[LYRA ENGINE] ✅ Dinamik prompt inject edildi | Mod: ${therapyEngineOutput?.mode?.name} | Profil seans: ${psychProfile?.session_count}`);
+        }
         const systemIdx = enrichedMessages.findIndex(m => m.role === 'system');
         if (userMemory) {
             let fullInjection = `\n\n[BU KULLANICI HAKKINDAKİ HAFIZA]:\n${userMemory}\n\nBu bilgileri doğal şekilde kullan, asla "seni hatırlıyorum" diyerek açıkça belirtme.${isimInjection}`;
@@ -2348,6 +2414,43 @@ app.post('/api/chat/completions', async (req, res) => {
         res.write('data: [DONE]\n\n');
         res.end();
         console.log(`[CUSTOM LLM] 🧠 Cevap başarıyla akıtıldı.`);
+        // ─── ARKA PLANDA PROFİL GÜNCELLE ─────────────────────────────────
+        if (userId && therapyEngineOutput) {
+            const capturedMessages = [...messages];
+            const capturedProfile = psychProfile;
+            const capturedEngine = therapyEngineOutput;
+            setImmediate(async () => {
+                try {
+                    const transcript = capturedMessages.map(m => `${m.role}: ${m.content}`).join('\n');
+
+                    // Profil güncellemesi
+                    const profileUpdates = await extractProfileUpdates(transcript, capturedProfile);
+                    if (profileUpdates && Object.keys(profileUpdates).length > 0) {
+                        await updateProfile(userId, profileUpdates);
+                    }
+
+                    // Seans analizi
+                    const sessionAnalysis = await analyzeSession(transcript, capturedProfile);
+                    if (sessionAnalysis) {
+                        const sessionId = `${userId}_${Date.now()}`;
+                        await saveSessionRecord(userId, sessionId, sessionAnalysis,
+                            capturedEngine.techniques?.map(t => t.id) || []);
+                        await updateWeeklyMetrics(userId, sessionAnalysis);
+                        await incrementSessionCount(userId);
+
+                        // Teknik etkinliği güncelle
+                        if ((sessionAnalysis.emotional_end_score || 0) > (sessionAnalysis.emotional_start_score || 5)) {
+                            for (const technique of (capturedEngine.techniques || [])) {
+                                await updateTechniqueEffectiveness(userId, technique.id, true);
+                            }
+                        }
+                    }
+                    console.log(`[LYRA ENGINE] ✅ Arka plan profil güncellendi | userId: ${userId}`);
+                } catch (bgErr) {
+                    console.warn('[LYRA ENGINE] Arka plan güncelleme hatası:', bgErr.message);
+                }
+            });
+        }
     } catch (error) {
         console.error("[CUSTOM LLM] ❌ Hata:", error);
         res.status(500).json({ error: error.message });
