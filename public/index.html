@@ -1774,7 +1774,18 @@
                         n.castShadow = true;
                         n.receiveShadow = true;
                         if (n.material) {
-                            n.material.needsUpdate = true;
+                            const mat = n.material;
+                            console.log('[MAT]', n.name, mat.type, 'map:', !!mat.map, 'color:', mat.color?.getHexString(), 'metalness:', mat.metalness, 'roughness:', mat.roughness);
+                            // MetaHuman PBR fix: envMap yoksa roughness yüksek tut, metalness düşür
+                            if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+                                if (!mat.map && !mat.color) {
+                                    mat.color = new THREE.Color(0xc8a882);
+                                }
+                                // Siyah görünümü engellemek için minimum roughness
+                                if (mat.roughness === undefined || mat.roughness < 0.3) mat.roughness = 0.5;
+                                if (mat.metalness === undefined || mat.metalness > 0.8) mat.metalness = 0.1;
+                            }
+                            mat.needsUpdate = true;
                         }
                     });
 
