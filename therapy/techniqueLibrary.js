@@ -3,7 +3,7 @@
  * 40 kanıtlanmış terapi tekniği — 8 kategoride
  */
 
-export const techniques = [
+export const TECHNIQUES = [
   // ─── Bilişsel / Düşünce ───────────────────────────────────────────────────
   {
     id: 'CBT',
@@ -394,7 +394,7 @@ export function getTechniquesForSituation(situation, healingStyle) {
     ? situation.split(/\s+/).filter(Boolean)
     : [];
 
-  return techniques.filter((technique) => {
+  return TECHNIQUES.filter((technique) => {
     // Kontrendike mi? Herhangi bir tag eşleşiyorsa hariç tut.
     const isContraindicated = technique.contraindicated.some((contra) =>
       tags.includes(contra)
