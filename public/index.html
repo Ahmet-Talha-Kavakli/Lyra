@@ -71,7 +71,7 @@
                         <p>Lyra ile yaptığın yolculuk</p>
                     </div>
                 </div>
-                <button id="history-close" onclick="historyKapat()">✕</button>
+                <button id="history-close">✕</button>
             </div>
             <div id="history-list">
                 <div id="history-loading">
@@ -201,7 +201,7 @@
                     <span style="height:14px"></span>
                     <span style="height:8px"></span>
                 </div>
-                <button class="camera-btn" id="history-btn" onclick="historyAc()" title="Geçmiş Seanslar">📋</button>
+                <button class="camera-btn" id="history-btn" title="Geçmiş Seanslar">📋</button>
                 <button class="main-btn" id="talkBtn">GÖRÜŞMEYİ BAŞLAT</button>
                 <button class="camera-btn" id="camera-toggle" title="Kamera Analizi">📷</button>
             </div>
@@ -1890,6 +1890,9 @@
         }
 
         // ── SEANS GEÇMİŞİ ──────────────────────────────────────────
+        document.getElementById('history-btn').addEventListener('click', () => historyAc());
+        document.getElementById('history-close').addEventListener('click', () => historyKapat());
+
         async function historyAc() {
             const overlay = document.getElementById('history-overlay');
             overlay.classList.add('active');
