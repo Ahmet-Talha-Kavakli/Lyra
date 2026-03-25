@@ -2282,7 +2282,7 @@ app.post('/api/chat/completions', async (req, res) => {
                 const progressContext = await buildProgressContext(userId);
 
                 // 8. Dinamik sistem promptunu oluştur
-                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput);
+                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
                 }
