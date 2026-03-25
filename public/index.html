@@ -17,6 +17,30 @@
         }
       }
     </script>
+    <script type="module">
+      // Auth guard — giriş yapılmamışsa auth.html'e yönlendir
+      const configResp = await fetch('/config');
+      const { supabaseUrl, supabaseAnonKey } = await configResp.json();
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = '/auth.html';
+      }
+
+      // Token'ı global erişim için sakla
+      window.__supabase = supabase;
+      window.__getAuthHeader = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+      };
+
+      // Token expire olunca auth.html'e yönlendir
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_OUT') window.location.href = '/auth.html';
+      });
+    </script>
 </head>
 
 <body>
