@@ -130,25 +130,8 @@ const port = process.env.PORT || 3001;
 
 // ─── GÜVENLİK BAŞLIKLARI ────────────────────────────────────
 app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "cdn.jsdelivr.net", "*.vapi.ai"],
-            styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
-            fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
-            imgSrc: ["'self'", 'data:', 'blob:'],
-            mediaSrc: ["'self'", 'blob:'],
-            workerSrc: ["'self'", 'blob:'],
-            connectSrc: [
-                "'self'",
-                '*.supabase.co',
-                'api.openai.com',
-                'api.vapi.ai',
-                '*.vapi.ai',
-            ],
-        }
-    },
-    crossOriginEmbedderPolicy: false, // Three.js / WebGL için gerekli
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
