@@ -17,6 +17,11 @@ import { runTherapyEngine } from './therapy/therapyEngine.js';
 import { saveSessionRecord, getTechniqueEffectiveness, updateTechniqueEffectiveness } from './progress/sessionAnalyzer.js';
 import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTracker.js';
 import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
+import { buildSessionContext } from './therapy/contextTracker.js';
+import { analyzeResponseQuality } from './progress/qualityAnalyzer.js';
+import { buildSessionBridgeContext } from './therapy/sessionBridge.js';
+import { extractTopicsCombined } from './therapy/topicExtractor.js';
+import { buildOnboardingContext } from './therapy/onboardingFlow.js';
 dotenv.config();
 
 // ─── INPUT SANİTİZASYON ─────────────────────────────────────────────────────
@@ -2013,6 +2018,135 @@ app.get('/config', (req, res) => {
     });
 });
 
+// ─── İLERLEME VERİSİ (D1) ─────────────────────────────────
+app.get('/my-progress', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+    try {
+        const [sessionsResp, profileResp, metricsResp] = await Promise.all([
+            supabase.from('session_records')
+                .select('session_id, created_at, dominant_emotion, topics, emotional_end_score, crisis_flag, session_quality, techniques_used, breakthrough_moment')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(20),
+            supabase.from('profiles').select('session_count, attachment_style, strengths, life_schemas').eq('user_id', userId).single(),
+            supabase.from('weekly_metrics').select('*').eq('user_id', userId).order('week_start', { ascending: false }).limit(4),
+        ]);
+
+        const sessions = sessionsResp.data || [];
+        const profile = profileResp.data || {};
+        const metrics = metricsResp.data || [];
+
+        // Özet istatistikler
+        const totalSessions = profile.session_count || sessions.length;
+        const avgQuality = sessions.length
+            ? Math.round(sessions.reduce((s, r) => s + (r.session_quality || 0), 0) / sessions.filter(r => r.session_quality).length) || null
+            : null;
+        const breakthroughCount = sessions.filter(r => r.breakthrough_moment).length;
+        const crisisCount = sessions.filter(r => r.crisis_flag).length;
+
+        // En sık görülen konular
+        const topicFreq = {};
+        for (const s of sessions) {
+            for (const t of (s.topics || [])) {
+                topicFreq[t] = (topicFreq[t] || 0) + 1;
+            }
+        }
+        const topTopics = Object.entries(topicFreq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t]) => t);
+
+        // Duygusal seyir (son 10 seans)
+        const emotionalArc = sessions.slice(0, 10).reverse().map(s => ({
+            date: s.created_at,
+            score: s.emotional_end_score,
+            emotion: s.dominant_emotion,
+        }));
+
+        res.json({
+            summary: { totalSessions, avgQuality, breakthroughCount, crisisCount },
+            topTopics,
+            emotionalArc,
+            weeklyMetrics: metrics,
+            strengths: (profile.strengths || []).slice(0, 3),
+            recentSessions: sessions.slice(0, 5).map(s => ({
+                date: s.created_at,
+                topics: s.topics,
+                quality: s.session_quality,
+                breakthrough: s.breakthrough_moment,
+            })),
+        });
+    } catch (e) {
+        console.error('[MY-PROGRESS]', e.message);
+        res.status(500).json({ error: 'İlerleme verisi alınamadı' });
+    }
+});
+
+// ─── ACİL KİŞİLER (D3) ────────────────────────────────────
+app.get('/emergency-contacts', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+    try {
+        const { data } = await supabase.from('emergency_contacts').select('*').eq('user_id', userId);
+        res.json({ contacts: data || [] });
+    } catch (e) {
+        res.status(500).json({ error: 'Acil kişiler alınamadı' });
+    }
+});
+
+app.post('/emergency-contacts', async (req, res) => {
+    const { userId, name, phone, relation } = req.body;
+    if (!userId || !name || !phone) return res.status(400).json({ error: 'userId, name ve phone zorunlu' });
+    try {
+        const { error } = await supabase.from('emergency_contacts').upsert({
+            user_id: userId,
+            name: name.substring(0, 100),
+            phone: phone.substring(0, 20),
+            relation: (relation || '').substring(0, 50),
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,phone' });
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Acil kişi kaydedilemedi' });
+    }
+});
+
+// ─── SEANS GERİ BİLDİRİMİ (D4) ───────────────────────────
+app.post('/session-feedback', async (req, res) => {
+    const { userId, sessionId, rating, note } = req.body;
+    if (!userId || !sessionId || rating == null) {
+        return res.status(400).json({ error: 'userId, sessionId ve rating zorunlu' });
+    }
+    if (typeof rating !== 'number' || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: 'rating 1-5 arası olmalı' });
+    }
+    try {
+        const { error } = await supabase.from('session_feedback').upsert({
+            user_id: userId,
+            session_id: sessionId,
+            rating,
+            note: (note || '').substring(0, 500),
+            created_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,session_id' });
+        if (error) throw error;
+
+        // Teknik etkinliği güncelle — kullanıcı memnuniyeti iyiyse
+        if (rating >= 4) {
+            const { data: sr } = await supabase.from('session_records')
+                .select('techniques_used').eq('session_id', sessionId).single();
+            if (sr?.techniques_used?.length) {
+                for (const tid of sr.techniques_used) {
+                    await updateTechniqueEffectiveness(userId, tid, true);
+                }
+            }
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[SESSION-FEEDBACK]', e.message);
+        res.status(500).json({ error: 'Geri bildirim kaydedilemedi' });
+    }
+});
+
 // ─── PING ──────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
@@ -2465,10 +2599,28 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 // 7. İlerleme bağlamı
                 const progressContext = await buildProgressContext(userId);
 
-                // 8. Dinamik sistem promptunu oluştur
+                // 7b. Önceki seans köprüsü
+                const sessionBridgeContext = await buildSessionBridgeContext(userId, supabase);
+
+                // 8. Seans içi bağlam
+                const sessionContext = buildSessionContext(messages || []);
+
+                // 9. Dinamik sistem promptunu oluştur
                 dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
+                }
+                if (sessionBridgeContext) {
+                    dynamicSystemPrompt += '\n\n' + sessionBridgeContext;
+                }
+                if (sessionContext) {
+                    dynamicSystemPrompt += '\n\n' + sessionContext;
+                }
+
+                // Onboarding bağlamı (yalnızca ilk seans)
+                const onboardingContext = buildOnboardingContext(messages, psychProfile?.session_count || 0);
+                if (onboardingContext) {
+                    dynamicSystemPrompt += '\n\n' + onboardingContext;
                 }
 
                 // Periyodik AI disclaimer — her 20 asistan mesajında bir
@@ -2666,10 +2818,26 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                         await updateProfile(userId, profileUpdates);
                     }
 
+                    // Cevap kalitesi analizi
+                    const qualityResult = analyzeResponseQuality(capturedMessages || []);
+                    if (qualityResult.score !== null) {
+                        console.log(`[QUALITY] Skor: ${qualityResult.score} | Sorunlar: ${qualityResult.issues.join(', ') || 'yok'}`);
+                    }
+
+                    // Konu çıkarımı
+                    const extractedTopics = await extractTopicsCombined(transcript, openai);
+
                     // Seans analizi
                     const sessionAnalysis = await analyzeSession(transcript, capturedProfile);
                     if (sessionAnalysis) {
                         const sessionId = `${userId}_${Date.now()}`;
+                        if (qualityResult.score !== null) sessionAnalysis.session_quality = qualityResult.score;
+                        // GPT analiz topics'i yoksa veya boşsa keyword topics'i kullan
+                        if (!sessionAnalysis.topics?.length && extractedTopics.length) {
+                            sessionAnalysis.topics = extractedTopics;
+                        } else if (extractedTopics.length) {
+                            sessionAnalysis.topics = [...new Set([...(sessionAnalysis.topics || []), ...extractedTopics])].slice(0, 8);
+                        }
                         await saveSessionRecord(userId, sessionId, sessionAnalysis,
                             capturedEngine.techniques?.map(t => t.id) || [],
                             capturedCrisisLevel);
