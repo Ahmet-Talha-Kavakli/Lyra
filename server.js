@@ -1861,6 +1861,87 @@ const updatePatternMemory = async (userId, sessionData) => {
     } catch (e) { console.error('[PATTERN] Güncelleme hatası:', e.message); }
 };
 
+// ─── KULLANICI ONAYI (KVKK Madde 3/5/6) ────────────────────
+app.post('/consent-accept', async (req, res) => {
+    const { userId, consentVersion = '1.0' } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+
+    const { error } = await supabase.from('user_consents').upsert({
+        user_id: userId,
+        consent_version: consentVersion,
+        ip_address: req.ip,
+        user_agent: (req.headers['user-agent'] || '').substring(0, 500),
+        accepted_at: new Date().toISOString()
+    }, { onConflict: 'user_id,consent_version' });
+
+    if (error) return res.status(500).json({ error: error.message });
+    console.log(`[CONSENT] Kullanıcı onayı kaydedildi: ${userId} v${consentVersion}`);
+    res.json({ ok: true });
+});
+
+app.get('/consent-status', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.json({ hasConsent: false });
+
+    const { data } = await supabase.from('user_consents')
+        .select('accepted_at, consent_version')
+        .eq('user_id', userId)
+        .eq('consent_version', '1.0')
+        .single();
+
+    res.json({ hasConsent: !!data, acceptedAt: data?.accepted_at || null });
+});
+
+// ─── VERİ SİLME (KVKK Madde 11/e) ──────────────────────────
+app.delete('/delete-my-data', async (req, res) => {
+    const { userId, confirmPhrase } = req.body;
+    if (!userId || confirmPhrase !== 'VERİLERİMİ SİL') {
+        return res.status(400).json({
+            error: 'Silme için confirmPhrase alanına tam olarak "VERİLERİMİ SİL" yazın'
+        });
+    }
+
+    const tables = [
+        'psychological_profiles', 'session_records', 'emotion_logs',
+        'memories', 'crisis_logs', 'knowledge_usage_logs',
+        'progress_metrics', 'technique_effectiveness', 'user_consents',
+        'session_feedback'
+    ];
+    const deleted = [], errors = [];
+
+    for (const table of tables) {
+        const { error } = await supabase.from(table).delete().eq('user_id', userId);
+        if (error) errors.push(`${table}: ${error.message}`);
+        else deleted.push(table);
+    }
+    await supabase.from('user_profiles').delete().eq('user_id', userId).catch(() => {});
+
+    console.log(`[DATA DELETE] userId: ${userId} — ${deleted.length} tablo temizlendi`);
+    if (errors.length > 0) return res.status(207).json({ partialSuccess: true, deleted, errors });
+    res.json({ success: true, deleted, message: 'Tüm verileriniz silindi.' });
+});
+
+// ─── VERİ DIŞA AKTARMA (KVKK Madde 11/ç) ───────────────────
+app.get('/export-my-data', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
+
+    const exportData = {};
+    for (const table of ['psychological_profiles', 'session_records', 'progress_metrics']) {
+        const { data } = await supabase.from(table).select('*').eq('user_id', userId);
+        exportData[table] = data || [];
+    }
+
+    res.setHeader('Content-Disposition', 'attachment; filename="lyra-data-export.json"');
+    res.setHeader('Content-Type', 'application/json');
+    res.json({
+        export_date: new Date().toISOString(),
+        user_id: userId,
+        data: exportData,
+        note: 'Bu dosya KVKK Madde 11/ç kapsamında kişisel veri dışa aktarımıdır.'
+    });
+});
+
 // ─── CONFIG (Frontend için Supabase bilgileri) ──────────────
 app.get('/config', (req, res) => {
     res.json({
@@ -2322,6 +2403,12 @@ app.post('/api/chat/completions', async (req, res) => {
                 dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
+                }
+
+                // Periyodik AI disclaimer — her 20 asistan mesajında bir
+                const assistantMsgCount = (messages || []).filter(m => m.role === 'assistant').length;
+                if (assistantMsgCount > 0 && assistantMsgCount % 20 === 0) {
+                    dynamicSystemPrompt += `\n\n[PERİYODİK HATIRLATMA — BU MESAJDA DOĞAL BİR ŞEKİLDE SÖYLE]: Zaman zaman hatırlatmak isterim: Ben bir yapay zekayım ve profesyonel psikolojik desteğin yerini tutamam. İhtiyaç duyduğunda bir uzmana ulaşmak her zaman değerli bir adım. Bunu sohbetin akışına uygun, liste/uyarı formatında değil, doğal bir cümle olarak söyle.`;
                 }
             }
         } catch (promptErr) {
