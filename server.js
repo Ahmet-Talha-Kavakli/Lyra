@@ -2008,9 +2008,21 @@ app.post('/vapi-webhook', async (req, res) => {
     const msgType = message.type;
     console.log(`[VAPI WEBHOOK] Type: ${msgType}`);
 
+    // call-start: metadata'dan userId al ve session başlat
+    if (msgType === 'call-started' || msgType === 'status-update' && message.status === 'started') {
+        const metaUserId = message.call?.metadata?.userId || message.metadata?.userId;
+        if (metaUserId) {
+            activeSessionUserId = metaUserId;
+            activeSessionId = message.call?.id || crypto.randomUUID();
+            console.log(`[VAPI] Oturum başladı — userId: ${metaUserId} | callId: ${activeSessionId}`);
+        }
+        return res.json({});
+    }
+
     if (msgType === 'end-of-call-report') {
-        const transcript = message.transcript || '';
-        const userId = activeSessionUserId;
+        const transcript = message.artifact?.transcript || message.transcript || '';
+        // userId: önce call metadata, sonra global fallback
+        const userId = message.call?.metadata?.userId || activeSessionUserId;
 
         if (!transcript || transcript.length < 50) {
             console.log('[END OF CALL] Konuşma çok kısa, özetlenmiyor.');
@@ -2112,7 +2124,28 @@ app.post('/vapi-webhook', async (req, res) => {
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
 
-            // Kişilik profili güncelle
+            // Psikolojik profil güncelle (yeni sistem)
+            try {
+                const currentProfile = await getProfile(userId);
+                const profileUpdates = await extractProfileUpdates(transcript, currentProfile);
+                if (profileUpdates && Object.keys(profileUpdates).length > 0) {
+                    await updateProfile(userId, profileUpdates);
+                    console.log(`[VAPI] Psikolojik profil güncellendi: ${Object.keys(profileUpdates).join(', ')}`);
+                }
+                // Seans analizi & kayıt
+                const sessionAnalysis = await analyzeSession(transcript, currentProfile);
+                if (sessionAnalysis && userId) {
+                    const sessionId = message.call?.id || `vapi_${userId}_${Date.now()}`;
+                    await saveSessionRecord(userId, sessionId, sessionAnalysis, [], null);
+                    await updateWeeklyMetrics(userId, sessionAnalysis);
+                    await incrementSessionCount(userId);
+                    console.log(`[VAPI] Seans kaydedildi: ${sessionId}`);
+                }
+            } catch (profileErr) {
+                console.warn('[VAPI] Profil güncelleme hatası:', profileErr.message);
+            }
+
+            // Eski sistem uyumluluğu
             const emotionStateForProfile = userEmotions.get(userId);
             await updateUserProfile(userId, transcript, emotionStateForProfile);
 
