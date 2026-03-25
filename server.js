@@ -2699,6 +2699,24 @@ app.post('/end-session', async (req, res) => {
     }
 });
 
+// ─── SEANS GEÇMİŞİ ────────────────────────────────────────────────────
+app.get('/session-history/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { data, error } = await supabase
+            .from('session_records')
+            .select('session_id, created_at, topics, homework, emotional_start_score, emotional_end_score, dominant_emotion, breakthrough_moment')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (error) return res.status(500).json({ error: error.message });
+        res.json({ sessions: data || [] });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── KRİZ SONRASI KONTROL + PATTERN LEARNING (Cron) ──────────────────
 app.get('/cron-checkin', async (req, res) => {
     try {

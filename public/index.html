@@ -60,6 +60,28 @@
     <div id="error-toast"></div>
     <canvas id="hidden-canvas" style="display:none"></canvas>
 
+    <!-- SEANS GEÇMİŞİ OVERLAY -->
+    <div id="history-overlay">
+        <div id="history-panel">
+            <div id="history-header">
+                <div id="history-title">
+                    <span id="history-icon">📋</span>
+                    <div>
+                        <h2>Geçmiş Seanslar</h2>
+                        <p>Lyra ile yaptığın yolculuk</p>
+                    </div>
+                </div>
+                <button id="history-close" onclick="historyKapat()">✕</button>
+            </div>
+            <div id="history-list">
+                <div id="history-loading">
+                    <div class="history-spinner"></div>
+                    <span>Yükleniyor...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- NEFES EGZERSİZİ OVERLAY -->
     <div id="nefes-overlay">
         <div id="nefes-circle">♡</div>
@@ -179,6 +201,7 @@
                     <span style="height:14px"></span>
                     <span style="height:8px"></span>
                 </div>
+                <button class="camera-btn" id="history-btn" onclick="historyAc()" title="Geçmiş Seanslar">📋</button>
                 <button class="main-btn" id="talkBtn">GÖRÜŞMEYİ BAŞLAT</button>
                 <button class="camera-btn" id="camera-toggle" title="Kamera Analizi">📷</button>
             </div>
@@ -1864,6 +1887,77 @@
         function vizualKapat() {
             clearTimeout(vizualTimer);
             document.getElementById('vizual-overlay').classList.remove('active');
+        }
+
+        // ── SEANS GEÇMİŞİ ──────────────────────────────────────────
+        async function historyAc() {
+            const overlay = document.getElementById('history-overlay');
+            overlay.classList.add('active');
+            if (persistentUserId) await historyYukle();
+        }
+
+        function historyKapat() {
+            document.getElementById('history-overlay').classList.remove('active');
+        }
+
+        // ESC ile kapat
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') historyKapat();
+        });
+
+        async function historyYukle() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = '<div id="history-loading"><div class="history-spinner"></div><span>Yükleniyor...</span></div>';
+
+            try {
+                const res = await fetch(`/session-history/${persistentUserId}`);
+                const data = await res.json();
+                const sessions = data.sessions || [];
+
+                if (sessions.length === 0) {
+                    list.innerHTML = `
+                        <div id="history-empty">
+                            <span>🌱</span>
+                            <p>Henüz tamamlanmış bir seans yok.<br>İlk seansın burada görünecek.</p>
+                        </div>`;
+                    return;
+                }
+
+                list.innerHTML = sessions.map((s, i) => historyKartOlustur(s, i)).join('');
+            } catch (e) {
+                list.innerHTML = `<div id="history-empty"><span>⚠️</span><p>Yüklenirken bir hata oluştu.</p></div>`;
+            }
+        }
+
+        function historyKartOlustur(s, index) {
+            const tarih = new Date(s.created_at);
+            const tarihStr = tarih.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+            const saatStr = tarih.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+            const konular = (s.topics || []).slice(0, 5).map(t =>
+                `<span class="topic-tag">${t}</span>`
+            ).join('');
+
+            const odev = s.homework
+                ? `<div class="session-homework">
+                     <span class="homework-icon">✍️</span>
+                     <span class="homework-text">${s.homework}</span>
+                   </div>`
+                : '';
+
+            const breakthrough = s.breakthrough_moment
+                ? `<div class="breakthrough-badge">✨ Önemli bir farkındalık anı</div>`
+                : '';
+
+            return `
+                <div class="session-card" style="animation-delay: ${index * 0.05}s">
+                    <div class="session-card-top">
+                        <span class="session-date">${tarihStr} · ${saatStr}</span>
+                    </div>
+                    ${breakthrough}
+                    ${konular ? `<div class="session-topics">${konular}</div>` : ''}
+                    ${odev}
+                </div>`;
         }
 
     </script>
