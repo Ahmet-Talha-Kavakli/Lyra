@@ -1,6 +1,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
 import path from 'path';
@@ -17,6 +18,24 @@ import { saveSessionRecord, getTechniqueEffectiveness, updateTechniqueEffectiven
 import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTracker.js';
 import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
 dotenv.config();
+
+// ─── INPUT SANİTİZASYON ─────────────────────────────────────────────────────
+function sanitizeMessage(content) {
+    if (typeof content !== 'string') return '';
+    if (content.length > 4000) content = content.substring(0, 4000);
+    content = content.replace(/\0/g, ''); // Null byte
+    content = content.replace(/[\u202A-\u202E\u2066-\u2069]/g, ''); // Unicode direction override
+    return content.trim();
+}
+
+function sanitizeMessages(messages) {
+    if (!Array.isArray(messages)) return [];
+    if (messages.length > 100) messages = messages.slice(-100);
+    return messages.map(m => ({
+        role: ['user', 'assistant', 'system'].includes(m.role) ? m.role : 'user',
+        content: sanitizeMessage(m.content || '')
+    }));
+}
 
 // ─── DUYGU TESPİTİ ─────────────────────────────────────────────────────────
 const EMOTION_MAP = {
@@ -85,7 +104,51 @@ const FEATURE_FLAGS = {
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+// ─── GÜVENLİK BAŞLIKLARI ────────────────────────────────────
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
+            fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
+            imgSrc: ["'self'", 'data:', 'blob:'],
+            mediaSrc: ["'self'", 'blob:'],
+            workerSrc: ["'self'", 'blob:'],
+            connectSrc: [
+                "'self'",
+                '*.supabase.co',
+                'api.openai.com',
+                'api.vapi.ai',
+                '*.vapi.ai',
+            ],
+        }
+    },
+    crossOriginEmbedderPolicy: false, // Three.js / WebGL için gerekli
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+// ─── CORS — İzin verilen originler ──────────────────────────
+const ALLOWED_ORIGINS = [
+    'http://localhost:3001',
+    'http://localhost:5173',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Origin yoksa (curl, Postman, Vapi webhook) geç
+        if (!origin) return callback(null, true);
+        // Vercel preview URL'leri
+        if (/\.vercel\.app$/.test(origin)) return callback(null, true);
+        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        callback(null, true); // Geliştirme kolaylığı için açık — production'da kısıtla
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
@@ -2338,9 +2401,12 @@ app.post('/save-local-memory', async (req, res) => {
 });
 
 // ─── CUSTOM LLM ENDPOINT (VAPI BEYİN) ─────────────────────
-app.post('/api/chat/completions', async (req, res) => {
+app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
     try {
-        const { messages, model, temperature, max_tokens, call } = req.body;
+        const { messages: rawMessages, model, temperature, max_tokens, call } = req.body;
+
+        // B3 — Input sanitizasyon
+        const messages = sanitizeMessages(rawMessages);
         console.log(`[CUSTOM LLM] İstek alındı! Gelen mesaj sayısı: ${messages?.length}`);
 
         // Serverless ortamda activeSessionUserId güvenilmez — Vapi'nin call.assistantOverrides'ından al
@@ -2966,7 +3032,7 @@ app.get('/cron-checkin', async (req, res) => {
 });
 
 // ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
-// Rate limiter: max 30 istek/dk per userId veya IP
+// Rate limiter: max 30 istek/dk per userId veya IP (skip kaldırıldı)
 const emotionRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
@@ -2974,7 +3040,6 @@ const emotionRateLimit = rateLimit({
     handler: (req, res) => {
         res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
     },
-    skip: (req) => !req.body?.userId // userId yoksa atla
 });
 
 // ── HUME SES YAKALAMA RATE LIMITER ──
@@ -2983,9 +3048,18 @@ const humeRateLimit = rateLimit({
     max: 20,
     keyGenerator: (req) => req.body?.userId || req.ip,
     handler: (req, res) => {
-        res.status(429).json({ hume_scores: null });
+        res.status(429).json({ hume_scores: null, rate_limited: true });
     },
-    skip: (req) => !req.body?.userId
+});
+
+// ── CHAT ENDPOINT RATE LIMITER (YENİ) ──
+const chatRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    keyGenerator: (req) => req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
+    },
 });
 
 // ── MULTER SES DOSYASI YÜKLEMESİ ──
