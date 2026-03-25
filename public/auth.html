@@ -3,19 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lyra — Giriş</title>
+  <title>Lyra — AI Terapist</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@21st-dev/components@latest/dist/index.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --lyra-dark: #0a0806;
+      --lyra-gold: #c8a96e;
+      --lyra-gold-light: rgba(200,169,110,0.1);
+      --lyra-text: rgba(240,230,210,0.85);
+      --lyra-text-muted: rgba(200,180,140,0.55);
+      --lyra-border: rgba(200,169,110,0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
-      background: #0a0806;
-      color: rgba(240,230,210,0.85);
+      background: var(--lyra-dark);
+      color: var(--lyra-text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
+      overflow-x: hidden;
     }
 
     body::before {
@@ -26,293 +41,412 @@
       pointer-events: none;
     }
 
-    .card {
+    .auth-container {
       width: 100%;
-      max-width: 400px;
-      background: rgba(16,11,7,0.95);
-      border: 1px solid rgba(200,169,110,0.15);
-      border-radius: 20px;
-      padding: 40px 36px;
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-      box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      max-width: 420px;
       position: relative;
       z-index: 1;
     }
 
-    .logo {
-      text-align: center;
-    }
-    .logo-name {
-      font-size: 1.8rem;
-      font-weight: 300;
-      letter-spacing: 0.15em;
-      color: #c8a96e;
-    }
-    .logo-tagline {
-      font-size: 12px;
-      color: rgba(200,169,110,0.4);
-      letter-spacing: 0.08em;
-      margin-top: 4px;
+    .auth-card {
+      background: rgba(16,11,7,0.95);
+      border: 1px solid var(--lyra-border);
+      border-radius: 24px;
+      padding: 48px 40px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
     }
 
-    .tabs {
+    .auth-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .auth-logo {
+      font-size: 2.4rem;
+      font-weight: 300;
+      letter-spacing: 0.2em;
+      color: var(--lyra-gold);
+      margin-bottom: 8px;
+    }
+
+    .auth-tagline {
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      color: var(--lyra-text-muted);
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    .auth-tabs {
       display: flex;
       gap: 0;
-      border-bottom: 1px solid rgba(200,169,110,0.12);
+      border-bottom: 1px solid var(--lyra-border);
+      margin-bottom: 32px;
     }
-    .tab {
+
+    .auth-tab {
       flex: 1;
-      padding: 10px;
+      padding: 12px 16px;
       text-align: center;
       font-size: 13px;
       letter-spacing: 0.05em;
-      color: rgba(200,169,110,0.4);
+      color: var(--lyra-text-muted);
       cursor: pointer;
       border-bottom: 2px solid transparent;
-      transition: all 0.2s;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       background: none;
       border-top: none;
       border-left: none;
       border-right: none;
-    }
-    .tab.active {
-      color: #c8a96e;
-      border-bottom-color: #c8a96e;
+      font-weight: 500;
     }
 
-    .form { display: flex; flex-direction: column; gap: 14px; }
+    .auth-tab:hover {
+      color: var(--lyra-text);
+    }
 
-    .field {
+    .auth-tab.active {
+      color: var(--lyra-gold);
+      border-bottom-color: var(--lyra-gold);
+    }
+
+    .auth-form {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-    }
-    .field label {
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      color: rgba(200,169,110,0.5);
-      text-transform: uppercase;
-    }
-    .field input {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(200,169,110,0.15);
-      border-radius: 10px;
-      padding: 12px 14px;
-      font-size: 14px;
-      color: rgba(240,230,210,0.9);
-      outline: none;
-      transition: border-color 0.2s;
-      width: 100%;
-    }
-    .field input:focus {
-      border-color: rgba(200,169,110,0.4);
-    }
-    .field input::placeholder {
-      color: rgba(200,180,140,0.25);
+      gap: 18px;
     }
 
-    .consent {
+    .auth-form-field {
       display: flex;
-      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .auth-form-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: var(--lyra-text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .auth-form-input {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--lyra-border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--lyra-text);
+      outline: none;
+      transition: all 0.2s ease;
+      width: 100%;
+      font-family: inherit;
+    }
+
+    .auth-form-input:focus {
+      border-color: var(--lyra-gold);
+      background: rgba(200,169,110,0.05);
+      box-shadow: 0 0 0 3px rgba(200,169,110,0.1);
+    }
+
+    .auth-form-input::placeholder {
+      color: rgba(200,180,140,0.3);
+    }
+
+    .auth-form-checkbox {
+      display: flex;
+      align-items: center;
       gap: 10px;
       font-size: 12px;
-      color: rgba(200,180,140,0.55);
+      color: var(--lyra-text-muted);
       line-height: 1.5;
-    }
-    .consent input[type="checkbox"] {
-      width: 14px;
-      height: 14px;
-      margin-top: 2px;
-      flex-shrink: 0;
-      accent-color: #c8a96e;
       cursor: pointer;
     }
-    .consent a { color: rgba(200,169,110,0.7); text-decoration: none; }
-    .consent a:hover { color: #c8a96e; }
 
-    .forgot {
-      text-align: right;
+    .auth-form-checkbox input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      accent-color: var(--lyra-gold);
+      cursor: pointer;
+    }
+
+    .auth-form-checkbox a {
+      color: var(--lyra-gold);
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    .auth-form-checkbox a:hover {
+      opacity: 0.8;
+    }
+
+    .auth-form-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .auth-form-forgot {
       font-size: 12px;
-      color: rgba(200,169,110,0.4);
+      color: var(--lyra-text-muted);
       cursor: pointer;
       background: none;
       border: none;
       padding: 0;
+      transition: color 0.2s;
     }
-    .forgot:hover { color: #c8a96e; }
 
-    .btn-primary {
-      background: linear-gradient(135deg, rgba(200,169,110,0.9), rgba(180,145,85,0.9));
-      color: #0a0806;
+    .auth-form-forgot:hover {
+      color: var(--lyra-gold);
+    }
+
+    .auth-btn {
+      background: linear-gradient(135deg, rgba(200,169,110,0.95), rgba(180,145,85,0.95));
+      color: var(--lyra-dark);
       border: none;
-      border-radius: 10px;
-      padding: 13px;
+      border-radius: 12px;
+      padding: 14px 20px;
       font-size: 14px;
       font-weight: 600;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
       cursor: pointer;
-      transition: opacity 0.2s, transform 0.1s;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       width: 100%;
+      margin-top: 8px;
+      text-transform: uppercase;
     }
-    .btn-primary:hover { opacity: 0.9; }
-    .btn-primary:active { transform: scale(0.99); }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .divider {
+    .auth-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px rgba(200,169,110,0.25);
+    }
+
+    .auth-btn:active {
+      transform: translateY(0);
+    }
+
+    .auth-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .auth-divider {
       display: flex;
       align-items: center;
       gap: 12px;
-      font-size: 11px;
-      color: rgba(200,169,110,0.25);
-      letter-spacing: 0.08em;
+      margin: 24px 0;
+      color: rgba(200,169,110,0.2);
     }
-    .divider::before, .divider::after {
+
+    .auth-divider::before,
+    .auth-divider::after {
       content: '';
       flex: 1;
       height: 1px;
-      background: rgba(200,169,110,0.1);
+      background: currentColor;
     }
 
-    .social-grid {
+    .auth-divider span {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    .auth-social {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
-    .btn-social {
+
+    .auth-social-btn {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 12px;
       background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(200,169,110,0.12);
-      border-radius: 10px;
-      padding: 11px 16px;
+      border: 1px solid var(--lyra-border);
+      border-radius: 12px;
+      padding: 12px 16px;
       font-size: 13px;
-      color: rgba(240,230,210,0.75);
+      color: var(--lyra-text);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
       width: 100%;
+      font-weight: 500;
     }
-    .btn-social:hover {
-      background: rgba(255,255,255,0.07);
-      border-color: rgba(200,169,110,0.25);
-      color: rgba(240,230,210,0.95);
-    }
-    .btn-social svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-    .message {
-      font-size: 12px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      text-align: center;
-      display: none;
+    .auth-social-btn:hover {
+      background: rgba(255,255,255,0.07);
+      border-color: rgba(200,169,110,0.3);
+      color: var(--lyra-gold);
     }
-    .message.error {
+
+    .auth-social-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .auth-message {
+      font-size: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      text-align: center;
+      margin-bottom: 16px;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    .auth-message.error {
       background: rgba(200,60,60,0.1);
       border: 1px solid rgba(200,60,60,0.2);
       color: rgba(255,120,120,0.9);
     }
-    .message.success {
+
+    .auth-message.success {
       background: rgba(60,160,80,0.1);
       border: 1px solid rgba(60,160,80,0.2);
       color: rgba(100,200,120,0.9);
     }
 
-    .hidden { display: none !important; }
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 640px) {
+      .auth-card {
+        padding: 32px 24px;
+      }
+
+      .auth-logo {
+        font-size: 1.8rem;
+      }
+
+      .auth-form {
+        gap: 14px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="auth-container">
+    <div class="auth-card">
 
-    <div class="logo">
-      <div class="logo-name">LYRA</div>
-      <div class="logo-tagline">Psikolojik Destek Asistanı</div>
-    </div>
-
-    <div class="tabs">
-      <button class="tab active" id="tab-login" onclick="switchTab('login')">Giriş Yap</button>
-      <button class="tab" id="tab-register" onclick="switchTab('register')">Kayıt Ol</button>
-    </div>
-
-    <div class="message" id="msg"></div>
-
-    <div id="form-login" class="form">
-      <div class="field">
-        <label>E-posta</label>
-        <input type="email" id="login-email" placeholder="ornek@email.com" autocomplete="email">
+      <!-- Header -->
+      <div class="auth-header">
+        <div class="auth-logo">LYRA</div>
+        <div class="auth-tagline">AI Terapist</div>
       </div>
-      <div class="field">
-        <label>Şifre</label>
-        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+
+      <!-- Message Area -->
+      <div class="auth-message" id="msg"></div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Giriş Yap</button>
+        <button class="auth-tab" id="tab-register" onclick="switchTab('register')">Kayıt Ol</button>
       </div>
-      <button class="forgot" onclick="showForgotPassword()">Şifremi unuttum</button>
-      <button class="btn-primary" id="btn-login" onclick="handleLogin()">Giriş Yap</button>
-    </div>
 
-    <div id="form-register" class="form hidden">
-      <div class="field">
-        <label>E-posta</label>
-        <input type="email" id="reg-email" placeholder="ornek@email.com" autocomplete="email">
+      <!-- Login Form -->
+      <div id="form-login" class="auth-form">
+        <div class="auth-form-field">
+          <label class="auth-form-label">E-posta</label>
+          <input type="email" id="login-email" class="auth-form-input" placeholder="ornek@email.com" autocomplete="email">
+        </div>
+        <div class="auth-form-field">
+          <label class="auth-form-label">Şifre</label>
+          <input type="password" id="login-password" class="auth-form-input" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <div class="auth-form-actions">
+          <button class="auth-form-forgot" onclick="showForgotPassword()">Şifremi Unuttum?</button>
+        </div>
+        <button class="auth-btn" id="btn-login" onclick="handleLogin()">Giriş Yap</button>
       </div>
-      <div class="field">
-        <label>Şifre</label>
-        <input type="password" id="reg-password" placeholder="En az 8 karakter" autocomplete="new-password">
+
+      <!-- Register Form -->
+      <div id="form-register" class="auth-form hidden">
+        <div class="auth-form-field">
+          <label class="auth-form-label">E-posta</label>
+          <input type="email" id="reg-email" class="auth-form-input" placeholder="ornek@email.com" autocomplete="email">
+        </div>
+        <div class="auth-form-field">
+          <label class="auth-form-label">Şifre</label>
+          <input type="password" id="reg-password" class="auth-form-input" placeholder="En az 8 karakter" autocomplete="new-password">
+        </div>
+        <label class="auth-form-checkbox">
+          <input type="checkbox" id="consent-check">
+          <span>
+            <a href="/privacy.html" target="_blank">Gizlilik Politikası</a>'nı ve
+            <a href="/terms.html" target="_blank">Kullanım Şartları</a>'nı kabul ediyorum.
+            (18 yaş ve üzerindeyim)
+          </span>
+        </label>
+        <button class="auth-btn" id="btn-register" onclick="handleRegister()">Kayıt Ol</button>
       </div>
-      <label class="consent">
-        <input type="checkbox" id="consent-check">
-        <span>
-          <a href="/privacy.html" target="_blank">Gizlilik Politikası</a>'nı ve
-          <a href="/terms.html" target="_blank">Kullanım Şartları</a>'nı kabul ediyorum.
-          (18 yaş ve üzerindeyim)
-        </span>
-      </label>
-      <button class="btn-primary" id="btn-register" onclick="handleRegister()">Kayıt Ol</button>
-    </div>
 
-    <div id="form-forgot" class="form hidden">
-      <div class="field">
-        <label>E-posta adresiniz</label>
-        <input type="email" id="forgot-email" placeholder="ornek@email.com">
+      <!-- Forgot Password Form -->
+      <div id="form-forgot" class="auth-form hidden">
+        <div class="auth-form-field">
+          <label class="auth-form-label">E-posta Adresiniz</label>
+          <input type="email" id="forgot-email" class="auth-form-input" placeholder="ornek@email.com">
+        </div>
+        <button class="auth-btn" onclick="handleForgotPassword()">Sıfırlama Linki Gönder</button>
+        <button class="auth-form-forgot" onclick="switchTab('login')" style="margin-top: 12px;">← Giriş Sayfasına Dön</button>
       </div>
-      <button class="btn-primary" onclick="handleForgotPassword()">Sıfırlama Linki Gönder</button>
-      <button class="forgot" onclick="switchTab('login')">← Giriş sayfasına dön</button>
+
+      <!-- Divider -->
+      <div class="auth-divider">
+        <span>Veya</span>
+      </div>
+
+      <!-- Social Login -->
+      <div class="auth-social">
+        <button class="auth-social-btn" onclick="handleSocial('google')">
+          <svg class="auth-social-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Google
+        </button>
+        <button class="auth-social-btn" onclick="handleSocial('facebook')">
+          <svg class="auth-social-icon" viewBox="0 0 24 24" fill="#1877F2">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+          Facebook
+        </button>
+        <button class="auth-social-btn" onclick="handleSocial('apple')">
+          <svg class="auth-social-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+          </svg>
+          Apple
+        </button>
+      </div>
+
     </div>
-
-    <div class="divider">veya</div>
-
-    <div class="social-grid">
-      <button class="btn-social" onclick="handleSocial('google')">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
-        Google ile devam et
-      </button>
-      <button class="btn-social" onclick="handleSocial('facebook')">
-        <svg viewBox="0 0 24 24" fill="#1877F2">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-        </svg>
-        Facebook ile devam et
-      </button>
-      <button class="btn-social" onclick="handleSocial('apple')">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-        </svg>
-        Apple ile devam et
-      </button>
-    </div>
-
   </div>
 
   <script type="module">
     const configResp = await fetch('/config');
     const { supabaseUrl, supabaseAnonKey } = await configResp.json();
 
-    const { createClient } = await import(`https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm`);
+    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     const { data: { session } } = await supabase.auth.getSession();
@@ -336,9 +470,10 @@
     function showMsg(text, type = 'error') {
       const el = document.getElementById('msg');
       el.textContent = text;
-      el.className = `message ${type}`;
+      el.className = `auth-message ${type}`;
       el.style.display = 'block';
     }
+
     function hideMsg() {
       document.getElementById('msg').style.display = 'none';
     }
