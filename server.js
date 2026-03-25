@@ -2310,32 +2310,22 @@ app.post('/api/chat/completions', async (req, res) => {
             }
         } catch { /* profil yükleme başarısız */ }
 
-        // RAG — Bilgi Bankası Knowledge Injection (Advanced)
+        // RAG — Bilgi Bankası Knowledge Injection
         let knowledgeInjection = '';
         try {
             const lastUserMsg = messages?.[messages.length - 1]?.content || '';
             if (lastUserMsg.length > 10) {
-                // Retrieve relevant knowledge from knowledge_sources table
-                const response = await fetch(`http://localhost:${port}/retrieve-knowledge-advanced?userId=${userId}&query=${encodeURIComponent(lastUserMsg.substring(0, 100))}&limit=5`);
-                const { insights } = await response.json();
+                const insights = await retrieveKnowledge(lastUserMsg, { limit: 3 });
 
                 if (insights && insights.length > 0) {
-                    const insightTexts = insights.map((i, idx) => {
-                        const srcEmoji = {
-                            'book': '📚',
-                            'video': '🎥',
-                            'technique': '🧠',
-                            'article': '📄',
-                            'wiki': '📖',
-                            'research': '🔬'
-                        }[i.source_type] || '📌';
+                    // Terapist arka plan bilgisi olarak inject et — kullanıcıya kaynak önerme değil
+                    const insightTexts = insights.map(i => {
+                        const line = `- ${i.title} (${i.author}): ${i.summary}`;
+                        return line;
+                    }).join('\n');
 
-                        const relevanceBar = '█'.repeat(Math.ceil(i.relevance * 5)) + '░'.repeat(5 - Math.ceil(i.relevance * 5));
-                        return `${srcEmoji} ${i.title} (${i.author})\n   ${i.summary}\n   Relevance: ${relevanceBar} ${Math.round(i.relevance * 100)}%`;
-                    }).join('\n\n');
-
-                    knowledgeInjection = `\n\n[LYRA'NIN BILGI BANKASI — Önerilen Kaynaklar]:\nSon konunuzla ilgili bu kaynakları tavsiye ediyorum:\n\n${insightTexts}\n\nBu kaynakları önerdiğiniz soruna uygulamaya çalışalım mı?`;
-                    console.log(`[RAG] ${insights.length} bilgi kaynağı inject edildi (avg relevance: ${(insights.reduce((s, i) => s + i.relevance, 0) / insights.length).toFixed(2)})`);
+                    knowledgeInjection = `\n\n## ARKA PLAN BİLGİSİ (İçselleştir, Doğrudan Söyleme)\nBu konuyla ilgili bilgi tabanında şunlar var — teknik bilgini bu kaynaklar üzerinden şekillendir, ama kaynak adı söyleme:\n${insightTexts}`;
+                    console.log(`[RAG] ${insights.length} kaynak inject edildi`);
                 }
             }
         } catch (e) {
@@ -3706,75 +3696,100 @@ app.post('/seed-knowledge', async (req, res) => {
     }
 });
 
-// ─── BILGI BANKASI: KAYNAK BULMA (İlk sürüm — Text search + Manual relevance) ────────────────────────
+// ─── BILGI BANKASI: KAYNAK BULMA ─────────────────────────────────────────────
+
+/**
+ * Verilen sorguya göre bilgi bankasından ilgili kaynakları getirir.
+ * 1. Embedding varsa cosine similarity (vector search)
+ * 2. Yoksa keyword + category scoring
+ *
+ * @param {string} query
+ * @param {{ limit?: number, category?: string }} opts
+ * @returns {Promise<object[]>}
+ */
+async function retrieveKnowledge(query, opts = {}) {
+    const { limit = 3, category } = opts;
+    if (!query || query.length < 3) return [];
+
+    try {
+        // Sorgu için embedding oluştur
+        let queryEmbedding = null;
+        try {
+            const embRes = await openai.embeddings.create({
+                model: 'text-embedding-ada-002',
+                input: query.substring(0, 500)
+            });
+            queryEmbedding = embRes.data[0].embedding;
+        } catch (_) {
+            // embedding başarısız — keyword fallback'e geç
+        }
+
+        // Supabase'den kaynakları çek
+        let q = supabase
+            .from('knowledge_sources')
+            .select('id, source_type, title, author, summary, category, subcategory, tags, credibility_score, embedding')
+            .eq('is_active', true);
+        if (category && category !== 'all') q = q.eq('category', category);
+        const { data: sources, error } = await q.limit(80);
+        if (error || !sources?.length) return [];
+
+        const queryLower = query.toLowerCase();
+        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+
+        const scored = sources.map(source => {
+            let score = 0;
+
+            if (queryEmbedding && source.embedding) {
+                // Cosine similarity
+                const a = queryEmbedding;
+                const b = source.embedding;
+                let dot = 0, normA = 0, normB = 0;
+                for (let i = 0; i < a.length; i++) {
+                    dot += a[i] * b[i];
+                    normA += a[i] * a[i];
+                    normB += b[i] * b[i];
+                }
+                score = dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+            } else {
+                // Keyword scoring fallback
+                const titleLower = (source.title || '').toLowerCase();
+                const summaryLower = (source.summary || '').toLowerCase();
+                const tagsLower = (source.tags || []).join(' ').toLowerCase();
+
+                for (const word of queryWords) {
+                    if (titleLower.includes(word)) score += 0.4;
+                    if (summaryLower.includes(word)) score += 0.25;
+                    if (tagsLower.includes(word)) score += 0.2;
+                }
+                // credibility bonusu
+                score += (source.credibility_score || 0.8) * 0.05;
+                score = Math.min(score, 1);
+            }
+
+            return { ...source, relevance: Math.round(score * 100) / 100 };
+        });
+
+        return scored
+            .filter(s => s.relevance > 0.1)
+            .sort((a, b) => b.relevance - a.relevance)
+            .slice(0, limit)
+            .map(({ embedding: _e, ...rest }) => rest); // embedding'i response'tan çıkar
+    } catch (err) {
+        console.warn('[retrieveKnowledge] Hata:', err.message);
+        return [];
+    }
+}
+
 app.get('/retrieve-knowledge-advanced', async (req, res) => {
     try {
         const { query, category, limit = 5, userId } = req.query;
+        if (!query) return res.json({ error: 'query parametresi gerekli' });
 
-        if (!query) {
-            return res.json({ error: 'query parametresi gerekli' });
-        }
-
-        console.log(`[RAG] Aranıyor: "${query}"${category ? ` (kategori: ${category})` : ''}`);
-
-        // Query değiştir
-        const searchQuery = `%${query.substring(0, 50)}%`.toLowerCase();
-
-        // Supabase'de basic text search
-        let supabaseQuery = supabase
-            .from('knowledge_sources')
-            .select('id, source_type, title, author, url, summary, category, subcategory, tags, credibility_score, relevance_score')
-            .eq('is_active', true);
-
-        // Kategori filtresi
-        if (category && category !== 'all') {
-            supabaseQuery = supabaseQuery.eq('category', category);
-        }
-
-        const { data: allSources, error: selectError } = await supabaseQuery.limit(50);
-
-        if (selectError) {
-            console.warn('[RAG] Supabase error:', selectError.message);
-            return res.json({ error: selectError.message });
-        }
-
-        if (!allSources || allSources.length === 0) {
-            return res.json({ insights: [], method: 'text-search', query, message: 'Kaynak bulunamadı' });
-        }
-
-        // Manual text relevance scoring
-        const scored = allSources
-            .map(source => {
-                // Title, summary, tags'ında arama sözcüğünü bul
-                const titleMatch = source.title?.toLowerCase().includes(query.toLowerCase()) ? 3 : 0;
-                const summaryMatch = source.summary?.toLowerCase().includes(query.toLowerCase()) ? 2 : 0;
-                const tagsMatch = source.tags?.some(t => t.toLowerCase().includes(query.toLowerCase())) ? 2 : 0;
-
-                const relevance = (titleMatch + summaryMatch + tagsMatch) / 7;
-                return { ...source, relevance };
-            })
-            .filter(s => s.relevance > 0) // En az bir match
-            .sort((a, b) => b.relevance - a.relevance)
-            .slice(0, parseInt(limit));
-
-        // Format response
-        const formatted = scored.map(s => ({
-            id: s.id,
-            source_type: s.source_type,
-            title: s.title,
-            author: s.author,
-            url: s.url,
-            summary: s.summary,
-            category: s.category,
-            subcategory: s.subcategory,
-            tags: s.tags,
-            relevance: Math.round(s.relevance * 100) / 100,
-            credibility: s.credibility_score
-        }));
+        const insights = await retrieveKnowledge(query, { limit: parseInt(limit), category });
 
         // Usage log (fire-and-forget)
-        if (userId && formatted.length > 0) {
-            formatted.forEach(insight => {
+        if (userId && insights.length > 0) {
+            insights.forEach(insight => {
                 supabase.from('knowledge_usage_logs').insert([{
                     user_id: userId,
                     knowledge_id: insight.id,
@@ -3784,15 +3799,8 @@ app.get('/retrieve-knowledge-advanced', async (req, res) => {
             });
         }
 
-        console.log(`[RAG] ${formatted.length}/${allSources.length} kaynak döndürüldü`);
-        res.json({
-            insights: formatted,
-            method: 'text-search',
-            query,
-            count: formatted.length,
-            timestamp: new Date().toISOString()
-        });
-
+        console.log(`[RAG] ${insights.length} kaynak döndürüldü`);
+        res.json({ insights, query, count: insights.length, timestamp: new Date().toISOString() });
     } catch (err) {
         console.error('[RAG] Hata:', err.message);
         res.status(500).json({ error: err.message });
