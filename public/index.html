@@ -794,7 +794,7 @@
         // Lyra karakter tanımı
         const character = {
             name: "Lyra",
-            model: "lyra_mascot.glb",
+            model: "avatar.glb",
             animMap: {
                 'Yes':'Yes', 'No':'No', 'Wave':'Wave',
                 'Jump':'Jump', 'Dance':'Dance',
@@ -877,7 +877,7 @@
                 // İlk seans kontrolü — memory'den flag al
                 if (persistentUserId) {
                     try {
-                        const memResp = await fetch(`/memory?userId=${persistentUserId}`);
+                        const memResp = await fetch(`/memory?userId=${persistentUserId}`, { headers: supabaseToken ? { 'Authorization': `Bearer ${supabaseToken}` } : {} });
                         const memData = await memResp.json();
                         if (memData.ilk_seans === true) {
                             ilkSeansFlag = true;
