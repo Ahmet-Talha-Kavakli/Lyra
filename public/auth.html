@@ -669,11 +669,11 @@
     // AUTH LOGIC (Supabase)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    const configResp = await fetch('/config');
-    const { supabaseUrl, supabaseAnonKey } = await configResp.json();
-
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createClient(
+      'https://gxbjqujmcklysbocsoad.supabase.co',
+      'sb_publishable_64FHvp6yfwpcx8chsIO8JQ_aV6MLHNj'
+    );
 
     const { data: { session } } = await supabase.auth.getSession();
     if (session) window.location.href = '/';
@@ -735,10 +735,10 @@
       if (data.user && !data.session) {
         showMsg('E-posta adresinize doğrulama linki gönderildi.', 'success');
       } else {
-        await fetch('/consent-accept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: data.user.id })
+          await supabase.from('user_consents').upsert({
+          user_id: data.user.id,
+          consent_given: true,
+          consent_date: new Date().toISOString()
         });
         window.location.href = '/';
       }

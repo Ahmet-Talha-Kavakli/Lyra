@@ -19,10 +19,11 @@
     </script>
     <script type="module">
       // Auth guard — giriş yapılmamışsa auth.html'e yönlendir
-      const configResp = await fetch('/config');
-      const { supabaseUrl, supabaseAnonKey } = await configResp.json();
       const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const supabase = createClient(
+        'https://gxbjqujmcklysbocsoad.supabase.co',
+        'sb_publishable_64FHvp6yfwpcx8chsIO8JQ_aV6MLHNj'
+      );
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -249,9 +250,10 @@
         let supabaseToken = null;
 
         async function initAuth() {
-            // Config'i backend'den al
-            const cfg = await fetch('/config').then(r => r.json());
-            supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+            supabaseClient = supabase.createClient(
+              'https://gxbjqujmcklysbocsoad.supabase.co',
+              'sb_publishable_64FHvp6yfwpcx8chsIO8JQ_aV6MLHNj'
+            );
 
             // Mevcut oturumu kontrol et
             const { data: { session } } = await supabaseClient.auth.getSession();
