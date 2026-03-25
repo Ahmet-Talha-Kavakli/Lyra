@@ -46,7 +46,7 @@
 
 <body>
     <!-- ── GİRİŞ EKRANI ── -->
-    <div id="login-overlay">
+    <div id="login-overlay" style="display:none">
         <div class="login-box">
             <h1 class="login-logo">LYRA</h1>
             <p class="login-subtitle">Kozmik Rehberinize Bağlanın</p>
@@ -250,22 +250,16 @@
         let supabaseToken = null;
 
         async function initAuth() {
-            supabaseClient = supabase.createClient(
-              'https://gxbjqujmcklysbocsoad.supabase.co',
-              'sb_publishable_64FHvp6yfwpcx8chsIO8JQ_aV6MLHNj'
-            );
-
-            // Mevcut oturumu kontrol et
+            // Auth guard zaten üstte yaptı — sadece session'dan token al
+            supabaseClient = window.__supabase;
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
                 persistentUserId = session.user.id;
                 supabaseToken = session.access_token;
                 hideLoginOverlay();
             } else {
-                showLoginOverlay();
+                window.location.href = '/auth.html';
             }
-
-            setupLoginHandlers();
         }
 
         function showLoginOverlay() {

@@ -4446,25 +4446,17 @@ async function verifySourceCredibility() {
     }
 }
 
-// Cron Jobs Zamanlaması
-try {
-    // Her gün 02:00 - Kaynak keşfi
-    cron.schedule('0 2 * * *', autonomousSourceDiscovery);
-    console.log('[CRON] ✅ Günlük kaynak keşfi zamanlandı (02:00)');
-
-    // Pazartesi 03:00 - Kalite kontrolü
-    cron.schedule('0 3 * * 1', assessKnowledgeQuality);
-    console.log('[CRON] ✅ Haftalık kalite kontrolü zamanlandı (Pazartesi 03:00)');
-
-    // Cuma 02:00 - Bilgi boşluğu tespiti
-    cron.schedule('0 2 * * 5', detectKnowledgeGaps);
-    console.log('[CRON] ✅ Bilgi boşluğu tespiti zamanlandı (Cuma 02:00)');
-
-    // Ayın 1. günü 04:00 - Güvenilirlik doğrulaması
-    cron.schedule('0 4 1 * *', verifySourceCredibility);
-    console.log('[CRON] ✅ Aylık güvenilirlik doğrulaması zamanlandı');
-} catch (err) {
-    console.error('[CRON] Zamanlandırma hatası:', err.message);
+// Cron Jobs — sadece local/non-serverless ortamda çalıştır
+if (process.env.VERCEL !== '1') {
+    try {
+        cron.schedule('0 2 * * *', autonomousSourceDiscovery);
+        cron.schedule('0 3 * * 1', assessKnowledgeQuality);
+        cron.schedule('0 2 * * 5', detectKnowledgeGaps);
+        cron.schedule('0 4 1 * *', verifySourceCredibility);
+        console.log('[CRON] ✅ Tüm cron joblar zamanlandı');
+    } catch (err) {
+        console.error('[CRON] Zamanlandırma hatası:', err.message);
+    }
 }
 
 // ─── HAND-FACE INTERACTION DETECTION (Stress & Deception Indicators) ────────────────
