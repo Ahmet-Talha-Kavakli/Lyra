@@ -188,6 +188,43 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
 }));
 
+// ─── RATE LİMİTERLER ──────────────────────────────────────
+// YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin)
+const emotionRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    keyGenerator: (req) => req.body?.userId || req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
+    },
+});
+
+// HUME SES YAKALAMA RATE LIMITER
+const humeRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    keyGenerator: (req) => req.body?.userId || req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ hume_scores: null, rate_limited: true });
+    },
+});
+
+// CHAT ENDPOINT RATE LIMITER
+const chatRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    keyGenerator: (req) => req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
+    },
+});
+
+// EK RATE LİMİTERLER
+const webhookRateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+const deleteRateLimit  = rateLimit({ windowMs: 3_600_000, max: 3, standardHeaders: true, legacyHeaders: false });
+const exportRateLimit  = rateLimit({ windowMs: 3_600_000, max: 5, standardHeaders: true, legacyHeaders: false });
+const memoryRateLimit  = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
+
 // ─── ROOT (Basit Hoşgeldin) ─────────────────────────
 app.get('/', (req, res) => {
     res.send('<h1>Lyra Brain is Running 🌌</h1><p>Visit <a href="/ping">/ping</a> to check status.</p>');
@@ -3235,42 +3272,6 @@ app.get('/cron-checkin', async (req, res) => {
     }
 });
 
-// ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
-// Rate limiter: max 30 istek/dk per userId veya IP (skip kaldırıldı)
-const emotionRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
-    keyGenerator: (req) => req.body?.userId || req.ip,
-    handler: (req, res) => {
-        res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
-    },
-});
-
-// ── HUME SES YAKALAMA RATE LIMITER ──
-const humeRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 20,
-    keyGenerator: (req) => req.body?.userId || req.ip,
-    handler: (req, res) => {
-        res.status(429).json({ hume_scores: null, rate_limited: true });
-    },
-});
-
-// ── CHAT ENDPOINT RATE LIMITER (YENİ) ──
-const chatRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    keyGenerator: (req) => req.ip,
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
-    },
-});
-
-// ── EK RATE LİMİTERLER ──
-const webhookRateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
-const deleteRateLimit  = rateLimit({ windowMs: 3_600_000, max: 3, standardHeaders: true, legacyHeaders: false });
-const exportRateLimit  = rateLimit({ windowMs: 3_600_000, max: 5, standardHeaders: true, legacyHeaders: false });
-const memoryRateLimit  = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
 
 // ── MULTER SES DOSYASI YÜKLEMESİ ──
 const upload = multer({
