@@ -2250,7 +2250,11 @@ app.post('/api/chat/completions', async (req, res) => {
                 const currentEmotion = detectEmotion(lastUserMessage);
 
                 // 5. Kriz değerlendirmesi
-                const crisisEval = evaluateCrisis(lastUserMessage);
+                // Önceki mesajdaki kriz seviyesini bul (kriz sonrası geçiş için)
+                const prevUserMessages = (messages || []).slice(-3, -1).filter(m => m.role === 'user');
+                const prevMessage = prevUserMessages[prevUserMessages.length - 1]?.content || '';
+                const prevCrisis = prevMessage ? evaluateCrisis(prevMessage) : { level: null };
+                const crisisEval = evaluateCrisis(lastUserMessage, { previousCrisisLevel: prevCrisis.level });
 
                 // 6. Seans konularını son mesajlardan çıkar
                 const recentMessages = (messages || []).slice(-6)
@@ -2269,11 +2273,11 @@ app.post('/api/chat/completions', async (req, res) => {
                     effectivenessData
                 });
 
-                // 8. Kriz varsa modu tamamen override et (concatenation değil replacement)
-                if (crisisEval.level && crisisEval.instruction) {
+                // 8. Kriz / kriz-sonrası modu tamamen override et
+                if (crisisEval.instruction) {
                     therapyEngineOutput.modeInstruction = crisisEval.instruction;
-                    // Kriz modunda teknik ipuçlarını da sıfırla
-                    if (crisisEval.level === 'HIGH') {
+                    // HIGH kriz veya kriz-sonrası geçişte teknik ipuçlarını sıfırla
+                    if (crisisEval.level === 'HIGH' || crisisEval.postCrisis) {
                         therapyEngineOutput.techniqueHints = '';
                     }
                 }
@@ -2475,6 +2479,7 @@ app.post('/api/chat/completions', async (req, res) => {
             const capturedMessages = [...messages];
             const capturedProfile = psychProfile;
             const capturedEngine = therapyEngineOutput;
+            const capturedCrisisLevel = crisisEval?.level || null;
             setImmediate(async () => {
                 try {
                     const transcript = capturedMessages.map(m => `${m.role}: ${m.content}`).join('\n');
@@ -2490,7 +2495,8 @@ app.post('/api/chat/completions', async (req, res) => {
                     if (sessionAnalysis) {
                         const sessionId = `${userId}_${Date.now()}`;
                         await saveSessionRecord(userId, sessionId, sessionAnalysis,
-                            capturedEngine.techniques?.map(t => t.id) || []);
+                            capturedEngine.techniques?.map(t => t.id) || [],
+                            capturedCrisisLevel);
                         await updateWeeklyMetrics(userId, sessionAnalysis);
                         await incrementSessionCount(userId);
 

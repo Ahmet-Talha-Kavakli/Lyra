@@ -1,7 +1,11 @@
 // progress/sessionAnalyzer.js
 import { supabase } from '../lib/supabase.js';
 
-export const saveSessionRecord = async (userId, sessionId, analysis, techniquesUsed) => {
+/**
+ * Seans kaydını Supabase'e yazar.
+ * crisis_flag ve session_quality alanları eklendi.
+ */
+export const saveSessionRecord = async (userId, sessionId, analysis, techniquesUsed, crisisLevel = null) => {
   const { error } = await supabase
     .from('session_records')
     .upsert({
@@ -15,6 +19,8 @@ export const saveSessionRecord = async (userId, sessionId, analysis, techniquesU
       emotional_start_score: analysis.emotional_start_score,
       emotional_end_score: analysis.emotional_end_score,
       homework: analysis.homework || null,
+      session_quality: analysis.session_quality || 'neutral',
+      crisis_flag: crisisLevel || null,
       created_at: new Date().toISOString()
     }, { onConflict: 'session_id' });
 

@@ -69,13 +69,13 @@ export const updateProfile = async (userId, updates) => {
   const merged = {
     user_id: userId,
     attachment_style: updates.attachment_style || existing.attachment_style,
-    triggers: mergeArrayById(existing.triggers, updates.triggers || [], 'konu'),
-    core_values: mergeArrayById(existing.core_values, updates.core_values || [], 'deger'),
-    defense_mechanisms: mergeArrayById(existing.defense_mechanisms, updates.defense_mechanisms || [], 'mekanizma'),
+    triggers: mergeArrayById(existing.triggers, updates.triggers || [], 'konu', 'triggers'),
+    core_values: mergeArrayById(existing.core_values, updates.core_values || [], 'deger', 'core_values'),
+    defense_mechanisms: mergeArrayById(existing.defense_mechanisms, updates.defense_mechanisms || [], 'mekanizma', 'defense_mechanisms'),
     language_style: { ...existing.language_style, ...(updates.language_style || {}) },
-    unconscious_patterns: mergeArrayById(existing.unconscious_patterns, updates.unconscious_patterns || [], 'desen'),
-    relationship_map: mergeArrayById(existing.relationship_map, updates.relationship_map || [], 'isim'),
-    life_schemas: mergeArrayById(existing.life_schemas, updates.life_schemas || [], 'sema'),
+    unconscious_patterns: mergeArrayById(existing.unconscious_patterns, updates.unconscious_patterns || [], 'desen', 'unconscious_patterns'),
+    relationship_map: mergeArrayById(existing.relationship_map, updates.relationship_map || [], 'isim', 'relationship_map'),
+    life_schemas: mergeArrayById(existing.life_schemas, updates.life_schemas || [], 'sema', 'life_schemas'),
     healing_style: { ...existing.healing_style, ...(updates.healing_style || {}) },
     strengths: mergeArrayById(existing.strengths, updates.strengths || [], 'guc'),
     hope_map: { ...existing.hope_map, ...(updates.hope_map || {}) },
@@ -104,11 +104,29 @@ export const incrementSessionCount = async (userId) => {
   if (error) throw new Error(`Session count güncellenemedi: ${error.message}`);
 };
 
+// Her dizi alanı için maksimum eleman sayısı
+const ARRAY_LIMITS = {
+  triggers: 12,
+  core_values: 10,
+  defense_mechanisms: 8,
+  unconscious_patterns: 10,
+  relationship_map: 15,
+  life_schemas: 8,
+  strengths: 8,
+};
+
+// Güç skoru alanları (büyükten küçüğe sırala, limitin üstündekileri at)
+const SCORE_FIELDS = {
+  unconscious_patterns: 'guc_skoru',
+  life_schemas: 'guc',
+};
+
 /**
  * İki diziyi id alanına göre merge eder.
  * Yeni eleman varsa ekler, varsa günceller.
+ * Limit aşılırsa güç skoru düşük olanlar çıkarılır.
  */
-const mergeArrayById = (existing, incoming, idField) => {
+const mergeArrayById = (existing, incoming, idField, arrayKey = null) => {
   if (!incoming || incoming.length === 0) return existing;
   const map = {};
   (existing || []).forEach(item => { map[item[idField]] = item; });
@@ -119,5 +137,23 @@ const mergeArrayById = (existing, incoming, idField) => {
     }
     map[item[idField]] = { ...map[item[idField]], ...item };
   });
-  return Object.values(map);
+
+  let result = Object.values(map);
+
+  // Limit uygula
+  if (arrayKey && ARRAY_LIMITS[arrayKey]) {
+    const limit = ARRAY_LIMITS[arrayKey];
+    if (result.length > limit) {
+      const scoreField = SCORE_FIELDS[arrayKey];
+      if (scoreField) {
+        // Güç skoruna göre sırala, en güçlüleri tut
+        result = result.sort((a, b) => (b[scoreField] || 0) - (a[scoreField] || 0)).slice(0, limit);
+      } else {
+        // Skor yoksa en son eklenenler önce (map order = insertion order)
+        result = result.slice(-limit);
+      }
+    }
+  }
+
+  return result;
 };
