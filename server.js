@@ -18,6 +18,48 @@ import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTr
 import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
 dotenv.config();
 
+// ─── DUYGU TESPİTİ ─────────────────────────────────────────────────────────
+const EMOTION_MAP = {
+    üzüntü:   ['üzgün', 'üzüldüm', 'ağlıyorum', 'ağladım', 'keder', 'hüzün', 'mutsuz', 'kırıldım', 'hayal kırıklığı'],
+    kaygı:    ['kaygı', 'endişe', 'korku', 'korkuyorum', 'panik', 'tedirgin', 'gergin', 'stres', 'anksiyete', 'sinirli'],
+    öfke:     ['sinirli', 'kızgın', 'öfkeli', 'öfke', 'kızdım', 'rahatsız', 'bıkmış', 'nefret'],
+    utanç:    ['utanç', 'utandım', 'mahcup', 'rezil', 'berbat hissediyorum', 'değersiz'],
+    yalnızlık: ['yalnız', 'yapayalnız', 'kimsem yok', 'yalnızım', 'izole'],
+    tükenmişlik: ['tükendim', 'yoruldum', 'bitik', 'enerjim yok', 'her şeyden bıktım'],
+    umut:     ['daha iyi', 'umudum var', 'iyiyim', 'güzel', 'mutlu', 'sevinçli'],
+    karmaşa:  ['karmaşık', 'ne hissediyorum bilmiyorum', 'kafam karışık', 'anlayamıyorum'],
+};
+
+function detectEmotion(message) {
+    if (!message) return 'sakin';
+    const lower = message.toLowerCase();
+    for (const [emotion, keywords] of Object.entries(EMOTION_MAP)) {
+        if (keywords.some(k => lower.includes(k))) return emotion;
+    }
+    return 'sakin';
+}
+
+// ─── KONU TESpİTİ ───────────────────────────────────────────────────────────
+const TOPIC_MAP = {
+    aile:       ['anne', 'baba', 'kardeş', 'aile', 'ebeveyn', 'çocuk', 'evlilik', 'boşanma'],
+    ilişki:     ['sevgili', 'eş', 'partner', 'ayrılık', 'ilişki', 'kıskançlık', 'aldatma'],
+    iş:         ['iş', 'patron', 'meslektaş', 'işten', 'kariyer', 'çalışma', 'görev', 'proje'],
+    özgüven:    ['kendime güvenmiyorum', 'yetersiz', 'başaramıyorum', 'beceremiyor', 'özgüven'],
+    kayıp:      ['kaybettim', 'vefat', 'ölüm', 'yas', 'ayrılık', 'gitmiş'],
+    gelecek:    ['gelecek', 'hedef', 'plan', 'ne olacak', 'üniversite', 'kariyer'],
+    geçmiş:     ['çocukluğum', 'geçmiş', 'eskiden', 'o zaman', 'hatıra', 'travma'],
+    sağlık:     ['hastalık', 'ağrı', 'doktor', 'tedavi', 'ilaç', 'fiziksel'],
+    yalnızlık:  ['yalnız', 'arkadaş yok', 'kimsem', 'sosyal', 'izolasyon'],
+};
+
+function extractTopics(text) {
+    if (!text) return [];
+    const lower = text.toLowerCase();
+    return Object.entries(TOPIC_MAP)
+        .filter(([, keywords]) => keywords.some(k => lower.includes(k)))
+        .map(([topic]) => topic);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -2204,22 +2246,36 @@ app.post('/api/chat/completions', async (req, res) => {
                 // 3. Son kullanıcı mesajını al
                 const lastUserMessage = messages?.[messages.length - 1]?.content || '';
 
-                // 4. Kriz değerlendirmesi
+                // 4. Duygu tespiti — son mesajdan hızlı keyword tabanlı sınıflandırma
+                const currentEmotion = detectEmotion(lastUserMessage);
+
+                // 5. Kriz değerlendirmesi
                 const crisisEval = evaluateCrisis(lastUserMessage);
 
-                // 5. Terapi motorunu çalıştır
+                // 6. Seans konularını son mesajlardan çıkar
+                const recentMessages = (messages || []).slice(-6)
+                    .filter(m => m.role === 'user')
+                    .map(m => m.content || '')
+                    .join(' ');
+                const topics = extractTopics(recentMessages);
+
+                // 7. Terapi motorunu çalıştır
                 therapyEngineOutput = runTherapyEngine({
-                    currentEmotion: 'sakin',
+                    currentEmotion,
                     messageContent: lastUserMessage,
                     sessionHistory: messages || [],
                     profile: psychProfile,
-                    topics: [],
+                    topics,
                     effectivenessData
                 });
 
-                // 6. Kriz varsa motoru override et
+                // 8. Kriz varsa modu tamamen override et (concatenation değil replacement)
                 if (crisisEval.level && crisisEval.instruction) {
-                    therapyEngineOutput.modeInstruction = crisisEval.instruction + '\n' + (therapyEngineOutput.modeInstruction || '');
+                    therapyEngineOutput.modeInstruction = crisisEval.instruction;
+                    // Kriz modunda teknik ipuçlarını da sıfırla
+                    if (crisisEval.level === 'HIGH') {
+                        therapyEngineOutput.techniqueHints = '';
+                    }
                 }
 
                 // 7. İlerleme bağlamı
