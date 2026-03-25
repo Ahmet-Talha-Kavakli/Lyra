@@ -22,7 +22,26 @@ import { analyzeResponseQuality } from './progress/qualityAnalyzer.js';
 import { buildSessionBridgeContext } from './therapy/sessionBridge.js';
 import { extractTopicsCombined } from './therapy/topicExtractor.js';
 import { buildOnboardingContext } from './therapy/onboardingFlow.js';
+import jwt from 'jsonwebtoken';
 dotenv.config();
+
+// ─── AUTH MIDDLEWARE ─────────────────────────────────────────────────────────
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+function verifyAuth(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Yetkisiz erişim' });
+    }
+    const token = authHeader.slice(7);
+    try {
+        const decoded = jwt.verify(token, SUPABASE_JWT_SECRET);
+        req.userId = decoded.sub;
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Geçersiz veya süresi dolmuş token' });
+    }
+}
 
 // ─── INPUT SANİTİZASYON ─────────────────────────────────────────────────────
 function sanitizeMessage(content) {
@@ -114,7 +133,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
             fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
             imgSrc: ["'self'", 'data:', 'blob:'],
@@ -135,25 +154,29 @@ app.use(helmet({
 
 // ─── CORS — İzin verilen originler ──────────────────────────
 const ALLOWED_ORIGINS = [
+    'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
-    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
-];
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URL_PREVIEW,
+].filter(Boolean);
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Origin yoksa (curl, Postman, Vapi webhook) geç
         if (!origin) return callback(null, true);
-        // Vercel preview URL'leri
-        if (/\.vercel\.app$/.test(origin)) return callback(null, true);
         if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-        callback(null, true); // Geliştirme kolaylığı için açık — production'da kısıtla
+        if (process.env.NODE_ENV !== 'production' && /\.vercel\.app$/.test(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error('CORS: İzin verilmeyen origin'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Raw body — Vapi webhook imza doğrulaması için (express.json'dan ÖNCE)
+app.use('/vapi-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
@@ -1942,13 +1965,13 @@ app.post('/consent-accept', async (req, res) => {
         accepted_at: new Date().toISOString()
     }, { onConflict: 'user_id,consent_version' });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: 'İşlem tamamlanamadı' });
     console.log(`[CONSENT] Kullanıcı onayı kaydedildi: ${userId} v${consentVersion}`);
     res.json({ ok: true });
 });
 
 app.get('/consent-status', async (req, res) => {
-    const { userId } = req.query;
+    const userId = req.userId;
     if (!userId) return res.json({ hasConsent: false });
 
     const { data } = await supabase.from('user_consents')
@@ -1961,7 +1984,7 @@ app.get('/consent-status', async (req, res) => {
 });
 
 // ─── VERİ SİLME (KVKK Madde 11/e) ──────────────────────────
-app.delete('/delete-my-data', async (req, res) => {
+app.delete('/delete-my-data', deleteRateLimit, verifyAuth, async (req, res) => {
     const { userId, confirmPhrase } = req.body;
     if (!userId || confirmPhrase !== 'VERİLERİMİ SİL') {
         return res.status(400).json({
@@ -1990,8 +2013,8 @@ app.delete('/delete-my-data', async (req, res) => {
 });
 
 // ─── VERİ DIŞA AKTARMA (KVKK Madde 11/ç) ───────────────────
-app.get('/export-my-data', async (req, res) => {
-    const { userId } = req.query;
+app.get('/export-my-data', exportRateLimit, verifyAuth, async (req, res) => {
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
 
     const exportData = {};
@@ -2019,8 +2042,8 @@ app.get('/config', (req, res) => {
 });
 
 // ─── İLERLEME VERİSİ (D1) ─────────────────────────────────
-app.get('/my-progress', async (req, res) => {
-    const { userId } = req.query;
+app.get('/my-progress', verifyAuth, async (req, res) => {
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
     try {
         const [sessionsResp, profileResp, metricsResp] = await Promise.all([
@@ -2081,8 +2104,8 @@ app.get('/my-progress', async (req, res) => {
 });
 
 // ─── ACİL KİŞİLER (D3) ────────────────────────────────────
-app.get('/emergency-contacts', async (req, res) => {
-    const { userId } = req.query;
+app.get('/emergency-contacts', verifyAuth, async (req, res) => {
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
     try {
         const { data } = await supabase.from('emergency_contacts').select('*').eq('user_id', userId);
@@ -2092,7 +2115,7 @@ app.get('/emergency-contacts', async (req, res) => {
     }
 });
 
-app.post('/emergency-contacts', async (req, res) => {
+app.post('/emergency-contacts', verifyAuth, async (req, res) => {
     const { userId, name, phone, relation } = req.body;
     if (!userId || !name || !phone) return res.status(400).json({ error: 'userId, name ve phone zorunlu' });
     try {
@@ -2111,7 +2134,7 @@ app.post('/emergency-contacts', async (req, res) => {
 });
 
 // ─── SEANS GERİ BİLDİRİMİ (D4) ───────────────────────────
-app.post('/session-feedback', async (req, res) => {
+app.post('/session-feedback', verifyAuth, async (req, res) => {
     const { userId, sessionId, rating, note } = req.body;
     if (!userId || !sessionId || rating == null) {
         return res.status(400).json({ error: 'userId, sessionId ve rating zorunlu' });
@@ -2161,7 +2184,7 @@ app.get('/start-visualization', (req, res) => {
 });
 
 // ─── SEANS ÖNCESİ HAZIRLIK (Özellik 11) ───────────────────
-app.post('/session-prep', async (req, res) => {
+app.post('/session-prep', verifyAuth, async (req, res) => {
     try {
         const { userId, sessionId, soru1, soru2, soru3 } = req.body;
         if (!userId) return res.status(400).json({ error: 'userId gerekli' });
@@ -2190,12 +2213,12 @@ app.post('/session-prep', async (req, res) => {
         await supabase.from('memories').upsert({ user_id: userId, pattern_memory: pm, updated_at: new Date().toISOString() });
 
         res.json({ success: true, hazirlik_ozeti: hazirlikOzeti });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(500).json({ error: 'İşlem tamamlanamadı' }); }
 });
 
-app.get('/session-prep', async (req, res) => {
+app.get('/session-prep', verifyAuth, async (req, res) => {
     try {
-        const { userId } = req.query;
+        const userId = req.userId;
         if (!userId) return res.status(400).json({ error: 'userId gerekli' });
         const { data } = await supabase.from('session_preparation').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
         res.json(data || {});
@@ -2244,7 +2267,7 @@ app.post('/update-transcript', (req, res) => {
 });
 
 // ─── OTURUM BAŞLAT (Token doğrulama ile) ───────────────────
-app.post('/session-start', async (req, res) => {
+app.post('/session-start', verifyAuth, async (req, res) => {
     const { token } = req.body;
     if (token) {
         try {
@@ -2262,7 +2285,7 @@ app.post('/session-start', async (req, res) => {
 });
 
 // ─── HAFIZA OKUMA ───────────────────────────────────────────
-app.get('/memory', async (req, res) => {
+app.get('/memory', verifyAuth, async (req, res) => {
     const userId = req.query.userId;
     const memory = await getMemory(userId);
 
@@ -2279,8 +2302,21 @@ app.get('/memory', async (req, res) => {
 });
 
 // ─── VAPI WEBHOOK (Arama bitince hafızayı kaydet) ──────────
-app.post('/vapi-webhook', async (req, res) => {
-    const { message } = req.body;
+app.post('/vapi-webhook', webhookRateLimit, async (req, res) => {
+    // ─── İMZA DOĞRULAMA ──────────────────────────────────────
+    const vapiSecret = process.env.VAPI_WEBHOOK_SECRET;
+    if (vapiSecret) {
+        const sig = req.headers['x-vapi-signature'];
+        const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+        const expected = crypto.createHmac('sha256', vapiSecret).update(rawBody).digest('hex');
+        if (!sig || sig !== expected) {
+            console.warn('[VAPI] Geçersiz webhook imzası');
+            return res.status(401).json({ error: 'Geçersiz imza' });
+        }
+    }
+    // Raw body → JSON parse
+    const parsed = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+    const { message } = parsed;
     if (!message) return res.json({});
 
     const msgType = message.type;
@@ -2489,7 +2525,7 @@ app.post('/vapi-webhook', async (req, res) => {
 });
 
 // ─── LOCAL MEMORY ENDPOINT ─────────────────────────────────
-app.post('/save-local-memory', async (req, res) => {
+app.post('/save-local-memory', memoryRateLimit, verifyAuth, async (req, res) => {
     const { userId, transcript, bodyLanguageData } = req.body;
 
     if (!userId || !transcript || transcript.length < 50) {
@@ -2535,7 +2571,7 @@ app.post('/save-local-memory', async (req, res) => {
 });
 
 // ─── CUSTOM LLM ENDPOINT (VAPI BEYİN) ─────────────────────
-app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
+app.post('/api/chat/completions', chatRateLimit, verifyAuth, async (req, res) => {
     try {
         const { messages: rawMessages, model, temperature, max_tokens, call } = req.body;
 
@@ -2859,12 +2895,12 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
         }
     } catch (error) {
         console.error("[CUSTOM LLM] ❌ Hata:", error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── HIPOTEZ MOTORU (Davranış Tahmini) ────────────────────────────────
-app.post('/hypothesis', async (req, res) => {
+app.post('/hypothesis', verifyAuth, async (req, res) => {
     try {
         const { userId, currentTopic, currentDuygu, sessionId } = req.body;
         if (!userId || !currentTopic) {
@@ -2908,12 +2944,12 @@ app.post('/hypothesis', async (req, res) => {
         res.json({ hypothesis });
     } catch (err) {
         console.error('[HYPOTHESIS] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── HIPOTEZ DOĞRULUĞU TRACKING ────────────────────────────────────────
-app.post('/hypothesis-accuracy', async (req, res) => {
+app.post('/hypothesis-accuracy', verifyAuth, async (req, res) => {
     try {
         const { userId, predicted_emotion, actual_emotion, confidence } = req.body;
         if (!userId || !predicted_emotion || !actual_emotion) {
@@ -2933,7 +2969,7 @@ app.post('/hypothesis-accuracy', async (req, res) => {
 
         if (error) {
             console.error('[HYPOTHESIS ACCURACY] Supabase hata:', error.message);
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         // Accuracy hesapla (son 10)
@@ -2952,12 +2988,12 @@ app.post('/hypothesis-accuracy', async (req, res) => {
         res.json({ success: true, was_correct, accuracy });
     } catch (err) {
         console.error('[HYPOTHESIS ACCURACY] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── RAG: INSIGHT KAYIT + EMBEDDING ─────────────────────────────────────
-app.post('/save-insight', async (req, res) => {
+app.post('/save-insight', verifyAuth, async (req, res) => {
     try {
         const { userId, insights } = req.body;
         if (!userId || !Array.isArray(insights) || insights.length === 0) {
@@ -3000,7 +3036,7 @@ app.post('/save-insight', async (req, res) => {
         res.json({ success: savedCount > 0, saved: savedCount, total: insights.length });
     } catch (err) {
         console.error('[RAG SAVE] Hata:', err.message);
-        res.json({ error: err.message, saved: 0 });
+        res.json({ error: 'İşlem tamamlanamadı', saved: 0 });
     }
 });
 
@@ -3054,12 +3090,12 @@ app.get('/retrieve-knowledge', async (req, res) => {
         res.json({ insights, query });
     } catch (err) {
         console.error('[RAG RETRIEVE] Hata:', err.message);
-        res.json({ insights: [], error: err.message });
+        res.json({ insights: [], error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── RAG: AUTO-EXTRACTION AT SESSION END ────────────────────────────────
-app.post('/end-session', async (req, res) => {
+app.post('/end-session', verifyAuth, async (req, res) => {
     try {
         const { userId, sessionId, transcript } = req.body;
         if (!userId || !transcript || transcript.length < 100) {
@@ -3101,12 +3137,12 @@ app.post('/end-session', async (req, res) => {
         res.json({ insights_extracted: 0 });
     } catch (err) {
         console.error('[RAG END-SESSION] Hata:', err.message);
-        res.json({ error: err.message, insights_extracted: 0 });
+        res.json({ error: 'İşlem tamamlanamadı', insights_extracted: 0 });
     }
 });
 
 // ─── SEANS GEÇMİŞİ ────────────────────────────────────────────────────
-app.get('/session-history/:userId', async (req, res) => {
+app.get('/session-history/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const { data, error } = await supabase
@@ -3116,10 +3152,10 @@ app.get('/session-history/:userId', async (req, res) => {
             .order('created_at', { ascending: false })
             .limit(20);
 
-        if (error) return res.status(500).json({ error: error.message });
+        if (error) return res.status(500).json({ error: 'İşlem tamamlanamadı' });
         res.json({ sessions: data || [] });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -3195,7 +3231,7 @@ app.get('/cron-checkin', async (req, res) => {
         res.json({ kontrol_edilen: kontrol.length, patterns_learned: patternUpdated, tarih: new Date().toISOString() });
     } catch (e) {
         console.error('[CRON] Hata:', e.message);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -3229,6 +3265,12 @@ const chatRateLimit = rateLimit({
         res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
     },
 });
+
+// ── EK RATE LİMİTERLER ──
+const webhookRateLimit = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+const deleteRateLimit  = rateLimit({ windowMs: 3_600_000, max: 3, standardHeaders: true, legacyHeaders: false });
+const exportRateLimit  = rateLimit({ windowMs: 3_600_000, max: 5, standardHeaders: true, legacyHeaders: false });
+const memoryRateLimit  = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
 
 // ── MULTER SES DOSYASI YÜKLEMESİ ──
 const upload = multer({
@@ -3547,7 +3589,7 @@ Yalnızca geçerli JSON döndür:
 // ─── HUME SES ANALİZİ (48 Duygu, Prosody) ────────────────────────
 app.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.userId;
         const buf = req.file?.buffer;
 
         if (!buf || buf.length < 1000) {
@@ -3655,7 +3697,7 @@ app.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, async (re
 });
 
 // ─── #17: DÜŞÜNCE KAYDI (CBT — Bilişsel Davranışçı Terapi) ─────────
-app.post('/record-thought', async (req, res) => {
+app.post('/record-thought', verifyAuth, async (req, res) => {
     try {
         const { userId, automatic_thought, evidence_for, evidence_against, realistic_response } = req.body;
         if (!userId || !automatic_thought) {
@@ -3674,7 +3716,7 @@ app.post('/record-thought', async (req, res) => {
 
         if (error) {
             console.error('[CBT] Supabase hata:', error.message);
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         // Son eklenen kaydı döndür
@@ -3682,12 +3724,12 @@ app.post('/record-thought', async (req, res) => {
         res.json({ success: true, record: data?.[0] || {} });
     } catch (err) {
         console.error('[#17 CBT] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── #17: DÜŞÜNCE KAYITLARINI GETIR ─────────────────────────────────
-app.get('/thought-records/:userId', async (req, res) => {
+app.get('/thought-records/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const { data, error } = await supabase
@@ -3711,7 +3753,7 @@ app.get('/thought-records/:userId', async (req, res) => {
 });
 
 // ─── #18: DEĞERLER KEŞFI (Values Discovery) ─────────────────────────
-app.post('/discover-values', async (req, res) => {
+app.post('/discover-values', verifyAuth, async (req, res) => {
     try {
         const { userId, selectedValues } = req.body;
         if (!userId || !Array.isArray(selectedValues)) {
@@ -3727,7 +3769,7 @@ app.post('/discover-values', async (req, res) => {
 
         if (error) {
             console.error('[#18 VALUES] Supabase hata:', error.message);
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         // Profili güncelle: values_discovered = true
@@ -3739,12 +3781,12 @@ app.post('/discover-values', async (req, res) => {
         res.json({ success: true, values_saved: selectedValues.length });
     } catch (err) {
         console.error('[#18 VALUES] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── #18: KULLANICININ DEĞERLERINI GETIR ────────────────────────────
-app.get('/user-values/:userId', async (req, res) => {
+app.get('/user-values/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const { data, error } = await supabase
@@ -3766,7 +3808,7 @@ app.get('/user-values/:userId', async (req, res) => {
 });
 
 // ─── #19: HAFTALIK MİNİ GÖREVLER (Homework) ──────────────────────────
-app.post('/assign-homework', async (req, res) => {
+app.post('/assign-homework', verifyAuth, async (req, res) => {
     try {
         const { userId, sessionId, dominantEmotion, homework } = req.body;
         if (!userId || !homework) {
@@ -3791,19 +3833,19 @@ app.post('/assign-homework', async (req, res) => {
 
         if (error) {
             console.error('[#19 HW] Supabase hata:', error.message);
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         console.log(`[#19 HW] Görev atandı: "${homeworkTask.title}"`);
         res.json({ success: true, homework: homeworkTask });
     } catch (err) {
         console.error('[#19 HW] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── #19: HAFTA GÖREVLERINI GETIR ────────────────────────────────────
-app.get('/homework/:userId', async (req, res) => {
+app.get('/homework/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const { data, error } = await supabase
@@ -3826,7 +3868,7 @@ app.get('/homework/:userId', async (req, res) => {
 });
 
 // ─── #19: GÖREVI TAMAMLA ─────────────────────────────────────────────
-app.post('/complete-homework/:taskId', async (req, res) => {
+app.post('/complete-homework/:taskId', verifyAuth, async (req, res) => {
     try {
         const { taskId } = req.params;
         const { error } = await supabase.from('homework_tasks')
@@ -3834,18 +3876,18 @@ app.post('/complete-homework/:taskId', async (req, res) => {
             .eq('id', taskId);
 
         if (error) {
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         console.log(`[#19 HW] Görev tamamlandı: ${taskId}`);
         res.json({ success: true });
     } catch (err) {
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── #20: KRİZ SONRASI PROTOKOL (24-Hour Check-in) ──────────────────
-app.post('/log-crisis', async (req, res) => {
+app.post('/log-crisis', verifyAuth, async (req, res) => {
     try {
         const { userId, severity, description, triggerTopic } = req.body;
         if (!userId) return res.json({ error: 'userId gerekli' });
@@ -3866,19 +3908,19 @@ app.post('/log-crisis', async (req, res) => {
 
         if (error) {
             console.error('[#20 CRISIS] Supabase hata:', error.message);
-            return res.json({ error: error.message });
+            return res.json({ error: 'İşlem tamamlanamadı' });
         }
 
         console.log(`[#20 CRISIS] Kriz kaydedildi (${severity}): ${description?.substring(0,40)}`);
         res.json({ success: true, followup_due: crisis_record.followup_due });
     } catch (err) {
         console.error('[#20 CRISIS] Hata:', err.message);
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── #20: KRİZ TAKIBI ÖNEMLİ (Cron Job'ta kullanılır) ─────────────────
-app.get('/crisis-followups-due/:userId', async (req, res) => {
+app.get('/crisis-followups-due/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const now = new Date().toISOString();
@@ -3902,7 +3944,7 @@ app.get('/crisis-followups-due/:userId', async (req, res) => {
 });
 
 // ─── #20: KRİZ TAKIP TAMAMLA ──────────────────────────────────────────
-app.post('/complete-crisis-followup/:crisisId', async (req, res) => {
+app.post('/complete-crisis-followup/:crisisId', verifyAuth, async (req, res) => {
     try {
         const { crisisId } = req.params;
         const { followupResponse } = req.body;
@@ -3918,12 +3960,12 @@ app.post('/complete-crisis-followup/:crisisId', async (req, res) => {
             .update({ crisis_data: updatedCrisis })
             .eq('id', crisisId);
 
-        if (error) return res.json({ error: error.message });
+        if (error) return res.json({ error: 'İşlem tamamlanamadı' });
 
         console.log(`[#20 CRISIS] Takip tamamlandı: ${crisisId}`);
         res.json({ success: true });
     } catch (err) {
-        res.json({ error: err.message });
+        res.json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -4054,7 +4096,7 @@ app.post('/seed-knowledge', async (req, res) => {
         res.json({ success: true, saved: savedCount, total: initialSources.length });
     } catch (err) {
         console.error('[SEED] Hata:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -4165,7 +4207,7 @@ app.get('/retrieve-knowledge-advanced', async (req, res) => {
         res.json({ insights, query, count: insights.length, timestamp: new Date().toISOString() });
     } catch (err) {
         console.error('[RAG] Hata:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -4857,7 +4899,7 @@ app.get('/test-advanced-facial', async (req, res) => {
         });
     } catch (err) {
         console.error('[TEST-ADVANCED-FACIAL] Error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -4898,7 +4940,7 @@ app.get('/knowledge-stats', async (req, res) => {
             by_category: categoryCount
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -5068,14 +5110,14 @@ app.post('/analyze-human-behavior', async (req, res) => {
 
         res.json({ success: true, analysis });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── ANALYTICS: KAYNAK ETKİSİ ANALİZİ ────────────────────────────────────────
 // Hangi kaynaklar kullanıcıya yardımcı oluyor?
 
-app.get('/analytics/source-effectiveness/:userId', async (req, res) => {
+app.get('/analytics/source-effectiveness/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
 
@@ -5178,13 +5220,13 @@ app.get('/analytics/source-effectiveness/:userId', async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // ─── ANALYTICS: USER BEHAVIOR TIMELINE ───────────────────────────────────────
 
-app.get('/analytics/behavior-timeline/:userId', async (req, res) => {
+app.get('/analytics/behavior-timeline/:userId', verifyAuth, async (req, res) => {
     try {
         const { userId } = req.params;
         const { days = 30 } = req.query;
@@ -5231,7 +5273,7 @@ app.get('/analytics/behavior-timeline/:userId', async (req, res) => {
         });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -5255,7 +5297,7 @@ app.post('/analytics/rate-recommendation', async (req, res) => {
 
         res.json({ success: true, message: 'Feedback kaydedildi' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -5274,7 +5316,7 @@ app.get('/cron-test/:job', async (req, res) => {
         res.json({ status: 'success', job, message: `${job} tamamlandı` });
     } catch (err) {
         console.error(`[CRON-TEST] Hata:`, err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -5338,7 +5380,7 @@ app.post('/synthesize', async (req, res) => {
         });
     } catch (err) {
         console.error('[/synthesize] Hata:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
@@ -5382,7 +5424,7 @@ function selectCharacterForProfile(profile) {
 
 // GET /character?userId=xxx — kullanıcının karakter durumunu döner
 app.get('/character', async (req, res) => {
-    const { userId } = req.query;
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
 
     try {
@@ -5409,13 +5451,13 @@ app.get('/character', async (req, res) => {
         res.json(data);
     } catch (err) {
         console.error('[/character GET] Hata:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
 // POST /character/assign — ilk seans sonrası karakter ata
 app.post('/character/assign', async (req, res) => {
-    const { userId } = req.body;
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
 
     try {
@@ -5449,7 +5491,7 @@ app.post('/character/assign', async (req, res) => {
         res.json({ success: true, character_id: characterId, data });
     } catch (err) {
         console.error('[/character/assign] Hata:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'İşlem tamamlanamadı' });
     }
 });
 
