@@ -114,7 +114,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "cdn.jsdelivr.net", "*.vapi.ai", "*.hume.ai"],
             styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
             fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
             imgSrc: ["'self'", 'data:', 'blob:'],
