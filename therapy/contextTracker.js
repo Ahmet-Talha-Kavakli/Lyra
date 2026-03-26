@@ -63,5 +63,5 @@ export function buildSessionContext(messages, maxMessages = 20) {
     if (emotionArc && emotionArc !== 'sakin') parts.push(`Duygusal seyir: ${emotionArc}`);
 
     if (parts.length === 0) return '';
-    return `## SEANS BAĞLAMI\n${parts.map(p => `- ${p}`).join('\n')}`;
+    return `## SEANS BAĞLAMI (GİZLİ — SESLE AKTARMA, SADECE BAĞLAM İÇİN KULLAN)\n${parts.map(p => `- ${p}`).join('\n')}`;
 }

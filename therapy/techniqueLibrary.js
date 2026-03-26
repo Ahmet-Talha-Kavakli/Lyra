@@ -11,7 +11,7 @@ export const TECHNIQUES = [
     category: 'bilissel',
     description: 'Olumsuz düşünce kalıplarını sorgulayarak duygusal tepkileri dönüştürür.',
     when_to_use: ['negatif_düşünce', 'felaket_senaryosu', 'siyah_beyaz_düşünce', 'öz_eleştiri'],
-    prompt_hint: 'Bu düşünceyi nazikçe sars. "Sence bu durumun gerçekten TEK bir açıklama şekli mi var?" gibi sorular sor.',
+    prompt_hint: 'GİRİŞ: Otomatik düşünce dile geldiğinde nazikçe ama doğrudan gir. DİL: "Bu düşüncenin seni nasıl etkilediğini görüyorum. Acaba... bu durumun başka bir açıklaması da olabilir mi?" ÇIKIŞ: Savunmaya geçerse dur — PCT\'ye dön, güveni pekiştir. Zorlamak kapatır.',
     contraindicated: ['akut_kriz', 'yoğun_üzüntü_ilk_dakikalar'],
   },
   {
@@ -58,7 +58,7 @@ export const TECHNIQUES = [
     category: 'iliskisel',
     description: 'Koşulsuz kabul ve empatiyle güvenli terapötik ittifak kurar.',
     when_to_use: ['her_zaman', 'güven_inşası', 'yeni_kullanici'],
-    prompt_hint: 'Yargılamadan kabul et. Söyleneni yansıt, derinleştir.',
+    prompt_hint: 'GİRİŞ: Her zaman aktif — bu temel zemin. DİL: Söyleneni kendi kelimelerinle yansıt: "Yani... böyle mi hissediyorsun?" Yorum yok, ekleme yok, çözüm yok. ÇIKIŞ: Hiç çıkma. Diğer teknikler bu zeminin üzerine inşa edilir.',
     contraindicated: [],
   },
   {
@@ -67,7 +67,7 @@ export const TECHNIQUES = [
     category: 'iliskisel',
     description: 'Değişime karşı ambivalansı keşfederek içsel motivasyonu güçlendirir.',
     when_to_use: ['degisim_direnci', 'ambivalans', 'yok_ne_fark_eder'],
-    prompt_hint: '"Değişmek istemek ile değişmemek istemek — ikisi de var gibi görünüyor. Bu çatışma nasıl hissettiriyor?"',
+    prompt_hint: 'GİRİŞ: Kişi değişmek istiyor ama aynı anda istemiyor — ikisi bir arada. DİL: "Değişmek istemek ile değişmemek istemek — ikisi de var gibi görünüyor. Bu çatışma nasıl hissettiriyor?" ÇIKIŞ: Kişi kendi motivasyonunu bulduğunda güçlendir — yönlendirme değil, kişinin kendi sesiyle devam etmesini sağla.',
     contraindicated: [],
   },
   {
@@ -76,7 +76,7 @@ export const TECHNIQUES = [
     category: 'iliskisel',
     description: 'Kişiyi sorundan ayırarak yeni, güçlendirici bir yaşam hikayesi oluşturur.',
     when_to_use: ['kimlik_sorunu', 'etiketlenme', 'ben_böyleyim_diyenler'],
-    prompt_hint: '"Sen sorunun kendisi değilsin. Sorun dışarıda bir şey. Peki sen kim?" diye yaklaş.',
+    prompt_hint: 'GİRİŞ: Kişi kendini sorunla özdeşleştiriyor ("ben böyleyim", "hep böyle olur"). DİL: "Sen sorunun kendisi değilsin. Sorun dışarıda bir şey — ve sende onu gören bir parça var." ÇIKIŞ: "Sen kim değilsin?" sorusu bazen "sen kimsin?"den daha güçlüdür — oradan aç.',
     contraindicated: [],
   },
   {
@@ -123,7 +123,7 @@ export const TECHNIQUES = [
     category: 'duygu',
     description: 'Duyguları kabul ederek değerler doğrultusunda psikolojik esneklik kazandırır.',
     when_to_use: ['duygudan_kaçma', 'kontrolü_kaybetme_korkusu', 'bastırma'],
-    prompt_hint: '"Bu duyguyu ortadan kaldırmak zorunda değilsin. Onunla birlikte olmak nasıl?" diye sor.',
+    prompt_hint: 'GİRİŞ: Kişi duyguyu yok etmeye, bastırmaya ya da "düzeltmeye" çalışıyor. DİL: "Bu duyguyu yok etmek zorunda değilsin. Onunla birlikte olmak nasıl bir şey?" ÇIKIŞ: Kabul geldikten sonra değerlere yönel — "Bu his varken bile ne yapmak istersin?"',
     contraindicated: [],
   },
   {
@@ -132,7 +132,7 @@ export const TECHNIQUES = [
     category: 'duygu',
     description: 'Temel duygulara ulaşarak ilişkisel bağı ve duygusal işlemeyi derinleştirir.',
     when_to_use: ['ilişki_sorunu', 'bağ_kurma_zorluğu', 'duygusal_kopukluk'],
-    prompt_hint: 'Temel duyguya ulaş. "Bunun altında ne var? En derininde ne hissediyorsun?" diye sor.',
+    prompt_hint: 'GİRİŞ: Yüzey duygusu var ama asıl duygu farklı (öfkenin altında acı, mesafenin altında korku). DİL: "Bunun altında ne var? En derininde ne hissediyorsun?" / "Bu his sana başka ne hatırlatıyor?" ÇIKIŞ: Temel duyguya ulaşıldığında valide et — hemen çözmeye çalışma.',
     contraindicated: [],
   },
   {
@@ -141,7 +141,7 @@ export const TECHNIQUES = [
     category: 'duygu',
     description: 'Öz-şefkat geliştirerek utanç ve öz-eleştiri döngüsünü kırar.',
     when_to_use: ['öz_eleştiri', 'mükemmeliyetçilik', 'kendini_suçlama', 'utanç'],
-    prompt_hint: '"Bir arkadaşın aynı şeyi yaşasaydı ne derdin?" sorusunu kullan.',
+    prompt_hint: 'GİRİŞ: Öz eleştiri veya utanç var — kişi kendine çok sert davranıyor. DİL: "Bir arkadaşın aynı şeyi yaşasaydı, ona ne söylerdin?" / "Bu sesi duyduğunda bedeninde nerede hissediyorsun?" ÇIKIŞ: Kişi kendine şefkat göstermeye başladığında pekiştir — "Bu bakış açısı nasıl hissettiriyor?"',
     contraindicated: [],
   },
   {
@@ -150,7 +150,7 @@ export const TECHNIQUES = [
     category: 'duygu',
     description: 'Kaybın yasını doğal sürecinde destekler ve anlam bulmaya yardımcı olur.',
     when_to_use: ['kayıp', 'yas', 'ayrılık', 'iş_kaybı', 'kimlik_kaybı'],
-    prompt_hint: 'Yasın aşamalarını zorlamadan tut. "Bu kaybı kabullenmek nasıl hissettiriyor?" diye sor.',
+    prompt_hint: 'GİRİŞ: Kayıp söz konusu — ilk anda sadece varlık. DİL: "Buradayım." / "[isim] hakkında bir şey anlatmak ister misin?" / "İstersen sessizce de oturabiliriz." ÇIKIŞ: Yasın aşamalarına sokma. "Zamanla geçer", "şimdi iyi yerlerde", "güçlü ol" — hiçbiri. Sadece eşlik et.',
     contraindicated: [],
   },
   {
@@ -179,7 +179,7 @@ export const TECHNIQUES = [
     category: 'derin',
     description: 'Erken dönem uyumsuz şemaları keşfederek köklü inanç sistemlerini dönüştürür.',
     when_to_use: ['derin_inanç_sistemi', 'yeterli_değilim', 'terk_edilme_korkusu'],
-    prompt_hint: 'Bu inancın nereden geldiğini keşfet. "Bu inanç ne zaman başladı?" diye sor.',
+    prompt_hint: 'GİRİŞ: Kişi köklü bir inançtan konuşuyor ("hep böyle olur", "kimse sevmez beni", "başaramam"). DİL: "Bu inanç ne zamandan beri sende? İlk ne zaman böyle hissettin?" ÇIKIŞ: Yeni kullanıcıda veya kriz anında bu tekniğe girme — zemin henüz yok.',
     contraindicated: ['yeni_kullanici'],
   },
   {
@@ -188,7 +188,7 @@ export const TECHNIQUES = [
     category: 'derin',
     description: 'İç parçaları keşfederek çatışan dürtüleri bütünleştirir.',
     when_to_use: ['çatışan_duygular', 'iç_ses', 'çelişki'],
-    prompt_hint: '"Sende şu an bu kararı veren parça kim?" Parçalarla çalış.',
+    prompt_hint: 'GİRİŞ: Çatışan duygular var — "bir yandan istiyorum, bir yandan korkuyorum." DİL: "Sende şu an bu kararı veren parça kim? O parça ne diyor?" / "Karşı çıkan parçaya sor: \'Seni ne endişelendiriyor?\'" ÇIKIŞ: Yeni kullanıcıda veya kriz anında girme. Zemin ve güven şart.',
     contraindicated: ['yeni_kullanici', 'stabilizasyon_modu'],
   },
   {
@@ -235,7 +235,7 @@ export const TECHNIQUES = [
     category: 'beden',
     description: 'Beden taraması ve farkındalık pratiğiyle zihni şu ana getirir.',
     when_to_use: ['dağınıklık', 'kaygı', 'zihinden_uzaklaşma'],
-    prompt_hint: 'Kısa bir beden taraması yap. "Gözlerin kapalı, omuzlarını düşür..." gibi rehberlik et.',
+    prompt_hint: 'GİRİŞ: Kaygı, dağınıklık ya da şu andan kopukluk var. DİL: "Şu an ayaklarını yere bas. Bir nefes al. Bedeninde ne hissediyorsun?" ÇIKIŞ: 2-3 cümle yeter — uzun rehberlik yapma. Kişi geri geldiğinde konuya dön.',
     contraindicated: [],
   },
   {
@@ -367,7 +367,7 @@ export const TECHNIQUES = [
     category: 'kriz',
     description: 'Travma geçmişine duyarlı, güvenli ve kontrollü bir terapötik ortam oluşturur.',
     when_to_use: ['her_zaman'],
-    prompt_hint: 'Travma geçmişi olan kişiye yavaş git. Kontrol hissini koru. Sürpriz konular açma.',
+    prompt_hint: 'GİRİŞ: Her zaman arka planda aktif — travma açılmasında öne çık. DİL: "Anlatmana gerek yok. Ama buradayım." / "Kontrol sende — ne kadar anlatmak istersen." ÇIKIŞ: Ayrıntı isteme. Pace\'i kişi belirler. Travmayı çözdürmeye çalışma.',
     contraindicated: [],
   },
   {
@@ -376,7 +376,7 @@ export const TECHNIQUES = [
     category: 'kriz',
     description: 'Akut kriz anında güvenli alan ve stabilizasyon sağlar.',
     when_to_use: ['akut_kriz', 'yoğun_duygu', 'stabilizasyon_modu'],
-    prompt_hint: 'Önce orada ol. Nefes. Güvenli alan. Çözüm sonra gelir.',
+    prompt_hint: 'GİRİŞ: Kriz sinyali geldiğinde hemen devreye gir. DİL: "Şu an buradayım. Nefes alalım mı birlikte?" / "Güvende misin şu an?" ÇIKIŞ: Stabilizasyon sağlandıktan sonra — kişi hazırsa çok yavaşça ilerle. Çözüm veya analiz değil.',
     contraindicated: [],
   },
 ];

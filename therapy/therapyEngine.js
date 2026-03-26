@@ -53,59 +53,47 @@ export const MODES = {
 /**
  * Mevcut duruma göre terapi modunu seçer.
  *
- * @param {string} currentEmotion - Tespit edilen mevcut duygu
+ * @param {Object|string} emotionResult - { primary, secondary, intensity } veya string (geriye dönük uyumluluk)
  * @param {string} messageContent - Kullanıcının mesajı
  * @param {Array}  sessionHistory  - Oturum geçmişi dizisi
  * @param {Object} profile         - Kullanıcı profili
  * @returns {Object} Seçilen MODES nesnesi
  */
-export function selectMode(currentEmotion, messageContent, sessionHistory, profile) {
+export function selectMode(emotionResult, messageContent, sessionHistory, profile) {
+  // Geriye dönük uyumluluk: string gelirse objeye çevir
+  const emotion = typeof emotionResult === 'string' ? emotionResult : (emotionResult?.primary || 'sakin');
+  const intensity = typeof emotionResult === 'object' ? (emotionResult?.intensity || 'düşük') : 'düşük';
+
   const content = (messageContent || '').toLowerCase();
+  const msgCount = (sessionHistory || []).length;
 
-  // 1. Stabilizasyon — kriz sinyalleri
-  const stabilizationTriggers = [
-    'intihar',
-    'ölmek istiyorum',
-    'kendime zarar',
-    'dayanamıyorum artık',
-    'bırakmak istiyorum',
-    'anlamsız',
-    'hiçbir şeyin önemi yok',
-  ];
-  if (stabilizationTriggers.some((trigger) => content.includes(trigger))) {
-    return MODES.STABILIZATION;
-  }
+  // 1. Stabilizasyon — kriz sinyalleri (değişmez)
+  const crisisSignals = ['intihar', 'ölmek istiyorum', 'kendime zarar', 'dayanamıyorum artık', 'bırakmak istiyorum'];
+  if (crisisSignals.some(t => content.includes(t))) return MODES.STABILIZATION;
 
-  // 2. Dinleme — yoğun duygusal ifadeler
-  const listeningTriggers = [
-    'ağlıyorum',
-    'çok üzgün',
-    'kırıldım',
-    'dayanamıyorum',
-    'çok ağır',
-  ];
-  if (listeningTriggers.some((trigger) => content.includes(trigger))) {
-    return MODES.LISTENING;
-  }
+  // 2. Yüksek yoğunluk + ağır duygular → Dinleme
+  const heavyEmotions = ['üzüntü', 'tükenmişlik', 'yalnızlık'];
+  if (intensity === 'yüksek' && heavyEmotions.includes(emotion)) return MODES.LISTENING;
 
-  // 3. Büyüme — ilerleme ve farkındalık ifadeleri
-  const growthTriggers = [
-    'daha iyi hissediyorum',
-    'anladım',
-    'fark ettim',
-    'değişti',
-  ];
-  if (growthTriggers.some((trigger) => content.includes(trigger))) {
-    return MODES.GROWTH;
-  }
+  // 3. Yüksek yoğunluk + erken tur → Dinleme (kullanıcı açılıyor)
+  if (intensity === 'yüksek' && msgCount <= 6) return MODES.LISTENING;
 
-  // 4. Keşif — kısa oturum geçmişi veya kısa mesaj
-  if ((sessionHistory || []).length < 3 || (messageContent || '').length < 50) {
-    return MODES.EXPLORATION;
-  }
+  // 4. Dinleme için güçlü içerik sinyalleri (yoğunluktan bağımsız)
+  const listeningContent = ['ağlıyorum', 'çok üzgün', 'kırıldım', 'dayanamıyorum', 'çok ağır'];
+  if (listeningContent.some(t => content.includes(t))) return MODES.LISTENING;
 
-  // 5. Varsayılan: Çalışma Modu
-  return MODES.WORKING;
+  // 5. Büyüme sinyalleri → Büyüme
+  const growthSignals = ['daha iyi hissediyorum', 'anladım', 'fark ettim', 'değişti', 'teşekkür', 'yardımcı oldu'];
+  if (growthSignals.some(t => content.includes(t))) return MODES.GROWTH;
+
+  // 6. İlk seans veya çok az mesaj → Keşif
+  if ((profile?.session_count || 0) === 0 || msgCount < 4) return MODES.EXPLORATION;
+
+  // 7. Orta yoğunluk + konuşma yerleşmiş → Çalışma
+  if (intensity === 'orta' && msgCount >= 6) return MODES.WORKING;
+
+  // 8. Varsayılan: Keşif
+  return MODES.EXPLORATION;
 }
 
 // ─── Teknik Seçimi ────────────────────────────────────────────────────────────
@@ -182,13 +170,18 @@ export function selectTechniques(mode, profile, currentEmotion, topics, effectiv
  */
 export function runTherapyEngine({
   currentEmotion,
+  emotionIntensity,
   messageContent,
   sessionHistory,
   profile,
   topics,
   effectivenessData,
 }) {
-  const mode = selectMode(currentEmotion, messageContent, sessionHistory, profile);
+  // emotionIntensity varsa obje olarak geç, yoksa string (geriye dönük uyumluluk)
+  const emotionForMode = emotionIntensity
+    ? { primary: currentEmotion, intensity: emotionIntensity }
+    : currentEmotion;
+  const mode = selectMode(emotionForMode, messageContent, sessionHistory, profile);
 
   const techniques = selectTechniques(
     mode,

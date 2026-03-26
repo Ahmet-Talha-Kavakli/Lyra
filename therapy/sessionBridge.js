@@ -35,7 +35,7 @@ export async function buildSessionBridgeContext(userId, supabase) {
     const sessions = await getRecentSessionSummaries(userId, supabase, 3);
     if (!sessions || sessions.length === 0) return '';
 
-    const lines = ['## ÖNCEKİ SEANSLARIN ÖZETİ (Bağlam İçin — Kullanıcıya Söyleme)'];
+    const lines = ['## ÖNCEKİ SEANSLARIN ÖZETİ (GİZLİ — SESLE AKTARMA, SADECE BAĞLAM İÇİN KULLAN)'];
 
     for (const s of sessions) {
         const date = s.created_at ? new Date(s.created_at).toLocaleDateString('tr-TR') : '?';
