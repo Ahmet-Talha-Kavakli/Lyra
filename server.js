@@ -23,6 +23,7 @@ import { buildSessionBridgeContext } from './therapy/sessionBridge.js';
 import { extractTopicsCombined } from './therapy/topicExtractor.js';
 import { buildOnboardingContext } from './therapy/onboardingFlow.js';
 import { analyzeConversationRhythm, decideConversationSignal, getLastLyraAction } from './therapy/conversationSignal.js';
+import { detectScenario } from './therapy/deepScenarios.js';
 dotenv.config();
 
 // ─── INPUT SANİTİZASYON ─────────────────────────────────────────────────────
@@ -1636,7 +1637,7 @@ const detectVoiceDeviation = (transcriptData, sesNormali) => {
     } catch { return null; }
 };
 
-// Gözlem temelli yansıtma cümlesi oluştur
+// Gözlem temelli yansıtma c��mlesi oluştur
 const buildObservationalReflection = (sonAnaliz, transcriptData) => {
     if (!FEATURE_FLAGS.OBSERVATIONAL_EMPATHY) return null;
     try {
@@ -2653,6 +2654,10 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 });
                 console.log(`[SIGNAL] ${conversationSignal} | Ritim: ${rhythmState.writerType}/${rhythmState.trend} | Duygu: ${currentEmotion}/${emotionResult.intensity}`);
 
+                // 6c. Aktif senaryo tespiti — topics + emotion'dan sonra
+                const activeScenario = detectScenario(messages || [], currentEmotion, topics);
+                if (activeScenario) console.log(`[SCENARIO] ${activeScenario}`);
+
                 // 7. Terapi motorunu çalıştır
                 therapyEngineOutput = runTherapyEngine({
                     currentEmotion,
@@ -2683,7 +2688,7 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 const sessionContext = buildSessionContext(messages || []);
 
                 // 9. Dinamik sistem promptunu oluştur (sinyal + ritim + ikincil duygu dahil)
-                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion, conversationSignal, rhythmState, emotionResult);
+                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion, conversationSignal, rhythmState, emotionResult, activeScenario);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
                 }

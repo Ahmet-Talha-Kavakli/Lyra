@@ -43,7 +43,7 @@ export const DEEP_SCENARIOS = {
     id: 'acute_grief',
     triggers: [
       'öldü', 'vefat etti', 'kaybettim', 'gitti artık', 'inanamıyorum', 'o olmadan',
-      'bitti her şey', 'yok artık', 'hayatımdan çıktı', 'ayrıldık', 'bitirdik',
+      'bitti her şey', 'o yok artık', 'hayatımdan çıktı', 'ayrıldık', 'bitirdik',
       'elveda', 'son kez gördüm',
     ],
     contextTriggers: ['yas', 'kayıp', 'taze kayıp'],
