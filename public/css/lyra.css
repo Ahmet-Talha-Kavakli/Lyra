@@ -394,13 +394,135 @@ body {
   background: var(--border);
 }
 
-#login-error {
+.login-error-msg {
   font-size: 0.76rem;
   color: var(--danger);
   text-align: center;
   min-height: 16px;
   letter-spacing: 0.04em;
   width: 100%;
+}
+
+/* Panel içi düzen */
+#panel-signin, #panel-signup, #panel-forgot {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Şifre göster butonu */
+.pwd-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  padding: 0;
+}
+.pwd-toggle:hover { opacity: 1; }
+
+/* Şifremi unuttum linki */
+.login-forgot {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-align: right;
+  width: 100%;
+  padding: 0;
+  font-family: 'Outfit', sans-serif;
+  transition: color 0.2s;
+  letter-spacing: 0.04em;
+}
+.login-forgot:hover { color: var(--primary); }
+
+/* Şifre gücü */
+.pwd-strength-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pwd-strength-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+#pwd-strength-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+#pwd-strength-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Şifre kriterleri */
+.pwd-criteria {
+  width: 100%;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+.pwd-criteria li {
+  font-size: 0.7rem;
+  color: rgba(200,169,110,0.35);
+  padding-left: 14px;
+  position: relative;
+  transition: color 0.2s;
+}
+.pwd-criteria li::before {
+  content: '✗';
+  position: absolute;
+  left: 0;
+  color: var(--danger);
+  transition: all 0.2s;
+}
+.pwd-criteria li.met { color: var(--success); }
+.pwd-criteria li.met::before { content: '✓'; color: var(--success); }
+
+/* Şifre öner butonu */
+.login-suggest-btn {
+  width: 100%;
+  padding: 10px;
+  background: rgba(200,169,110,0.06);
+  border: 1px dashed rgba(200,169,110,0.25);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.06em;
+}
+.login-suggest-btn:hover {
+  background: rgba(200,169,110,0.1);
+  border-color: var(--primary);
+  color: var(--accent);
+}
+
+/* Şifremi unuttum bilgi metni */
+.login-forgot-info {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
 }
 
 

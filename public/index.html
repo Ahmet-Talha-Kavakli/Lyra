@@ -28,34 +28,84 @@
             <p class="login-subtitle">Kozmik Rehberinize Bağlanın</p>
 
             <!-- Tab seçici -->
-            <div class="login-tabs">
+            <div class="login-tabs" id="login-tabs">
                 <button class="login-tab active" id="tab-signin">Giriş Yap</button>
                 <button class="login-tab" id="tab-signup">Kayıt Ol</button>
             </div>
 
-            <!-- Floating label email -->
-            <div class="login-field">
-                <input class="login-input" type="email" id="login-email" placeholder=" " autocomplete="email">
-                <label class="login-label">E-posta</label>
+            <!-- ── GİRİŞ PANEL ── -->
+            <div id="panel-signin">
+                <div class="login-field">
+                    <input class="login-input" type="email" id="signin-email" placeholder=" " autocomplete="email">
+                    <label class="login-label">E-posta</label>
+                </div>
+                <div class="login-field">
+                    <input class="login-input" type="password" id="signin-password" placeholder=" " autocomplete="current-password">
+                    <label class="login-label">Şifre</label>
+                    <button type="button" class="pwd-toggle" id="toggle-signin-pwd">👁</button>
+                </div>
+                <button type="button" class="login-forgot" id="btn-forgot">Şifremi Unuttum</button>
+                <div id="signin-error" class="login-error-msg"></div>
+                <button class="login-btn primary" id="login-btn">
+                    <span>Giriş Yap</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
             </div>
 
-            <!-- Floating label password -->
-            <div class="login-field">
-                <input class="login-input" type="password" id="login-password" placeholder=" " autocomplete="current-password">
-                <label class="login-label">Şifre</label>
+            <!-- ── KAYIT PANEL ── -->
+            <div id="panel-signup" style="display:none">
+                <div class="login-field">
+                    <input class="login-input" type="email" id="signup-email" placeholder=" " autocomplete="email">
+                    <label class="login-label">E-posta</label>
+                </div>
+                <div class="login-field">
+                    <input class="login-input" type="tel" id="signup-phone" placeholder=" " autocomplete="tel">
+                    <label class="login-label">Telefon (opsiyonel)</label>
+                </div>
+                <div class="login-field">
+                    <input class="login-input" type="password" id="signup-password" placeholder=" " autocomplete="new-password">
+                    <label class="login-label">Şifre</label>
+                    <button type="button" class="pwd-toggle" id="toggle-signup-pwd">👁</button>
+                </div>
+                <!-- Strength bar -->
+                <div class="pwd-strength-wrap">
+                    <div class="pwd-strength-bar"><div id="pwd-strength-fill"></div></div>
+                    <span id="pwd-strength-label">Şifre gücü</span>
+                </div>
+                <!-- Şifre kriterleri -->
+                <ul class="pwd-criteria">
+                    <li id="c-len">En az 8 karakter</li>
+                    <li id="c-upper">Büyük harf</li>
+                    <li id="c-num">Rakam</li>
+                    <li id="c-special">Özel karakter (!@#$...)</li>
+                </ul>
+                <button type="button" class="login-suggest-btn" id="btn-suggest">✨ Güçlü şifre öner</button>
+                <div class="login-field">
+                    <input class="login-input" type="password" id="signup-password2" placeholder=" " autocomplete="new-password">
+                    <label class="login-label">Şifre tekrar</label>
+                </div>
+                <div id="signup-error" class="login-error-msg"></div>
+                <button class="login-btn primary" id="register-btn">
+                    <span>Kayıt Ol</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
             </div>
 
-            <div id="login-error"></div>
-            <button class="login-btn primary" id="login-btn">
-                <span>Giriş Yap</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </button>
+            <!-- ── ŞİFREMİ UNUTTUM PANEL ── -->
+            <div id="panel-forgot" style="display:none">
+                <p class="login-forgot-info">E-posta adresini gir, şifre sıfırlama bağlantısı gönderelim.</p>
+                <div class="login-field">
+                    <input class="login-input" type="email" id="forgot-email" placeholder=" " autocomplete="email">
+                    <label class="login-label">E-posta</label>
+                </div>
+                <div id="forgot-error" class="login-error-msg"></div>
+                <button class="login-btn primary" id="btn-forgot-send">
+                    <span>Bağlantı Gönder</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+                <button type="button" class="login-forgot" id="btn-back-signin">← Giriş yap</button>
+            </div>
 
-            <div class="login-divider-row"><span>veya</span></div>
-
-            <button class="login-btn" id="register-btn">
-                <span>Kayıt Ol</span>
-            </button>
         </div>
     </div>
 
@@ -277,27 +327,6 @@
         }
 
         function setupLoginHandlers() {
-            const loginBtn = document.getElementById('login-btn');
-            const registerBtn = document.getElementById('register-btn');
-            const errorEl = document.getElementById('login-error');
-
-            // Tab switcher
-            let activeTab = 'signin';
-            document.getElementById('tab-signin').addEventListener('click', () => {
-                activeTab = 'signin';
-                document.getElementById('tab-signin').classList.add('active');
-                document.getElementById('tab-signup').classList.remove('active');
-                loginBtn.querySelector('span').textContent = 'Giriş Yap';
-                errorEl.textContent = '';
-            });
-            document.getElementById('tab-signup').addEventListener('click', () => {
-                activeTab = 'signup';
-                document.getElementById('tab-signup').classList.add('active');
-                document.getElementById('tab-signin').classList.remove('active');
-                loginBtn.querySelector('span').textContent = 'Kayıt Ol';
-                errorEl.textContent = '';
-            });
-
             // WebGL smokey background
             (function initSmokey() {
                 const canvas = document.getElementById('login-canvas');
@@ -310,7 +339,6 @@
                 gl.shaderSource(fs, `precision mediump float;
                 uniform vec2 iRes; uniform float iTime; uniform vec2 iMouse;
                 void main(){
-                  vec2 uv = gl_FragCoord.xy / iRes;
                   vec2 c = (2.0*gl_FragCoord.xy - iRes) / min(iRes.x,iRes.y);
                   float t = iTime*0.06;
                   vec2 m = iMouse/iRes*2.0-1.0;
@@ -348,41 +376,149 @@
                 })();
             })();
 
-            async function doLogin() {
-                const email = document.getElementById('login-email').value.trim();
-                const password = document.getElementById('login-password').value;
-                errorEl.textContent = '';
-
-                if (activeTab === 'signup') {
-                    loginBtn.disabled = true;
-                    loginBtn.querySelector('span').textContent = 'Kayıt yapılıyor...';
-                    const { data, error } = await supabaseClient.auth.signUp({ email, password });
-                    loginBtn.disabled = false;
-                    loginBtn.querySelector('span').textContent = 'Kayıt Ol';
-                    if (error) { errorEl.textContent = error.message; return; }
-                    errorEl.style.color = 'var(--success)';
-                    errorEl.textContent = 'Doğrulama e-postası gönderildi!';
-                    return;
+            // Panel göster/gizle
+            function showPanel(name) {
+                document.getElementById('panel-signin').style.display = name === 'signin' ? '' : 'none';
+                document.getElementById('panel-signup').style.display = name === 'signup' ? '' : 'none';
+                document.getElementById('panel-forgot').style.display = name === 'forgot' ? '' : 'none';
+                document.getElementById('login-tabs').style.display = name === 'forgot' ? 'none' : '';
+                if (name !== 'forgot') {
+                    document.getElementById('tab-signin').classList.toggle('active', name === 'signin');
+                    document.getElementById('tab-signup').classList.toggle('active', name === 'signup');
                 }
+            }
 
+            document.getElementById('tab-signin').addEventListener('click', () => showPanel('signin'));
+            document.getElementById('tab-signup').addEventListener('click', () => showPanel('signup'));
+            document.getElementById('btn-forgot').addEventListener('click', () => showPanel('forgot'));
+            document.getElementById('btn-back-signin').addEventListener('click', () => showPanel('signin'));
+
+            // Şifre göster/gizle
+            function togglePwd(inputId, btn) {
+                const inp = document.getElementById(inputId);
+                inp.type = inp.type === 'password' ? 'text' : 'password';
+                btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+            }
+            document.getElementById('toggle-signin-pwd').addEventListener('click', function(){ togglePwd('signin-password', this); });
+            document.getElementById('toggle-signup-pwd').addEventListener('click', function(){ togglePwd('signup-password', this); });
+
+            // Şifre gücü kontrolü
+            function checkStrength(pwd) {
+                const criteria = {
+                    len: pwd.length >= 8,
+                    upper: /[A-Z]/.test(pwd),
+                    num: /[0-9]/.test(pwd),
+                    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)
+                };
+                const score = Object.values(criteria).filter(Boolean).length;
+                document.getElementById('c-len').classList.toggle('met', criteria.len);
+                document.getElementById('c-upper').classList.toggle('met', criteria.upper);
+                document.getElementById('c-num').classList.toggle('met', criteria.num);
+                document.getElementById('c-special').classList.toggle('met', criteria.special);
+                const fill = document.getElementById('pwd-strength-fill');
+                const label = document.getElementById('pwd-strength-label');
+                const colors = ['', '#d47777', '#e8a85c', '#e8c96a', '#70c896'];
+                const labels = ['', 'Çok zayıf', 'Zayıf', 'İyi', 'Güçlü'];
+                fill.style.width = (score * 25) + '%';
+                fill.style.background = colors[score];
+                label.textContent = labels[score] || 'Şifre gücü';
+                return criteria;
+            }
+
+            document.getElementById('signup-password').addEventListener('input', function() {
+                checkStrength(this.value);
+            });
+
+            // Güçlü şifre öner
+            document.getElementById('btn-suggest').addEventListener('click', () => {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+                let pwd = '';
+                pwd += 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)];
+                pwd += '23456789'[Math.floor(Math.random()*8)];
+                pwd += '!@#$%'[Math.floor(Math.random()*5)];
+                for (let i = 0; i < 9; i++) pwd += chars[Math.floor(Math.random()*chars.length)];
+                pwd = pwd.split('').sort(()=>Math.random()-0.5).join('');
+                const inp = document.getElementById('signup-password');
+                const inp2 = document.getElementById('signup-password2');
+                inp.value = pwd;
+                inp2.value = pwd;
+                inp.type = 'text';
+                document.getElementById('toggle-signup-pwd').textContent = '🙈';
+                checkStrength(pwd);
+            });
+
+            // GİRİŞ YAP
+            const loginBtn = document.getElementById('login-btn');
+            loginBtn.addEventListener('click', async () => {
+                const email = document.getElementById('signin-email').value.trim();
+                const password = document.getElementById('signin-password').value;
+                const errEl = document.getElementById('signin-error');
+                errEl.textContent = '';
+                if (!email || !password) { errEl.textContent = 'E-posta ve şifre zorunlu.'; return; }
                 loginBtn.disabled = true;
                 loginBtn.querySelector('span').textContent = 'Giriş yapılıyor...';
                 const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
                 loginBtn.disabled = false;
                 loginBtn.querySelector('span').textContent = 'Giriş Yap';
-                if (error) { errorEl.textContent = 'Hatalı e-posta veya şifre.'; return; }
+                if (error) { errEl.textContent = 'Hatalı e-posta veya şifre.'; return; }
                 persistentUserId = data.user.id;
                 supabaseToken = data.session.access_token;
                 hideLoginOverlay();
-            }
-
-            loginBtn.addEventListener('click', doLogin);
-            document.getElementById('login-password').addEventListener('keydown', e => {
-                if (e.key === 'Enter') doLogin();
+            });
+            document.getElementById('signin-password').addEventListener('keydown', e => {
+                if (e.key === 'Enter') loginBtn.click();
             });
 
-            registerBtn.addEventListener('click', () => {
-                document.getElementById('tab-signup').click();
+            // KAYIT OL
+            const registerBtn = document.getElementById('register-btn');
+            registerBtn.addEventListener('click', async () => {
+                const email = document.getElementById('signup-email').value.trim();
+                const phone = document.getElementById('signup-phone').value.trim();
+                const password = document.getElementById('signup-password').value;
+                const password2 = document.getElementById('signup-password2').value;
+                const errEl = document.getElementById('signup-error');
+                errEl.style.color = 'var(--danger)';
+                errEl.textContent = '';
+                if (!email || !password) { errEl.textContent = 'E-posta ve şifre zorunlu.'; return; }
+                if (password !== password2) { errEl.textContent = 'Şifreler eşleşmiyor.'; return; }
+                const c = checkStrength(password);
+                if (!c.len || !c.upper || !c.num || !c.special) { errEl.textContent = 'Şifre yeterince güçlü değil.'; return; }
+                registerBtn.disabled = true;
+                registerBtn.querySelector('span').textContent = 'Kayıt yapılıyor...';
+                const opts = { email, password };
+                if (phone) opts.phone = phone;
+                const { data, error } = await supabaseClient.auth.signUp(opts);
+                registerBtn.disabled = false;
+                registerBtn.querySelector('span').textContent = 'Kayıt Ol';
+                if (error) { errEl.textContent = error.message; return; }
+                if (data.user && data.session) {
+                    persistentUserId = data.user.id;
+                    supabaseToken = data.session.access_token;
+                    hideLoginOverlay();
+                } else {
+                    errEl.style.color = 'var(--success)';
+                    errEl.textContent = '✓ Doğrulama e-postası gönderildi, e-postanı kontrol et.';
+                }
+            });
+
+            // ŞİFREMİ UNUTTUM
+            document.getElementById('btn-forgot-send').addEventListener('click', async () => {
+                const email = document.getElementById('forgot-email').value.trim();
+                const errEl = document.getElementById('forgot-error');
+                errEl.style.color = 'var(--danger)';
+                errEl.textContent = '';
+                if (!email) { errEl.textContent = 'E-posta adresi zorunlu.'; return; }
+                const btn = document.getElementById('btn-forgot-send');
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Gönderiliyor...';
+                const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                    redirectTo: window.location.origin
+                });
+                btn.disabled = false;
+                btn.querySelector('span').textContent = 'Bağlantı Gönder';
+                if (error) { errEl.textContent = 'İşlem başarısız, tekrar dene.'; return; }
+                errEl.style.color = 'var(--success)';
+                errEl.textContent = '✓ Şifre sıfırlama bağlantısı gönderildi.';
             });
         }
 
