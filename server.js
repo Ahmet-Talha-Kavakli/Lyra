@@ -114,7 +114,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "cdn.jsdelivr.net", "*.vapi.ai", "*.hume.ai"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
             styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
             fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
             imgSrc: ["'self'", 'data:', 'blob:'],
@@ -2535,13 +2535,6 @@ app.post('/save-local-memory', async (req, res) => {
 });
 
 // ─── CUSTOM LLM ENDPOINT (VAPI BEYİN) ─────────────────────
-const chatRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
-    },
-});
 app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
     try {
         const { messages: rawMessages, model, temperature, max_tokens, call } = req.body;
@@ -3211,6 +3204,7 @@ app.get('/cron-checkin', async (req, res) => {
 const emotionRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
+    keyGenerator: (req) => req.body?.userId || req.ip,
     handler: (req, res) => {
         res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
     },
@@ -3220,11 +3214,21 @@ const emotionRateLimit = rateLimit({
 const humeRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
+    keyGenerator: (req) => req.body?.userId || req.ip,
     handler: (req, res) => {
         res.status(429).json({ hume_scores: null, rate_limited: true });
     },
 });
 
+// ── CHAT ENDPOINT RATE LIMITER (YENİ) ──
+const chatRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    keyGenerator: (req) => req.ip,
+    handler: (req, res) => {
+        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
+    },
+});
 
 // ── MULTER SES DOSYASI YÜKLEMESİ ──
 const upload = multer({
