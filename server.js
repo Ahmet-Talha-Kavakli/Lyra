@@ -2682,8 +2682,8 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 // 8. Seans içi bağlam
                 const sessionContext = buildSessionContext(messages || []);
 
-                // 9. Dinamik sistem promptunu oluştur
-                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion);
+                // 9. Dinamik sistem promptunu oluştur (sinyal + ritim + ikincil duygu dahil)
+                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion, conversationSignal, rhythmState, emotionResult);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
                 }
