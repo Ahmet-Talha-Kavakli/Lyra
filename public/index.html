@@ -312,7 +312,7 @@
                 void main(){
                   vec2 uv = gl_FragCoord.xy / iRes;
                   vec2 c = (2.0*gl_FragCoord.xy - iRes) / min(iRes.x,iRes.y);
-                  float t = iTime*0.4;
+                  float t = iTime*0.15;
                   vec2 m = iMouse/iRes*2.0-1.0;
                   vec2 d = c;
                   for(float i=1.0;i<7.0;i++){
