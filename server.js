@@ -22,6 +22,7 @@ import { analyzeResponseQuality } from './progress/qualityAnalyzer.js';
 import { buildSessionBridgeContext } from './therapy/sessionBridge.js';
 import { extractTopicsCombined } from './therapy/topicExtractor.js';
 import { buildOnboardingContext } from './therapy/onboardingFlow.js';
+import { analyzeConversationRhythm, decideConversationSignal, getLastLyraAction } from './therapy/conversationSignal.js';
 dotenv.config();
 
 // ─── INPUT SANİTİZASYON ─────────────────────────────────────────────────────
@@ -2638,6 +2639,19 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                     .map(m => m.content || '')
                     .join(' ');
                 const topics = extractTopics(recentMessages);
+
+                // 6b. Konuşma ritmi ve sinyali — topics'ten SONRA hesaplanır
+                const rhythmState = analyzeConversationRhythm(messages || []);
+                const conversationSignal = decideConversationSignal({
+                    emotionResult,
+                    messageLength: lastUserMessage.length,
+                    messageCount: (messages || []).filter(m => m.role === 'user').length,
+                    lastLyraAction: getLastLyraAction(messages || []),
+                    dominantTopics: topics,
+                    rhythmState,
+                    messageContent: lastUserMessage,
+                });
+                console.log(`[SIGNAL] ${conversationSignal} | Ritim: ${rhythmState.writerType}/${rhythmState.trend} | Duygu: ${currentEmotion}/${emotionResult.intensity}`);
 
                 // 7. Terapi motorunu çalıştır
                 therapyEngineOutput = runTherapyEngine({
