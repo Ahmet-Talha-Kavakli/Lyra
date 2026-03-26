@@ -44,23 +44,94 @@ function sanitizeMessages(messages) {
 
 // ─── DUYGU TESPİTİ ─────────────────────────────────────────────────────────
 const EMOTION_MAP = {
-    üzüntü:   ['üzgün', 'üzüldüm', 'ağlıyorum', 'ağladım', 'keder', 'hüzün', 'mutsuz', 'kırıldım', 'hayal kırıklığı'],
-    kaygı:    ['kaygı', 'endişe', 'korku', 'korkuyorum', 'panik', 'tedirgin', 'gergin', 'stres', 'anksiyete', 'sinirli'],
-    öfke:     ['sinirli', 'kızgın', 'öfkeli', 'öfke', 'kızdım', 'rahatsız', 'bıkmış', 'nefret'],
-    utanç:    ['utanç', 'utandım', 'mahcup', 'rezil', 'berbat hissediyorum', 'değersiz'],
-    yalnızlık: ['yalnız', 'yapayalnız', 'kimsem yok', 'yalnızım', 'izole'],
-    tükenmişlik: ['tükendim', 'yoruldum', 'bitik', 'enerjim yok', 'her şeyden bıktım'],
-    umut:     ['daha iyi', 'umudum var', 'iyiyim', 'güzel', 'mutlu', 'sevinçli'],
-    karmaşa:  ['karmaşık', 'ne hissediyorum bilmiyorum', 'kafam karışık', 'anlayamıyorum'],
+    üzüntü: {
+        phrases: ['çok üzgünüm', 'ağlıyorum', 'kırıldım', 'içim sıkıştı', 'boğuluyorum', 'gözyaşlarım'],
+        keywords: ['üzgün', 'üzüldüm', 'ağladım', 'keder', 'mutsuz', 'hüzün', 'acı', 'kırık', 'hayal kırıklığı'],
+        weight: 1.0
+    },
+    kaygı: {
+        phrases: ['panik atak', 'nefes alamıyorum', 'her şeyden korkuyorum', 'sürekli endişeleniyorum', 'içim daralıyor'],
+        keywords: ['kaygı', 'endişe', 'korku', 'korkuyorum', 'panik', 'tedirgin', 'stres', 'anksiyete', 'gergin'],
+        weight: 1.0
+    },
+    öfke: {
+        phrases: ['çok sinirleniyorum', 'dayanamıyorum buna', 'nefret ediyorum', 'çıldıracağım'],
+        keywords: ['sinirli', 'kızgın', 'öfkeli', 'kızdım', 'bezdim', 'bıktım', 'nefret', 'rahatsız'],
+        weight: 1.0
+    },
+    utanç: {
+        phrases: ['çok utandım', 'yerin dibine geçtim', 'mahcup hissediyorum', 'rezil oldum'],
+        keywords: ['utanç', 'utandım', 'mahcup', 'rezil', 'küçüldüm', 'değersiz'],
+        weight: 1.0
+    },
+    yalnızlık: {
+        phrases: ['kimse anlamıyor beni', 'yapayalnızım', 'kimsem yok', 'hiç kimse yok'],
+        keywords: ['yalnız', 'izole', 'dışlanmış', 'görünmez', 'terk', 'kimsesiz'],
+        weight: 1.0
+    },
+    tükenmişlik: {
+        phrases: ['artık devam edemiyorum', 'her şeyden bıktım', 'enerjim kalmadı', 'içim boş'],
+        keywords: ['tükendim', 'yoruldum', 'bitik', 'enerjisiz', 'motivasyonsuz', 'hevessiz'],
+        weight: 1.0
+    },
+    umut: {
+        phrases: ['daha iyi hissediyorum', 'bir şeyler değişti', 'umut var', 'çıkış yolu gördüm'],
+        keywords: ['iyi', 'güzel', 'mutlu', 'sevinçli', 'heyecanlı', 'umutlu', 'rahatladım'],
+        weight: 0.8
+    },
+    karmaşa: {
+        phrases: ['ne hissettiğimi bilmiyorum', 'kafam çok karışık', 'anlayamıyorum kendimi'],
+        keywords: ['karmaşık', 'karışık', 'belirsiz', 'anlamıyorum', 'boş hissediyorum'],
+        weight: 0.9
+    },
 };
 
-function detectEmotion(message) {
-    if (!message) return 'sakin';
-    const lower = message.toLowerCase();
-    for (const [emotion, keywords] of Object.entries(EMOTION_MAP)) {
-        if (keywords.some(k => lower.includes(k))) return emotion;
+const NEGATIONS = ['değil', 'yok', 'hayır', 'istemiyorum', 'etmiyorum', 'hissetmiyorum', 'olmaz', 'olmadım'];
+
+function hasNegationBefore(words, idx, window = 4) {
+    const start = Math.max(0, idx - window);
+    for (let i = start; i < idx; i++) {
+        if (NEGATIONS.some(n => words[i] === n || words[i].endsWith(n))) return true;
     }
-    return 'sakin';
+    return false;
+}
+
+// Döndürür: { primary, secondary, intensity }
+// primary/secondary: duygu adı (string), intensity: 'düşük'|'orta'|'yüksek'
+function detectEmotion(message) {
+    if (!message) return { primary: 'sakin', secondary: null, intensity: 'düşük' };
+    const lower = message.toLowerCase();
+    const words = lower.split(/\s+/);
+    const scores = {};
+
+    for (const [emotion, data] of Object.entries(EMOTION_MAP)) {
+        let score = 0;
+
+        // Phrase matching — daha güvenilir, 2.5x ağırlık
+        for (const phrase of data.phrases) {
+            if (lower.includes(phrase)) score += 2.5 * data.weight;
+        }
+
+        // Keyword matching — negasyon kontrolü ile
+        for (const keyword of data.keywords) {
+            const idx = words.findIndex(w => w.includes(keyword));
+            if (idx !== -1 && !hasNegationBefore(words, idx)) {
+                score += 1.0 * data.weight;
+            }
+        }
+
+        if (score > 0) scores[emotion] = score;
+    }
+
+    if (Object.keys(scores).length === 0) return { primary: 'sakin', secondary: null, intensity: 'düşük' };
+
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const primary = sorted[0][0];
+    const secondary = sorted[1]?.[0] || null;
+    const topScore = sorted[0][1];
+    const intensity = topScore >= 4 ? 'yüksek' : topScore >= 2 ? 'orta' : 'düşük';
+
+    return { primary, secondary, intensity };
 }
 
 // ─── KONU TESpİTİ ───────────────────────────────────────────────────────────
@@ -2550,8 +2621,9 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 // 3. Son kullanıcı mesajını al
                 const lastUserMessage = messages?.[messages.length - 1]?.content || '';
 
-                // 4. Duygu tespiti — son mesajdan hızlı keyword tabanlı sınıflandırma
-                const currentEmotion = detectEmotion(lastUserMessage);
+                // 4. Duygu tespiti — phrase matching, negasyon filtresi, çoklu duygu
+                const emotionResult = detectEmotion(lastUserMessage);
+                const currentEmotion = emotionResult.primary; // geriye dönük uyumluluk
 
                 // 5. Kriz değerlendirmesi
                 // Önceki mesajdaki kriz seviyesini bul (kriz sonrası geçiş için)
@@ -2570,6 +2642,7 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 // 7. Terapi motorunu çalıştır
                 therapyEngineOutput = runTherapyEngine({
                     currentEmotion,
+                    emotionIntensity: emotionResult.intensity,
                     messageContent: lastUserMessage,
                     sessionHistory: messages || [],
                     profile: psychProfile,
@@ -5323,7 +5396,7 @@ app.post('/synthesize', async (req, res) => {
     }
 });
 
-// ─── AVATAR: KARAKTER DURUMU ───────────────────────────────────────────────
+// ���── AVATAR: KARAKTER DURUMU ───────────────────────────────────────────────
 
 // Karakter kütüphanesi — profil trait'lerine göre seçim yapılır
 const CHARACTER_LIBRARY = [
