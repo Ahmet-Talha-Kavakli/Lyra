@@ -2535,6 +2535,13 @@ app.post('/save-local-memory', async (req, res) => {
 });
 
 // ─── CUSTOM LLM ENDPOINT (VAPI BEYİN) ─────────────────────
+const chatRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    handler: (req, res) => {
+        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
+    },
+});
 app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
     try {
         const { messages: rawMessages, model, temperature, max_tokens, call } = req.body;
@@ -3220,15 +3227,6 @@ const humeRateLimit = rateLimit({
     },
 });
 
-// ── CHAT ENDPOINT RATE LIMITER (YENİ) ──
-const chatRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    keyGenerator: (req) => req.ip,
-    handler: (req, res) => {
-        res.status(429).json({ error: 'Çok fazla mesaj gönderildi, lütfen bekleyin.' });
-    },
-});
 
 // ── MULTER SES DOSYASI YÜKLEMESİ ──
 const upload = multer({
