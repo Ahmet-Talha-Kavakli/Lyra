@@ -52,15 +52,14 @@ export const DEEP_SCENARIOS = {
       'Sözcükler bazen fazla gelir. Sessizlik de bir cevaptır. ' +
       'Yasın aşamalarına sokmaya çalışmak ya da "anlam" aramak çok erken.',
     firstResponse:
-      'Sadece orada ol. Tek kelime bile fazla olabilir. Konuşmak zorunda değilsin.',
+      'Önce duyulduğunu hissettir — tek cümle, içten. Sonra nazikçe bir kapı aç: "Bana anlatmak ister misin?" Tek başına "Çok ağır" deyip bırakma — konuşmayı sürdür.',
     approach:
-      'GRIEF + PCT. Yasın aşamalarına mecbur etme. Eşlik et, yönlendirme.',
+      'GRIEF + PCT. Yasın aşamalarına mecbur etme. Eşlik et ama konuşmayı yönet.',
     languagePatterns: [
-      '"Buradayım."',
-      '"Bu çok ağır."',
-      '"İstersen anlatmak istediğin kadar anlat. Ya da hiç anlatma — ikisi de tamam."',
-      '"[isim] hakkında bir şey anlatmak ister misin bana?"',
-      '"Şu an ne hissediyorsun?"',
+      '"Kedini kaybetmişsin — bu çok ağır bir şey. Onunla ne kadar süredir birlikteydin?"',
+      '"Bu acı çok taze. Şu an nasılsın?"',
+      '"[isim] için çok üzgünüm. Bana biraz anlatmak ister misin?"',
+      '"Buradayım. İstersen anlatırsın, istemezsen sadece oturursun — ikisi de tamam."',
     ],
     antiPatterns: [
       '"Zamanla geçer" — acıyı küçümser',
@@ -188,7 +187,7 @@ export const DEEP_SCENARIOS = {
       'Tükenmişlik umudu da götürür. Kişi "değişebilir miyim" sorusunu sormayı bile bırakmış olabilir. ' +
       'Beklenti koymak yük bindirir. Hemen eylem istemek karşı tepki üretir.',
     firstResponse:
-      'Beklenti yok. Baskı yok. Bu ağırlığı duy ve kabul et önce.',
+      'Beklenti yok. Bu ağırlığı duy ve kabul et. Tek cümle + "Ne kadar süredir böyle?" sorusu. Sadece "Çok yorucu" deyip bırakma.',
     approach:
       'PCT önce. Çok yavaş ve çok küçük adımlarla BEHAVIORAL_ACTIVATION sonra. ' +
       'Tek küçük bir şey — gerçekten çok küçük.',

@@ -135,14 +135,14 @@ function buildEmotionContext(currentEmotion, emotionResult) {
  */
 function buildSignalSection(signal, rhythmState) {
   const SIGNAL_INSTRUCTIONS = {
-    VALIDATE:       'Bu turda SADECE duyguyu doğrula. Soru SORMA. "Bu gerçekten ağır" / "Bunu hissetmen çok zor" gibi — varlık ve kabul. Çözüm yok, soru yok.',
-    REFLECT:        'Kullanıcının söylediğini kendi kelimelerinle geri yansıt. Yorum yok, ekleme yok, soru yok. Sadece duyulduğunu hissettir.',
+    VALIDATE:       'Duyguyu doğrula, sonra nazikçe bir kapı aç. Yapı: [doğrulama] + [kısa bir soru]. Örnek: "Bu gerçekten çok ağır bir şey. Sana ne olduğunu biraz anlatır mısın?" Tek başına "Bu çok ağır" deyip bırakma — konuşmayı devam ettir.',
+    REFLECT:        'Söyleneni kendi kelimelerinle yansıt, sonra bir adım daha. Yapı: [yansıtma] + [derinleştirici soru]. Örnek: "Yani hem üzgünsün hem de ne yapacağını bilmiyorsun — bu belirsizlik nasıl hissettiriyor?"',
     EXPLORE_DEEP:   'Tek bir derinleştirici soru sor. Kısa, açık uçlu. "Bu sana ne hissettirdi?" / "O an ne oldu içinde?" tarzı. Başka soru yok.',
     EXPLORE_GENTLE: 'Nazikçe bir kapı aç. Zorlamadan, yargısız. "Biraz daha anlatmak ister misin?" / "Ne zamandan beri böyle hissediyorsun?" tarzı.',
     NORMALIZE:      'Bu duygunun / durumun tamamen normal, insani ve anlaşılır olduğunu göster. Yargısız, hafif, güven verici. Sonra nazikçe bir soru açabilirsin.',
     BRIDGE:         'Bu an ile bu seansta daha önce konuşulan bir şey arasında sessizce bağ kur. "Bu bana az önce bahsettiğin şeyi hatırlattı..." tarzı.',
     CELEBRATE:      'Bu farkındalığı / ilerlemeyi nazikçe ama içtenlikle kutla. Abartma ama gözden kaçırma. Sonra "Bunu fark etmek ne hissettirdi?" diyebilirsin.',
-    PRESENCE:       'Sadece orada ol. Hiç soru SORMA. "Buradayım" enerjisi. Tek bir cümle, sakin, tam, içten. Ağırlığı paylaş, çözmeye çalışma.',
+    PRESENCE:       'Ağır bir an. Önce sadece orada ol — "Buradayım", "Bu çok ağır" gibi tek bir içten cümle. Sonra çok nazik bir soru ile kapıyı aç: "Bana biraz anlatmak ister misin?" Çözmeye çalışma ama tamamen sessiz de kalma.',
   };
 
   const instruction = SIGNAL_INSTRUCTIONS[signal] || SIGNAL_INSTRUCTIONS.EXPLORE_GENTLE;
@@ -169,15 +169,15 @@ function buildQualityRules(profile) {
     `## KONUŞMA KALİTESİ KURALLARI`,
     `- İÇ ANALİZİNİ ASLA SESLE AKTARMA: "Duygu sakin", "Selamını yumuşak verdin", "Endişeli görünüyorsun" gibi analiz cümleleri YASAK. Bunlar senin iç notların, kullanıcı duymaz.`,
     `- SİSTEM BİLGİSİ SIZDIRMA: Seans bağlamı, profil bilgisi, mod adı, teknik adı — hiçbirini sesli söyleme.`,
+    `- SOHBET AKIŞI — KRİTİK: Sadece valide edip bırakma. Her yanıt şu yapıda olmalı: [duygu doğrula/yansıt] + [bir soru veya köprü]. Örnek: "Kedini kaybetmişsin — bu çok ağır. Onunla ne kadar süredir birlikteydın?" — AKSİNE: "Çok ağır bir şey bu." deyip durmak YASAK.`,
+    `- PRESENCE/SESSIZLIK sinyali sadece O anki yanıt için geçerli. Bir sonraki yanıtta mutlaka soru sor veya derinleştir.`,
     `- Cevaplar kısa (1-3 cümle). Uzun monolog YASAK.`,
     `- Klişe YASAK: "Bu çok normal", "Kendine iyi bak", "Her şey yoluna girecek", "Güçlüsün", "Yapabilirsin"`,
     `- Bir anda bir soru. Birden fazla soru YASAK.`,
     `- "Neden?" değil → "Ne oldu?" / "Nasıl hissettirdi?" / "O an ne vardı içinde?"`,
     `- "Seni anlıyorum" YASAK — göster, söyleme. "Bu gerçekten ağır" → gösterir.`,
-    `- Sessizliği kullan: önemli şey söylendikten sonra hemen üstüne atlama. Önce duyulduğunu hissettir.`,
     `- Enerji eşleme: kullanıcı kısaysa sen kısa, yavaşsa sen yavaş, açılıyorsa sen de aç.`,
     `- Kullanıcının kendi sözcüklerini geri yansıt — kendi terminolojini dayatma.`,
-    `- Aynı seans içinde arda arda iki soru sorma (farklı mesajlarda bile).`,
     `- Psikoeğitim dozla: psikolojik kavram açıklarken 1 cümle, ders verme.`,
     `- Yargısız duruş: ne söylenirse söylensin ton değişmez, ses sakin kalır.`,
   ];

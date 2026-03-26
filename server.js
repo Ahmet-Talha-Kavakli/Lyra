@@ -2878,12 +2878,36 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
+        // [DUYGU:X] tag'ini Vapi TTS'e göndermemek için tüm chunk'ları topla,
+        // tag'i soy, temiz içeriği tek chunk olarak ilet.
+        let fullResponseContent = '';
+        const allChunks = [];
         for await (const chunk of response) {
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            allChunks.push(chunk);
+            const delta = chunk.choices?.[0]?.delta?.content || '';
+            fullResponseContent += delta;
+        }
+
+        // [DUYGU:X] tag'ini baştaki konumundan soy (Vapi okumasın)
+        const cleanedContent = fullResponseContent.replace(/^\s*\[DUYGU:[^\]]+\]\s*/i, '');
+
+        // Temiz içeriği tek bir sentetik chunk olarak ilet
+        if (cleanedContent) {
+            const firstChunk = allChunks[0] || {};
+            const contentChunk = {
+                ...firstChunk,
+                choices: [{ index: 0, delta: { role: 'assistant', content: cleanedContent }, finish_reason: null }],
+            };
+            const finishChunk = {
+                ...firstChunk,
+                choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+            };
+            res.write(`data: ${JSON.stringify(contentChunk)}\n\n`);
+            res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
         }
         res.write('data: [DONE]\n\n');
         res.end();
-        console.log(`[CUSTOM LLM] 🧠 Cevap başarıyla akıtıldı.`);
+        console.log(`[CUSTOM LLM] 🧠 Cevap akıtıldı. Temizlendi: ${fullResponseContent !== cleanedContent ? 'evet' : 'hayır'}`);
         // ─── ARKA PLANDA PROFİL GÜNCELLE ─────────────────────────────────
         if (userId && therapyEngineOutput) {
             const capturedMessages = [...messages];
