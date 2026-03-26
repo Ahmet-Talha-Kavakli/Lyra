@@ -340,8 +340,9 @@
                 uniform vec2 iRes; uniform float iTime; uniform vec2 iMouse;
                 void main(){
                   vec2 c = (2.0*gl_FragCoord.xy - iRes) / min(iRes.x,iRes.y);
-                  float t = iTime*0.06;
+                  float t = iTime*0.03;
                   vec2 m = iMouse/iRes*2.0-1.0;
+                  m *= 0.4;
                   vec2 d = c;
                   for(float i=1.0;i<7.0;i++){
                     d.x+=0.4/i*cos(i*2.0*d.y+t+m.x*3.14);
@@ -363,14 +364,16 @@
                 const uRes=gl.getUniformLocation(prog,'iRes');
                 const uTime=gl.getUniformLocation(prog,'iTime');
                 const uMouse=gl.getUniformLocation(prog,'iMouse');
-                let mx=0,my=0,start=Date.now();
+                let mx=0,my=0,smx=0,smy=0,start=Date.now();
                 canvas.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
                 (function render(){
                     canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight;
+                    smx += (mx - smx) * 0.03;
+                    smy += (my - smy) * 0.03;
                     gl.viewport(0,0,canvas.width,canvas.height);
                     gl.uniform2f(uRes,canvas.width,canvas.height);
                     gl.uniform1f(uTime,(Date.now()-start)/1000);
-                    gl.uniform2f(uMouse,mx,canvas.height-my);
+                    gl.uniform2f(uMouse,smx,canvas.height-smy);
                     gl.drawArrays(gl.TRIANGLES,0,6);
                     requestAnimationFrame(render);
                 })();
