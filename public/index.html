@@ -17,36 +17,11 @@
         }
       }
     </script>
-    <script type="module">
-      // Auth guard — giriş yapılmamışsa auth.html'e yönlendir
-      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-      const supabase = createClient(
-        'https://gxbjqujmcklysbocsoad.supabase.co',
-        'sb_publishable_64FHvp6yfwpcx8chsIO8JQ_aV6MLHNj'
-      );
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        window.location.href = '/auth.html';
-      }
-
-      // Token'ı global erişim için sakla
-      window.__supabase = supabase;
-      window.__getAuthHeader = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
-      };
-
-      // Token expire olunca auth.html'e yönlendir
-      supabase.auth.onAuthStateChange((event) => {
-        if (event === 'SIGNED_OUT') window.location.href = '/auth.html';
-      });
-    </script>
 </head>
 
 <body>
     <!-- ── GİRİŞ EKRANI ── -->
-    <div id="login-overlay" style="display:none">
+    <div id="login-overlay">
         <div class="login-box">
             <h1 class="login-logo">LYRA</h1>
             <p class="login-subtitle">Kozmik Rehberinize Bağlanın</p>
@@ -250,16 +225,21 @@
         let supabaseToken = null;
 
         async function initAuth() {
-            // Auth guard zaten üstte yaptı — sadece session'dan token al
-            supabaseClient = window.__supabase;
+            // Config'i backend'den al
+            const cfg = await fetch('/config').then(r => r.json());
+            supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+            // Mevcut oturumu kontrol et
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
                 persistentUserId = session.user.id;
                 supabaseToken = session.access_token;
                 hideLoginOverlay();
             } else {
-                window.location.href = '/auth.html';
+                showLoginOverlay();
             }
+
+            setupLoginHandlers();
         }
 
         function showLoginOverlay() {
@@ -788,7 +768,7 @@
         // Lyra karakter tanımı
         const character = {
             name: "Lyra",
-            model: "avatar.glb",
+            model: "lyra_mascot.glb",
             animMap: {
                 'Yes':'Yes', 'No':'No', 'Wave':'Wave',
                 'Jump':'Jump', 'Dance':'Dance',
@@ -871,7 +851,7 @@
                 // İlk seans kontrolü — memory'den flag al
                 if (persistentUserId) {
                     try {
-                        const memResp = await fetch(`/memory?userId=${persistentUserId}`, { headers: supabaseToken ? { 'Authorization': `Bearer ${supabaseToken}` } : {} });
+                        const memResp = await fetch(`/memory?userId=${persistentUserId}`);
                         const memData = await memResp.json();
                         if (memData.ilk_seans === true) {
                             ilkSeansFlag = true;
