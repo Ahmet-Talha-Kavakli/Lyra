@@ -29,12 +29,14 @@
 
             <!-- Tab seçici -->
             <div class="login-tabs" id="login-tabs">
+                <div class="tab-slider" id="tab-slider"></div>
                 <button class="login-tab active" id="tab-signin">Giriş Yap</button>
                 <button class="login-tab" id="tab-signup">Kayıt Ol</button>
             </div>
 
+            <div class="panels-wrap">
             <!-- ── GİRİŞ PANEL ── -->
-            <div id="panel-signin">
+            <div id="panel-signin" class="panel-in">
                 <div class="login-field">
                     <input class="login-input" type="email" id="signin-email" placeholder=" " autocomplete="email">
                     <label class="login-label">E-posta</label>
@@ -53,7 +55,7 @@
             </div>
 
             <!-- ── KAYIT PANEL ── -->
-            <div id="panel-signup" style="display:none">
+            <div id="panel-signup" class="panel-out">
                 <div class="login-field">
                     <input class="login-input" type="email" id="signup-email" placeholder=" " autocomplete="email">
                     <label class="login-label">E-posta</label>
@@ -92,7 +94,7 @@
             </div>
 
             <!-- ── ŞİFREMİ UNUTTUM PANEL ── -->
-            <div id="panel-forgot" style="display:none">
+            <div id="panel-forgot" class="panel-out">
                 <p class="login-forgot-info">E-posta adresini gir, şifre sıfırlama bağlantısı gönderelim.</p>
                 <div class="login-field">
                     <input class="login-input" type="email" id="forgot-email" placeholder=" " autocomplete="email">
@@ -105,6 +107,7 @@
                 </button>
                 <button type="button" class="login-forgot" id="btn-back-signin">← Giriş yap</button>
             </div>
+            </div><!-- /panels-wrap -->
 
         </div>
     </div>
@@ -379,13 +382,41 @@
                 })();
             })();
 
-            // Panel göster/gizle
+            // Panel göster/gizle — fade + scale animasyonu
+            const tabsEl = document.getElementById('login-tabs');
+            const panelsWrap = document.querySelector('.panels-wrap');
             function showPanel(name) {
-                document.getElementById('panel-signin').style.display = name === 'signin' ? '' : 'none';
-                document.getElementById('panel-signup').style.display = name === 'signup' ? '' : 'none';
-                document.getElementById('panel-forgot').style.display = name === 'forgot' ? '' : 'none';
-                document.getElementById('login-tabs').style.display = name === 'forgot' ? 'none' : '';
-                if (name !== 'forgot') {
+                // Layout jump önle — yüksekliği geçiş süresince kilitle
+                panelsWrap.style.height = panelsWrap.offsetHeight + 'px';
+
+                ['signin','signup','forgot'].forEach(p => {
+                    const el = document.getElementById('panel-' + p);
+                    if (p === name) {
+                        el.classList.remove('panel-out');
+                        el.classList.add('panel-in');
+                    } else {
+                        el.classList.remove('panel-in');
+                        el.classList.add('panel-out');
+                    }
+                });
+
+                // Yükseklik kilidini bırak
+                setTimeout(() => { panelsWrap.style.height = ''; }, 320);
+
+                // tab slider
+                if (name === 'forgot') {
+                    tabsEl.style.opacity = '0';
+                    tabsEl.style.pointerEvents = 'none';
+                    tabsEl.style.transition = 'opacity 0.2s ease';
+                } else {
+                    tabsEl.style.opacity = '1';
+                    tabsEl.style.pointerEvents = '';
+                    tabsEl.style.transition = 'opacity 0.2s ease';
+                    if (name === 'signup') {
+                        tabsEl.classList.add('tab-right');
+                    } else {
+                        tabsEl.classList.remove('tab-right');
+                    }
                     document.getElementById('tab-signin').classList.toggle('active', name === 'signin');
                     document.getElementById('tab-signup').classList.toggle('active', name === 'signup');
                 }
