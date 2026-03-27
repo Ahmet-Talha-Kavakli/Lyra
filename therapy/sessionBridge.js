@@ -13,7 +13,7 @@ export async function getRecentSessionSummaries(userId, supabase, limit = 3) {
     try {
         const { data, error } = await supabase
             .from('session_records')
-            .select('session_id, created_at, summary, topics, emotional_end_score, crisis_flag')
+            .select('session_id, created_at, summary, topics, emotional_end_score, crisis_flag, next_session_note, dependency_signals, reflection')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(limit);
@@ -50,6 +50,33 @@ export async function buildSessionBridgeContext(userId, supabase) {
         }
 
         lines.push('- ' + parts.join(' | '));
+    }
+
+    // Reflection notu — sadece en son seanstan, varsa
+    const latestSession = sessions[0];
+    if (latestSession) {
+        const ref = latestSession.reflection || {};
+        const hasReflection = (ref.what_worked?.length > 0) || (ref.what_felt_sensitive?.length > 0) || latestSession.next_session_note;
+
+        if (hasReflection) {
+            const reflLines = ['\n## GEÇMİŞ SEANSTAN ÖĞRENDIKLERIN (GİZLİ — SESLE AKTARMA)\nBu notlar sana bağlam sunmak için — talimat değil. Sezgini kullan.'];
+            if (ref.what_worked?.length > 0) {
+                reflLines.push(`İşe yarayan: ${ref.what_worked.join('; ')}`);
+            }
+            if (ref.what_felt_sensitive?.length > 0) {
+                reflLines.push(`Hassas hissettiren: ${ref.what_felt_sensitive.join('; ')}`);
+            }
+            if (latestSession.next_session_note) {
+                reflLines.push(`Bu seans için not: ${latestSession.next_session_note}`);
+            }
+            lines.push(reflLines.join('\n'));
+        }
+
+        // Dependency guardrail — bağımlılık eşiği aşıldıysa
+        const depSignals = latestSession.dependency_signals;
+        if (depSignals?.threshold_exceeded) {
+            lines.push(`\n[BAĞLAM — SESLE AKTARMA]: Bu kullanıcı bu hafta sık bağlandı${depSignals.social_isolation_mentioned ? ' ve yalnızlık sinyalleri var' : ''}. Gerçek hayattaki bağlantıları nazikçe güçlendir — yargılamadan, bağımlılık değil köprü.`);
+        }
     }
 
     lines.push(`
