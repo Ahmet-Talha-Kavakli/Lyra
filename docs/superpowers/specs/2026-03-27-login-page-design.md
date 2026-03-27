@@ -87,7 +87,7 @@ Form kartının altında ince ayırıcı çizgi (`────── veya ──
 |----------|------|----------|
 | Google | SVG G logosu | Tıklanınca toast: "Yakında aktif olacak" |
 | Facebook | f | Tıklanınca toast: "Yakında aktif olacak" |
-| Apple |  | Tıklanınca toast: "Yakında aktif olacak" |
+| Apple | SVG Apple logosu (inline SVG) | Tıklanınca toast: "Yakında aktif olacak" |
 
 Butonlar yuvarlak, border `rgba(200,169,110,0.25)`, hover'da altın glow.
 
@@ -126,23 +126,60 @@ Psikolog musunuz? Profesyonel girişi için tıklayın
 | Dosya | Değişiklik |
 |-------|-----------|
 | `public/login.html` | **Yeni** — tam login/register sayfası |
-| `public/index.html` | Login overlay ve ilgili JS kaldırılır; sayfa başında session kontrolü eklenir (session yoksa `/login.html`'e yönlendir) |
-| `server.js` | `/login` route'u eklenir (opsiyonel — static serve yeterliyse gerek yok) |
+| `public/index.html` | Login overlay ve ilgili JS kaldırılır; sayfa başında session kontrolü eklenir (session yoksa `/login.html`'e yönlendir); `body` `visibility:hidden` başlar |
+| `server.js` | `POST /auth/check-email` endpoint'i eklenir |
+
+### Hesap varlığı kontrolü
+
+Supabase SDK'da "bu e-posta kayıtlı mı?" diye soran direkt bir API yok. Güvenli yaklaşım:
+
+`server.js`'e yeni bir endpoint eklenir:
+```
+POST /auth/check-email   { email }  →  { exists: true/false }
+```
+
+Bu endpoint sunucu tarafında Supabase admin client ile çalışır ve hesap enumerasyonu riskini istemciden gizler. İstemci bu sonuca göre Adım 2a veya 2b'yi gösterir.
+
+### Kayıt alanları
+
+Adım 2b'de şu alanlar gösterilir: **Ad Soyad** (zorunlu), **Şifre**, **Şifre Tekrar**.
+- Ad Soyad Supabase `user_metadata.full_name` alanına yazılır (`signUp` sırasında `options.data` ile)
+- Telefon alanı bu sayfada **kaldırılıyor** — mevcut `index.html`'deki opsiyonel telefon alanı yeni tasarıma taşınmıyor
 
 ### Supabase entegrasyonu
 
 `login.html` içinde:
 1. `/config` endpoint'inden Supabase credentials alınır (mevcut pattern)
-2. Supabase JS SDK ile `signInWithPassword` veya `signUp` çağrısı
-3. Başarılı giriş → `window.location.href = '/'`
+2. E-posta kontrolü için `POST /auth/check-email` çağrısı
+3. Hesap varsa: `supabase.auth.signInWithPassword({ email, password })`
+4. Hesap yoksa: `supabase.auth.signUp({ email, password, options: { data: { full_name } } })`
+5. Başarılı giriş → `window.location.href = '/'`
+
+### Şifremi Unuttum
+
+"Şifremi Unuttum" linki `supabase.auth.resetPasswordForEmail(email)` çağırır — Supabase'in kendi e-posta akışını kullanır, ayrıca backend gerekmez. Link tıklanınca:
+1. `resetPasswordForEmail` çağrısı yapılır
+2. Başarılı olursa: "Şifre sıfırlama e-postası gönderildi" toast'u gösterilir
+3. Hatalıysa: hata mesajı gösterilir
 
 ### Session kontrolü (`index.html`)
 
-`index.html` başında:
+Flash önlemek için `index.html` başında `body` gizli başlatılır, session kontrolü tamamlanınca ya yönlendirme yapılır ya da body gösterilir:
+
 ```js
+// body başlangıçta: style="visibility:hidden"
 const { data: { session } } = await supabaseClient.auth.getSession();
-if (!session) window.location.href = '/login.html';
+if (!session) {
+    window.location.href = '/login.html';
+} else {
+    document.body.style.visibility = 'visible';
+    // ... uygulama başlatma
+}
 ```
+
+### CSS stratejisi
+
+`login.html` `lyra.css`'i direkt import eder. `lyra.css` design token'larını (CSS variables, keyframe animasyonlar) içeriyor; `index.html`'e özel selectorlar olsa da bunlar login sayfasında sessizce eşleşmez ve zarar vermez. Ayrı `login.css` gerekmez.
 
 ---
 
@@ -150,7 +187,7 @@ if (!session) window.location.href = '/login.html';
 
 - Google/Facebook/Apple OAuth gerçek entegrasyonu (ileride ayrı spec)
 - Psikolog dashboard ve gerçek psikolog girişi (ileride ayrı spec)
-- Şifre sıfırlama e-posta akışı (UI var, backend yok)
+- Şifre sıfırlama sonrası yeni şifre belirleme sayfası (Supabase redirect URL'i için ayrı sayfa gerekir — ileride)
 - Mobil uygulama
 
 ---
