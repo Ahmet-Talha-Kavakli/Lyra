@@ -960,6 +960,18 @@ const buildLayer1Rules = (sonAnaliz, aktifSinyaller, userId, transcriptData) => 
         if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'zarar_sinyali' }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
     }
 
+    // ── FİZİKSEL ZARAR TESPİTİ ──────────────────────────────
+    const fizZarar = sonAnaliz.fiziksel_zarar;
+    if (fizZarar?.fiziksel_zarar_skor >= 3) {
+        const bolge = fizZarar.zarar_bolge && fizZarar.zarar_bolge !== 'yok' ? ` (${fizZarar.zarar_bolge})` : '';
+        const belirtiler = [fizZarar.morluk && 'morluk', fizZarar.yara_kesi && 'yara', fizZarar.sislik && 'şişlik', fizZarar.kan_izi && 'kan izi'].filter(Boolean).join(', ');
+        kurallar.push(`🚨 FİZİKSEL ZARAR: Kullanıcının yüzünde/vücudunda ${belirtiler}${bolge} görüyorum. HEMEN doğal bir şekilde sor: "Seni görebiliyorum — iyi misin? Bir şey oldu mu?" Suçlama yok, baskı yok. Güvende olmadığını düşünüyorsan 112'yi söyle.`);
+        if (userId) supabase.from('memories').upsert({ user_id: userId, kriz_log: { tarih: new Date().toISOString(), tip: 'fiziksel_zarar', belirtiler, bolge }, updated_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    } else if (fizZarar?.fiziksel_zarar_skor === 2) {
+        const bolge = fizZarar.zarar_bolge && fizZarar.zarar_bolge !== 'yok' ? ` (${fizZarar.zarar_bolge})` : '';
+        kurallar.push(`⚠️ ZARAR ŞÜPHESİ: Yüzünde bir şeyler dikkatimi çekti${bolge}. Uygun bir anda nazikçe sor: "İyi misin? Bir şey oldu mu?" Zorlamadan, baskısız.`);
+    }
+
     // ── ORTAM OLAYI ────────────────────────────────────────
     if (ortam?.arkaplan_kisi === true && ortam?.ani_degisim === true)
         kurallar.push('Arka planda biri geldi, yüzün değişti. "Az önce bir şey mi oldu?" diye sor.');
@@ -3519,13 +3531,23 @@ Her nesne: ad, kategori, risk ("yuksek|orta|davranissal|dusuk|yok"), zarar_sinya
   Orta risk: kalem, tırnak makası, pergel
   Davranışsal: sigara, alkol, ilaç, yiyecek, ayna
 
+── FİZİKSEL ZARAR TESPİTİ ──
+Kullanıcının yüzünde ve görünen vücut bölgelerinde dikkatlice bak:
+- morluk: Mor, mavi, sarı, yeşilimsi renk değişimi (darp/darbe izi) → true/false
+- yara_kesi: Görünür yara, sıyrık, kesi izi → true/false
+- sislik: Yüzde veya vücutta anormal şişlik (göz altı, dudak, yanak) → true/false
+- kan_izi: Aktif kanama veya kan izi → true/false
+- fiziksel_zarar_skor: 0=yok | 1=şüpheli (ışık/gölge olabilir) | 2=muhtemel (belirgin renk/şekil) | 3=açık (birden fazla belirti)
+- zarar_bolge: Tespit edilen bölge → "yüz|göz_altı|dudak|alın|boyun|kol|belirsiz|yok"
+NOT: Makyaj, kızarıklık, yorgunluk izi ile darp izini karıştırma. Şüphede 1 ver, açıkça görülmeden 2+ verme.
+
 ── GÜVEN SKORU ──
 - Net görüntü → 75-95 | Bulanık/karanlık ama yüz var → 50-74 | Yüz yok → 0
 
 ${buildLandmarkContext(landmarks)}
 
 Yalnızca geçerli JSON döndür:
-{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"vucut_dili":{"omuz_durusu":"öne_eğik|dik|geri_yaslanmış|gergin|çökmüş","kol_pozisyonu":"çapraz_kavuşturulmuş|açık|dizde|yüzde|belirsiz","govde_yonelimi":"kameraya_dönük|yana_dönük|geri_çekilmiş","genel_gerginlik":"yüksek|orta|düşük","nefes_hizli":false,"kendine_dokunma":"saç|yüz|kol|boyun|yok","tekrarli_hareket":false,"kacis_davranisi":false},"duygu_uyumu":{"yuz_beden":"uyumlu|çelişkili|maskelenmiş|belirsiz","ani_degisim":false,"degisim_tipi":"belirsiz"},"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","mekan_detay":"yatak_odası|salon|mutfak|banyo|ofis|araba|dışarı|belirsiz","aydinlik":"karanlık|loş|normal|parlak","mahremiyet_riski":false,"stres_ortami":false,"nesneler":[{"ad":"yok","kategori":"yok","risk":"yok","zarar_sinyali":false,"emin":true}],"tehlike_var":false,"el_aktivitesi":"boşta","yakin_kisiler":[]},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0}`
+{"duygu":"mutlu|üzgün|endişeli|korkmuş|sakin|şaşırmış|sinirli|yorgun","yogunluk":"düşük|orta|yüksek","enerji":"canlı|normal|yorgun","jestler":{"kas_catma":false,"goz_temasi":"yüksek|normal|düşük","goz_kirpma_hizi":"hızlı|normal|yavaş","gulümseme_tipi":"gerçek|sosyal|yok","cene_gerginligi":"yüksek|orta|düşük","dudak_sikistirma":false,"kasin_pozisyonu":"yukari|normal|asagi|catan","goz_kapagi_agirlik":"normal|hafif_agir|belirgin_agir"},"genel_vucut_dili":"açık|nötr|kapalı","yuz_soluklugu":false,"vucut_dili":{"omuz_durusu":"öne_eğik|dik|geri_yaslanmış|gergin|çökmüş","kol_pozisyonu":"çapraz_kavuşturulmuş|açık|dizde|yüzde|belirsiz","govde_yonelimi":"kameraya_dönük|yana_dönük|geri_çekilmiş","genel_gerginlik":"yüksek|orta|düşük","nefes_hizli":false,"kendine_dokunma":"saç|yüz|kol|boyun|yok","tekrarli_hareket":false,"kacis_davranisi":false},"duygu_uyumu":{"yuz_beden":"uyumlu|çelişkili|maskelenmiş|belirsiz","ani_degisim":false,"degisim_tipi":"belirsiz"},"ortam":{"mekan":"ev|ofis|dışarı|araba|bilinmiyor","mekan_detay":"yatak_odası|salon|mutfak|banyo|ofis|araba|dışarı|belirsiz","aydinlik":"karanlık|loş|normal|parlak","mahremiyet_riski":false,"stres_ortami":false,"nesneler":[{"ad":"yok","kategori":"yok","risk":"yok","zarar_sinyali":false,"emin":true}],"tehlike_var":false,"el_aktivitesi":"boşta","yakin_kisiler":[]},"gorunum_ozeti":"kısa bir cümle","guven":85,"yuz_var":true,"timestamp":0,"fiziksel_zarar":{"morluk":false,"yara_kesi":false,"sislik":false,"kan_izi":false,"fiziksel_zarar_skor":0,"zarar_bolge":"yok"}}`
                     },
                     {
                         type: 'image_url',
