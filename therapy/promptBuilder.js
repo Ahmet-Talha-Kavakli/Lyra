@@ -135,6 +135,7 @@ function buildEmotionContext(currentEmotion, emotionResult) {
  */
 function buildSignalSection(signal, rhythmState) {
   const SIGNAL_INSTRUCTIONS = {
+    WARMUP:         'Selamlama veya küçük konuşma. İNSAN GİBİ karşıla — terapötik derinliğe ATLAMADAN. "Nasılsın?" sorusuna "İyiyim teşekkürler, sen?" de. Sohbet et. Gülümse. Terapi için acele etme — o kapı zamanı gelince açılır.',
     VALIDATE:       'Duyguyu doğrula, sonra nazikçe bir kapı aç. Yapı: [doğrulama] + [kısa bir soru]. Örnek: "Bu gerçekten çok ağır bir şey. Sana ne olduğunu biraz anlatır mısın?" Tek başına "Bu çok ağır" deyip bırakma — konuşmayı devam ettir.',
     REFLECT:        'Söyleneni kendi kelimelerinle yansıt, sonra bir adım daha. Yapı: [yansıtma] + [derinleştirici soru]. Örnek: "Yani hem üzgünsün hem de ne yapacağını bilmiyorsun — bu belirsizlik nasıl hissettiriyor?"',
     EXPLORE_DEEP:   'Tek bir derinleştirici soru sor. Kısa, açık uçlu. "Bu sana ne hissettirdi?" / "O an ne oldu içinde?" tarzı. Başka soru yok.',

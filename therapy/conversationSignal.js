@@ -103,6 +103,11 @@ export function decideConversationSignal({
     const { primary, intensity } = emotionResult || {};
     const content = (messageContent || '').toLowerCase();
 
+    // 0. Selamlama / küçük konuşma — WARMUP (terapötik derinliğe atlamadan önce insan gibi karşıla)
+    const greetingPhrases = ['merhaba', 'selam', 'hey', 'naber', 'nasılsın', 'nasıl gidiyor', 'iyi misin', 'günaydın', 'iyi akşamlar', 'iyi geceler'];
+    const isGreeting = greetingPhrases.some(w => content.includes(w)) && (messageLength || 0) < 60 && messageCount <= 3;
+    if (isGreeting) return 'WARMUP';
+
     // 1. Kriz — PRESENCE
     const crisisWords = ['intihar', 'ölmek istiyorum', 'kendime zarar'];
     if (crisisWords.some(w => content.includes(w))) return 'PRESENCE';
