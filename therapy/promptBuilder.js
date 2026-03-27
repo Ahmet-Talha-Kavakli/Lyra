@@ -2,6 +2,7 @@
 // Dinamik sistem promptu oluşturucu — profil + mod + teknik + sinyal + senaryo → kişiselleştirilmiş prompt
 
 import { getScenarioContext } from './deepScenarios.js';
+import { buildDynamicOpener } from './sessionBridge.js';
 
 /**
  * Kullanıcı profili bölümünü oluşturur.
@@ -215,7 +216,7 @@ function buildScenarioSection(activeScenario) {
   return getScenarioContext(activeScenario);
 }
 
-export function buildSystemPrompt(profile, engineOutput, currentEmotion = 'sakin', signal, rhythmState, emotionResult, activeScenario) {
+export function buildSystemPrompt(profile, engineOutput, currentEmotion = 'sakin', signal, rhythmState, emotionResult, activeScenario, sessionOpener) {
   const { mode, modeInstruction, techniqueHints } = engineOutput || {};
 
   // Section 1 — Kimlik
@@ -298,6 +299,7 @@ DOĞRU örnek: "[DUYGU:sakin] Merhaba, nasılsın?"`;
   return [
     identity,
     profileSection,
+    sessionOpener || '',
     emotionContext,
     scenarioSection,
     modeSection,
