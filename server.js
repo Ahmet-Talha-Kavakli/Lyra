@@ -15,6 +15,7 @@ import { extractProfileUpdates, analyzeSession } from './profile/profileExtracto
 import { buildSystemPrompt } from './therapy/promptBuilder.js';
 import { runTherapyEngine } from './therapy/therapyEngine.js';
 import { saveSessionRecord, getTechniqueEffectiveness, updateTechniqueEffectiveness } from './progress/sessionAnalyzer.js';
+import { runPostSessionReflection } from './therapy/reflectionEngine.js';
 import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTracker.js';
 import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
 import { buildSessionContext } from './therapy/contextTracker.js';
@@ -2458,9 +2459,15 @@ app.post('/vapi-webhook', async (req, res) => {
             console.log(`[BRAIN ASCENSION] ✅ Hafıza mühürlendi! userId: ${userId}`);
             console.log(`[BRAIN ASCENSION] Özet: ${summary.substring(0, 100)}...`);
 
+            // Reflection için paylaşılan değişkenler — inner try dışında tanımlanıyor
+            let _reflectionProfile = null;
+            let _reflectionSessionId = message.call?.id || null;
+            let _reflectionAnalysis = null;
+
             // Psikolojik profil güncelle (yeni sistem)
             try {
                 const currentProfile = await getProfile(userId);
+                _reflectionProfile = currentProfile;
                 const profileUpdates = await extractProfileUpdates(transcript, currentProfile);
                 if (profileUpdates && Object.keys(profileUpdates).length > 0) {
                     await updateProfile(userId, profileUpdates);
@@ -2468,8 +2475,10 @@ app.post('/vapi-webhook', async (req, res) => {
                 }
                 // Seans analizi & kayıt
                 const sessionAnalysis = await analyzeSession(transcript, currentProfile);
+                _reflectionAnalysis = sessionAnalysis;
                 if (sessionAnalysis && userId) {
                     const sessionId = message.call?.id || `vapi_${userId}_${Date.now()}`;
+                    _reflectionSessionId = sessionId;
                     await saveSessionRecord(userId, sessionId, sessionAnalysis, [], null);
                     await updateWeeklyMetrics(userId, sessionAnalysis);
                     await incrementSessionCount(userId);
@@ -2478,6 +2487,18 @@ app.post('/vapi-webhook', async (req, res) => {
             } catch (profileErr) {
                 console.warn('[VAPI] Profil güncelleme hatası:', profileErr.message);
             }
+
+            // Post-session reflection — tamamen izole, ana akışı etkilemez
+            await runPostSessionReflection({
+                transcript,
+                sessionId: _reflectionSessionId,
+                userId,
+                sessionAnalysis: _reflectionAnalysis,
+                profile: _reflectionProfile,
+                openai,
+                supabase,
+                durationSeconds: message.durationSeconds ?? message.call?.durationSeconds ?? null,
+            });
 
             // Eski sistem uyumluluğu
             const emotionStateForProfile = userEmotions.get(userId);
