@@ -1,0 +1,1101 @@
+# Login Sayfası Implementation Plan
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Lyra login/register deneyimini ayrı bir `public/login.html` sayfasına taşı; akıllı tek form (e-posta → hesap var/yok → form açılır), sosyal giriş UI, psikolog girişi linki.
+
+**Architecture:** Yeni `public/login.html` standalone sayfası mevcut `lyra.css` ve Supabase SDK'yı kullanır. `server.js`'e `POST /auth/check-email` endpoint'i eklenir. `index.html` login overlay'ini kaybeder, başında session kontrolü ile `login.html`'e yönlendirir.
+
+**Tech Stack:** Vanilla JS (ES modules yok — UMD Supabase), Supabase JS SDK v2, Express 5, `lyra.css` (dark gold design tokens), WebGL (smokey canvas efekti mevcut index.html'den kopyalanır)
+
+---
+
+## Chunk 1: Backend — `/auth/check-email` endpoint
+
+### Task 1: `POST /auth/check-email` endpoint'i ekle
+
+**Files:**
+- Modify: `server.js`
+
+- [ ] **Step 1: `server.js`'de mevcut service-role client'ı bul**
+
+Dosyada `supabase` değişkeninin tanımlandığı satırı bul (~231). Admin yetkisi burada tanımlı: `createClient(url, SUPABASE_SERVICE_KEY)`. Bu client `app.post('/auth/check-email', ...)` içinde kullanılacak.
+
+- [ ] **Step 2: Endpoint'i ekle**
+
+`server.js`'de diğer auth route'larının yanına (ya da rate limiter bloğunun altına) şunu ekle:
+
+```js
+app.post('/auth/check-email', async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'email required' });
+    }
+    try {
+        const { data, error } = await supabase.auth.admin.getUserByEmail(email.trim().toLowerCase());
+        if (error && error.message && error.message.toLowerCase().includes('not found')) {
+            return res.json({ exists: false });
+        }
+        if (error) {
+            return res.status(500).json({ error: 'lookup failed' });
+        }
+        return res.json({ exists: !!data?.user });
+    } catch (err) {
+        return res.status(500).json({ error: 'lookup failed' });
+    }
+});
+```
+
+- [ ] **Step 3: Manuel test — hesap var**
+
+Sunucuyu başlat (`node server.js`), Supabase'de var olan bir e-posta ile test et:
+
+```bash
+curl -X POST http://localhost:3000/auth/check-email \
+  -H "Content-Type: application/json" \
+  -d '{"email":"var-olan@email.com"}'
+# Beklenen: {"exists":true}
+```
+
+- [ ] **Step 4: Manuel test — hesap yok**
+
+```bash
+curl -X POST http://localhost:3000/auth/check-email \
+  -H "Content-Type: application/json" \
+  -d '{"email":"yokboylesibiremail12345@lyra.ai"}'
+# Beklenen: {"exists":false}
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add server.js
+git commit -m "feat: POST /auth/check-email — admin getUserByEmail ile e-posta varlığı kontrolü"
+```
+
+---
+
+## Chunk 2: `public/login.html` — İskelet ve Görsel
+
+### Task 2: `login.html` temel yapısı
+
+**Files:**
+- Create: `public/login.html`
+
+- [ ] **Step 1: Dosyayı oluştur**
+
+`public/login.html` oluştur. Tam içerik:
+
+```html
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lyra — Giriş</title>
+    <link rel="stylesheet" href="/css/lyra.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <style>
+        /* ── Login sayfası özel stiller ── */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg, #0a0806);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+        }
+
+        /* WebGL canvas arka plan */
+        #login-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Ana kart */
+        .login-card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            margin: 0 20px;
+            background: rgba(14, 10, 6, 0.72);
+            border: 1px solid rgba(200, 169, 110, 0.18);
+            border-radius: 24px;
+            padding: 40px 36px 32px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(200,169,110,0.08);
+            animation: fadeUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        /* Logo */
+        .login-logo-wrap {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .login-logo-icon {
+            font-size: 28px;
+            color: var(--primary, #c8a96e);
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .login-logo-text {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: 6px;
+            color: var(--primary, #c8a96e);
+            text-transform: uppercase;
+        }
+
+        .login-subtitle {
+            font-size: 12px;
+            color: rgba(200, 169, 110, 0.5);
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        /* Form alanları */
+        .login-field {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .login-input {
+            width: 100%;
+            background: rgba(200, 169, 110, 0.05);
+            border: 1px solid rgba(200, 169, 110, 0.2);
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: rgba(255,255,255,0.9);
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .login-input:focus {
+            border-color: rgba(200, 169, 110, 0.5);
+            box-shadow: 0 0 0 3px rgba(200, 169, 110, 0.08);
+        }
+
+        .login-input::placeholder {
+            color: rgba(200, 169, 110, 0.35);
+        }
+
+        .login-label {
+            position: absolute;
+            top: -9px;
+            left: 12px;
+            background: rgba(14, 10, 6, 0.9);
+            padding: 0 6px;
+            font-size: 10px;
+            letter-spacing: 1.5px;
+            color: rgba(200, 169, 110, 0.6);
+            text-transform: uppercase;
+            border-radius: 4px;
+        }
+
+        /* Şifre toggle */
+        .pwd-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: rgba(200, 169, 110, 0.5);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        /* Gizlenebilir alanlar */
+        .form-extra {
+            display: none;
+        }
+
+        .form-extra.visible {
+            display: block;
+            animation: fadeUp 0.3s ease both;
+        }
+
+        /* Şifre gücü */
+        .pwd-strength-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .pwd-strength-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(200, 169, 110, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .pwd-strength-bar div {
+            height: 100%;
+            width: 0;
+            border-radius: 2px;
+            transition: width 0.3s, background 0.3s;
+        }
+
+        #pwd-strength-label {
+            font-size: 11px;
+            color: rgba(200, 169, 110, 0.5);
+            white-space: nowrap;
+        }
+
+        .pwd-criteria {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 10px;
+            margin-bottom: 10px;
+        }
+
+        .pwd-criteria li {
+            font-size: 10px;
+            color: rgba(200, 169, 110, 0.35);
+            transition: color 0.2s;
+        }
+
+        .pwd-criteria li::before { content: '○ '; }
+
+        .pwd-criteria li.met {
+            color: #70c896;
+        }
+
+        .pwd-criteria li.met::before { content: '● '; }
+
+        /* Güçlü şifre öner */
+        .login-suggest-btn {
+            background: rgba(200, 169, 110, 0.08);
+            border: 1px solid rgba(200, 169, 110, 0.2);
+            border-radius: 8px;
+            color: rgba(200, 169, 110, 0.7);
+            font-size: 12px;
+            padding: 6px 12px;
+            cursor: pointer;
+            margin-bottom: 12px;
+            transition: background 0.2s, color 0.2s;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .login-suggest-btn:hover {
+            background: rgba(200, 169, 110, 0.14);
+            color: rgba(200, 169, 110, 0.9);
+        }
+
+        /* Şifremi unuttum */
+        .login-forgot {
+            background: none;
+            border: none;
+            color: rgba(200, 169, 110, 0.5);
+            font-size: 12px;
+            cursor: pointer;
+            padding: 0;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            font-family: 'Outfit', sans-serif;
+            display: block;
+            margin-bottom: 16px;
+        }
+
+        .login-forgot:hover { color: rgba(200, 169, 110, 0.8); }
+
+        /* Ana buton */
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #c8a96e, #e8c99a);
+            border: none;
+            border-radius: 12px;
+            color: #0a0806;
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: opacity 0.2s, transform 0.1s;
+            margin-bottom: 8px;
+        }
+
+        .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .login-btn:active { transform: translateY(0); }
+        .login-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        /* Spinner (buton içi) */
+        .btn-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(10, 8, 6, 0.3);
+            border-top-color: #0a0806;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+        }
+
+        .login-btn.loading .btn-spinner { display: block; }
+        .login-btn.loading .btn-text { display: none; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Hata mesajı */
+        .login-error {
+            font-size: 12px;
+            color: var(--danger, #d47777);
+            min-height: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .login-error.success { color: var(--success, #70c896); }
+
+        /* Shake animasyonu */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            15%       { transform: translateX(-8px); }
+            30%       { transform: translateX(7px); }
+            45%       { transform: translateX(-6px); }
+            60%       { transform: translateX(5px); }
+            75%       { transform: translateX(-3px); }
+            90%       { transform: translateX(2px); }
+        }
+
+        .shake { animation: shake 0.4s ease; }
+
+        /* Ayırıcı */
+        .login-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0 16px;
+            color: rgba(200, 169, 110, 0.3);
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+
+        .login-divider::before,
+        .login-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(200, 169, 110, 0.15);
+        }
+
+        /* Sosyal giriş butonları */
+        .social-btns {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .social-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(200, 169, 110, 0.25);
+            background: rgba(200, 169, 110, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+            padding: 0;
+        }
+
+        .social-btn:hover {
+            border-color: rgba(200, 169, 110, 0.5);
+            background: rgba(200, 169, 110, 0.08);
+            box-shadow: 0 0 12px rgba(200, 169, 110, 0.12);
+        }
+
+        .social-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Psikolog linki */
+        .psikolog-link {
+            text-align: center;
+            font-size: 11px;
+            color: rgba(200, 169, 110, 0.4);
+            margin-top: 4px;
+        }
+
+        .psikolog-link a {
+            color: rgba(200, 169, 110, 0.5);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
+        .psikolog-link a:hover { color: rgba(200, 169, 110, 0.8); }
+
+        /* Toast */
+        .login-toast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(14, 10, 6, 0.95);
+            border: 1px solid rgba(200, 169, 110, 0.3);
+            border-radius: 12px;
+            padding: 10px 20px;
+            color: rgba(200, 169, 110, 0.9);
+            font-size: 13px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .login-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .login-card { padding: 32px 24px 24px; }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <canvas id="login-canvas"></canvas>
+
+    <div class="login-card" id="login-card">
+        <!-- Logo -->
+        <div class="login-logo-wrap">
+            <span class="login-logo-icon">✦</span>
+            <div class="login-logo-text">Lyra</div>
+            <div class="login-subtitle">Kozmik Rehberinize Bağlanın</div>
+        </div>
+
+        <!-- Adım 1: E-posta -->
+        <div id="step-email">
+            <div class="login-field">
+                <input class="login-input" type="email" id="input-email" placeholder="ornek@email.com" autocomplete="email">
+                <label class="login-label">E-Posta</label>
+            </div>
+            <div class="login-error" id="email-error"></div>
+            <button class="login-btn" id="btn-devam">
+                <div class="btn-spinner"></div>
+                <span class="btn-text">Devam Et</span>
+            </button>
+        </div>
+
+        <!-- Adım 2a: Giriş modu (hesap varsa) -->
+        <div class="form-extra" id="step-signin">
+            <div class="login-field">
+                <input class="login-input" type="password" id="input-signin-pwd" placeholder="••••••••" autocomplete="current-password">
+                <label class="login-label">Şifre</label>
+                <button type="button" class="pwd-toggle" id="toggle-signin-pwd">👁</button>
+            </div>
+            <button type="button" class="login-forgot" id="btn-forgot">Şifremi Unuttum</button>
+            <div class="login-error" id="signin-error"></div>
+            <button class="login-btn" id="btn-giris">
+                <div class="btn-spinner"></div>
+                <span class="btn-text">Giriş Yap</span>
+            </button>
+            <button type="button" class="login-forgot" id="btn-back-from-signin" style="text-align:center;width:100%;margin-top:4px;">← E-postayı değiştir</button>
+        </div>
+
+        <!-- Adım 2b: Kayıt modu (hesap yoksa) -->
+        <div class="form-extra" id="step-signup">
+            <div class="login-field">
+                <input class="login-input" type="text" id="input-fullname" placeholder="Ad Soyad" autocomplete="name">
+                <label class="login-label">Ad Soyad</label>
+            </div>
+            <div class="login-field">
+                <input class="login-input" type="password" id="input-signup-pwd" placeholder="••••••••" autocomplete="new-password">
+                <label class="login-label">Şifre</label>
+                <button type="button" class="pwd-toggle" id="toggle-signup-pwd">👁</button>
+            </div>
+            <!-- Şifre gücü -->
+            <div class="pwd-strength-wrap">
+                <div class="pwd-strength-bar"><div id="pwd-strength-fill"></div></div>
+                <span id="pwd-strength-label">Şifre gücü</span>
+            </div>
+            <ul class="pwd-criteria">
+                <li id="c-len">En az 8 karakter</li>
+                <li id="c-upper">Büyük harf</li>
+                <li id="c-num">Rakam</li>
+                <li id="c-special">Özel karakter</li>
+            </ul>
+            <button type="button" class="login-suggest-btn" id="btn-suggest">✨ Güçlü şifre öner</button>
+            <div class="login-field">
+                <input class="login-input" type="password" id="input-signup-pwd2" placeholder="••••••••" autocomplete="new-password">
+                <label class="login-label">Şifre Tekrar</label>
+            </div>
+            <div class="login-error" id="signup-error"></div>
+            <button class="login-btn" id="btn-kayit">
+                <div class="btn-spinner"></div>
+                <span class="btn-text">Hesap Oluştur</span>
+            </button>
+            <button type="button" class="login-forgot" id="btn-back-from-signup" style="text-align:center;width:100%;margin-top:4px;">← E-postayı değiştir</button>
+        </div>
+
+        <!-- Şifremi unuttum adımı -->
+        <div class="form-extra" id="step-forgot">
+            <p style="font-size:13px;color:rgba(200,169,110,0.6);margin-bottom:16px;">E-posta adresine şifre sıfırlama bağlantısı gönderelim.</p>
+            <div class="login-field">
+                <input class="login-input" type="email" id="input-forgot-email" placeholder="ornek@email.com" autocomplete="email">
+                <label class="login-label">E-Posta</label>
+            </div>
+            <div class="login-error" id="forgot-error"></div>
+            <button class="login-btn" id="btn-forgot-send">
+                <div class="btn-spinner"></div>
+                <span class="btn-text">Bağlantı Gönder</span>
+            </button>
+            <button type="button" class="login-forgot" id="btn-back-from-forgot" style="text-align:center;width:100%;margin-top:4px;">← Geri dön</button>
+        </div>
+
+        <!-- Sosyal giriş -->
+        <div class="login-divider">VEYA</div>
+        <div class="social-btns">
+            <!-- Google -->
+            <button class="social-btn" id="btn-google" title="Google ile giriş">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#c8a96e" opacity="0.8"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#c8a96e" opacity="0.6"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#c8a96e" opacity="0.4"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#c8a96e" opacity="0.9"/>
+                </svg>
+            </button>
+            <!-- Facebook -->
+            <button class="social-btn" id="btn-facebook" title="Facebook ile giriş">
+                <svg viewBox="0 0 24 24" fill="rgba(200,169,110,0.7)" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+            </button>
+            <!-- Apple -->
+            <button class="social-btn" id="btn-apple" title="Apple ile giriş">
+                <svg viewBox="0 0 24 24" fill="rgba(200,169,110,0.7)" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Psikolog girişi -->
+        <div class="psikolog-link">
+            <a id="btn-psikolog">Psikolog musunuz? Profesyonel girişi için tıklayın</a>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="login-toast" id="login-toast"></div>
+
+    <script>
+        // ── SMOKEY WEBGL ARKA PLAN ──
+        (function initSmokey() {
+            const canvas = document.getElementById('login-canvas');
+            const gl = canvas.getContext('webgl');
+            if (!gl) return;
+            const vs = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vs, `attribute vec4 p; void main(){ gl_Position=p; }`);
+            gl.compileShader(vs);
+            const fs = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fs, `precision mediump float;
+            uniform vec2 iRes; uniform float iTime; uniform vec2 iMouse;
+            void main(){
+              vec2 c = (2.0*gl_FragCoord.xy - iRes) / min(iRes.x,iRes.y);
+              float t = iTime*0.03;
+              vec2 m = iMouse/iRes*2.0-1.0;
+              m *= 0.4;
+              vec2 d = c;
+              for(float i=1.0;i<7.0;i++){
+                d.x+=0.4/i*cos(i*2.0*d.y+t+m.x*3.14);
+                d.y+=0.4/i*cos(i*2.0*d.x+t+m.y*3.14);
+              }
+              float w = abs(sin(d.x+d.y+t));
+              float g = smoothstep(0.85,0.15,w);
+              vec3 col = mix(vec3(0.04,0.03,0.02), vec3(0.78,0.66,0.43), g*0.35);
+              gl_FragColor = vec4(col,1.0);
+            }`);
+            gl.compileShader(fs);
+            const prog = gl.createProgram();
+            gl.attachShader(prog,vs); gl.attachShader(prog,fs); gl.linkProgram(prog); gl.useProgram(prog);
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+            gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+            const loc = gl.getAttribLocation(prog,'p');
+            gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+            const uRes=gl.getUniformLocation(prog,'iRes');
+            const uTime=gl.getUniformLocation(prog,'iTime');
+            const uMouse=gl.getUniformLocation(prog,'iMouse');
+            let mx=0,my=0,smx=0,smy=0,start=Date.now();
+            canvas.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+            (function render(){
+                canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight;
+                smx += (mx - smx) * 0.03;
+                smy += (my - smy) * 0.03;
+                gl.viewport(0,0,canvas.width,canvas.height);
+                gl.uniform2f(uRes,canvas.width,canvas.height);
+                gl.uniform1f(uTime,(Date.now()-start)/1000);
+                gl.uniform2f(uMouse,smx,canvas.height-smy);
+                gl.drawArrays(gl.TRIANGLES,0,6);
+                requestAnimationFrame(render);
+            })();
+        })();
+
+        // ── YARDIMCI FONKSİYONLAR ──
+        let supabaseClient = null;
+
+        function showToast(msg) {
+            const t = document.getElementById('login-toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2800);
+        }
+
+        function setLoading(btn, loading) {
+            btn.disabled = loading;
+            btn.classList.toggle('loading', loading);
+        }
+
+        function showExtra(id) {
+            ['step-signin','step-signup','step-forgot'].forEach(s => {
+                document.getElementById(s).classList.remove('visible');
+            });
+            if (id) document.getElementById(id).classList.add('visible');
+        }
+
+        function shakeCard() {
+            const card = document.getElementById('login-card');
+            card.classList.remove('shake');
+            void card.offsetWidth; // reflow
+            card.classList.add('shake');
+            setTimeout(() => card.classList.remove('shake'), 500);
+        }
+
+        function setError(id, msg, isSuccess = false) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.className = 'login-error' + (isSuccess ? ' success' : '');
+            if (msg && !isSuccess) shakeCard();
+        }
+
+        function togglePwd(inputId, btn) {
+            const inp = document.getElementById(inputId);
+            inp.type = inp.type === 'password' ? 'text' : 'password';
+            btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+        }
+
+        // ── ŞİFRE GÜCÜ ──
+        function checkStrength(pwd) {
+            const c = {
+                len: pwd.length >= 8,
+                upper: /[A-Z]/.test(pwd),
+                num: /[0-9]/.test(pwd),
+                special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)
+            };
+            const score = Object.values(c).filter(Boolean).length;
+            ['len','upper','num','special'].forEach(k => {
+                document.getElementById('c-'+k).classList.toggle('met', c[k]);
+            });
+            const fill = document.getElementById('pwd-strength-fill');
+            const label = document.getElementById('pwd-strength-label');
+            const colors = ['','#d47777','#e8a85c','#e8c96a','#70c896'];
+            const labels = ['','Çok zayıf','Zayıf','İyi','Güçlü'];
+            fill.style.width = (score * 25) + '%';
+            fill.style.background = colors[score] || '';
+            label.textContent = labels[score] || 'Şifre gücü';
+            return c;
+        }
+
+        // ── ANA AKIŞ ──
+        async function init() {
+            const cfg = await fetch('/config').then(r => r.json());
+            supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+            // Zaten giriş yapılmışsa direkt yönlendir
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) {
+                window.location.href = '/';
+                return;
+            }
+
+            setupHandlers();
+        }
+
+        function setupHandlers() {
+            // Devam Et
+            document.getElementById('btn-devam').addEventListener('click', handleDevam);
+            document.getElementById('input-email').addEventListener('keydown', e => {
+                if (e.key === 'Enter') handleDevam();
+            });
+
+            // Giriş Yap
+            document.getElementById('btn-giris').addEventListener('click', handleGiris);
+            document.getElementById('input-signin-pwd').addEventListener('keydown', e => {
+                if (e.key === 'Enter') handleGiris();
+            });
+
+            // Kayıt Ol
+            document.getElementById('btn-kayit').addEventListener('click', handleKayit);
+
+            // Geri dönme butonları
+            document.getElementById('btn-back-from-signin').addEventListener('click', resetToEmail);
+            document.getElementById('btn-back-from-signup').addEventListener('click', resetToEmail);
+            document.getElementById('btn-back-from-forgot').addEventListener('click', () => {
+                showExtra(null);
+                // signin adımına geri dön
+                showExtra('step-signin');
+            });
+
+            // Şifremi Unuttum
+            document.getElementById('btn-forgot').addEventListener('click', () => {
+                document.getElementById('input-forgot-email').value = document.getElementById('input-email').value;
+                showExtra('step-forgot');
+            });
+            document.getElementById('btn-forgot-send').addEventListener('click', handleForgot);
+
+            // Şifre toggle
+            document.getElementById('toggle-signin-pwd').addEventListener('click', function(){ togglePwd('input-signin-pwd', this); });
+            document.getElementById('toggle-signup-pwd').addEventListener('click', function(){ togglePwd('input-signup-pwd', this); });
+
+            // Şifre gücü
+            document.getElementById('input-signup-pwd').addEventListener('input', function(){ checkStrength(this.value); });
+
+            // Güçlü şifre öner
+            document.getElementById('btn-suggest').addEventListener('click', () => {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+                let pwd = '';
+                pwd += 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)];
+                pwd += '23456789'[Math.floor(Math.random()*8)];
+                pwd += '!@#$%'[Math.floor(Math.random()*5)];
+                for (let i = 0; i < 9; i++) pwd += chars[Math.floor(Math.random()*chars.length)];
+                pwd = pwd.split('').sort(()=>Math.random()-0.5).join('');
+                document.getElementById('input-signup-pwd').value = pwd;
+                document.getElementById('input-signup-pwd2').value = pwd;
+                document.getElementById('input-signup-pwd').type = 'text';
+                document.getElementById('toggle-signup-pwd').textContent = '🙈';
+                checkStrength(pwd);
+            });
+
+            // Sosyal giriş (UI only)
+            ['btn-google','btn-facebook','btn-apple'].forEach(id => {
+                document.getElementById(id).addEventListener('click', () => showToast('Yakında aktif olacak'));
+            });
+
+            // Psikolog girişi (UI only)
+            document.getElementById('btn-psikolog').addEventListener('click', e => {
+                e.preventDefault();
+                showToast('Yakında aktif olacak');
+            });
+        }
+
+        function resetToEmail() {
+            showExtra(null);
+            setError('email-error', '');
+            document.getElementById('input-email').focus();
+        }
+
+        async function handleDevam() {
+            const email = document.getElementById('input-email').value.trim();
+            if (!email || !email.includes('@')) {
+                setError('email-error', 'Geçerli bir e-posta adresi gir.');
+                return;
+            }
+            const btn = document.getElementById('btn-devam');
+            setLoading(btn, true);
+            setError('email-error', '');
+
+            try {
+                const res = await fetch('/auth/check-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const { exists } = await res.json();
+                if (exists) {
+                    showExtra('step-signin');
+                    setTimeout(() => document.getElementById('input-signin-pwd').focus(), 50);
+                } else {
+                    showExtra('step-signup');
+                    setTimeout(() => document.getElementById('input-fullname').focus(), 50);
+                }
+            } catch {
+                setError('email-error', 'Bağlantı hatası, tekrar dene.');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        async function handleGiris() {
+            const email = document.getElementById('input-email').value.trim();
+            const password = document.getElementById('input-signin-pwd').value;
+            if (!password) { setError('signin-error', 'Şifre zorunlu.'); return; }
+            const btn = document.getElementById('btn-giris');
+            setLoading(btn, true);
+            setError('signin-error', '');
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            setLoading(btn, false);
+            if (error) { setError('signin-error', 'Hatalı e-posta veya şifre.'); return; }
+            window.location.href = '/';
+        }
+
+        async function handleKayit() {
+            const email = document.getElementById('input-email').value.trim();
+            const fullName = document.getElementById('input-fullname').value.trim();
+            const password = document.getElementById('input-signup-pwd').value;
+            const password2 = document.getElementById('input-signup-pwd2').value;
+            if (!fullName) { setError('signup-error', 'Ad Soyad zorunlu.'); return; }
+            if (!password) { setError('signup-error', 'Şifre zorunlu.'); return; }
+            if (password !== password2) { setError('signup-error', 'Şifreler eşleşmiyor.'); return; }
+            const c = checkStrength(password);
+            if (!c.len || !c.upper || !c.num || !c.special) { setError('signup-error', 'Şifre yeterince güçlü değil.'); return; }
+            const btn = document.getElementById('btn-kayit');
+            setLoading(btn, true);
+            setError('signup-error', '');
+            const { data, error } = await supabaseClient.auth.signUp({
+                email,
+                password,
+                options: { data: { full_name: fullName } }
+            });
+            setLoading(btn, false);
+            if (error) { setError('signup-error', error.message); return; }
+            if (data.user && data.session) {
+                window.location.href = '/';
+            } else {
+                setError('signup-error', '✓ Doğrulama e-postası gönderildi, e-postanı kontrol et.', true);
+            }
+        }
+
+        async function handleForgot() {
+            const email = document.getElementById('input-forgot-email').value.trim();
+            if (!email) { setError('forgot-error', 'E-posta adresi zorunlu.'); return; }
+            const btn = document.getElementById('btn-forgot-send');
+            setLoading(btn, true);
+            setError('forgot-error', '');
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin
+            });
+            setLoading(btn, false);
+            if (error) { setError('forgot-error', 'İşlem başarısız, tekrar dene.'); return; }
+            showToast('Şifre sıfırlama e-postası gönderildi');
+        }
+
+        init();
+    </script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Sayfayı tarayıcıda aç ve görsel kontrol yap**
+
+`http://localhost:3000/login.html` adresini aç. Şunları kontrol et:
+- Smokey arka plan efekti çalışıyor
+- Kart ortada görünüyor, altın renk tema doğru
+- "Devam Et" butonu var, e-posta inputu odaklanabiliyor
+- Sosyal giriş ikonları görünüyor
+- Psikolog girişi linki en altta
+
+- [ ] **Step 3: Form akışını test et**
+
+1. Var olan bir e-posta gir → "Devam Et" → şifre alanı açılmalı (fade animasyonu)
+2. Olmayan bir e-posta gir → "Devam Et" → Ad Soyad + şifre alanları açılmalı
+3. Yanlış şifre gir → shake animasyonu + kırmızı hata mesajı
+4. Sosyal butonlara tıkla → "Yakında aktif olacak" toast'u çıkmalı
+5. Psikolog linkine tıkla → aynı toast
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add public/login.html
+git commit -m "feat: public/login.html — akıllı tek form, dark gold tasarım, sosyal giriş UI"
+```
+
+---
+
+## Chunk 3: `index.html` — Login overlay kaldırma ve session kontrolü
+
+### Task 3: `index.html`'den login overlay'ini kaldır ve session guard ekle
+
+**Files:**
+- Modify: `public/index.html`
+
+> **Dikkat:** `index.html` 2200+ satır. Bu task sadece login ile ilgili bölümleri değiştiriyor — diğer hiçbir şeye dokunma.
+
+- [ ] **Step 1: `body` tagine `visibility:hidden` ekle**
+
+`index.html` satır 22'deki `<body>` tagini bul:
+```html
+<body>
+```
+Şununla değiştir:
+```html
+<body style="visibility:hidden">
+```
+
+- [ ] **Step 2: Login overlay HTML'ini kaldır**
+
+Satır 23-113 arasındaki login overlay bloğunu tamamen sil:
+```html
+    <!-- ── GİRİŞ EKRANI ── -->
+    <div id="login-overlay">
+        ...
+    </div>
+```
+
+Loader overlay'i (`#loader-overlay`) ve diğer div'leri **silme** — sadece `#login-overlay` div'i ve içindeki her şey.
+
+- [ ] **Step 3: `initAuth` ve `setupLoginHandlers` fonksiyonlarını kaldır, session guard ekle**
+
+`index.html`'de aşağıdaki iki fonksiyon bloğunu sil — **sadece bu iki fonksiyon, başka hiçbir şey silinmez**:
+
+**Silinecek Blok 1** — `initAuth` fonksiyonu. Şu satırı bul ve fonksiyonun kapanış `}` parantezine kadar sil:
+```js
+async function initAuth() {
+```
+Fonksiyon şu satırla biter:
+```js
+        setupLoginHandlers();
+        }
+```
+
+**Silinecek Blok 2** — `setupLoginHandlers` fonksiyonu. Şu satırı bul ve kapanış `}` parantezine kadar sil:
+```js
+        function setupLoginHandlers() {
+```
+Fonksiyon şu satırla biter:
+```js
+        }   // <-- setupLoginHandlers kapanışı, hemen ardından window.onerror gelir
+```
+
+> ⚠️ **DİKKAT:** `setupLoginHandlers` fonksiyonunun hemen ardından `window.onerror` ve `window.addEventListener('unhandledrejection', ...)` blokları gelir. Bunlara **dokunma** — sadece `setupLoginHandlers` fonksiyon gövdesini sil.
+
+Silinen yerlerın yerine şunu koy:
+
+```js
+// ── SESSION GUARD ──
+async function initAuth() {
+    const cfg = await fetch('/config').then(r => r.json());
+    supabaseClient = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    persistentUserId = session.user.id;
+    supabaseToken = session.access_token;
+    document.body.style.visibility = 'visible';
+}
+```
+
+- [ ] **Step 4: `initAuth().then(...)` bloğunu güncelle**
+
+Dosyada şu bloğu bul (satır ~580):
+```js
+initAuth().then(() => {
+    const loginOverlay = document.getElementById('login-overlay');
+    const observer = new MutationObserver(() => {
+        if (loginOverlay.style.display === 'none' && persistentUserId) {
+            observer.disconnect();
+            initScene();
+        }
+    });
+    observer.observe(loginOverlay, { attributes: true, attributeFilter: ['style'] });
+    if (loginOverlay.style.display === 'none' && persistentUserId) {
+        initScene();
+    }
+});
+```
+
+Şununla değiştir:
+```js
+initAuth().then(() => {
+    if (persistentUserId) {
+        initScene();
+    }
+});
+```
+
+- [ ] **Step 5: Login ile ilgili CSS'i bul ve kaldır**
+
+`index.html` içindeki `<style>` bloğunda (varsa) login overlay ile ilgili stilleri kaldır. `lyra.css`'e bak — login stilleri orada mı? Eğer `index.html` içinde inline login CSS varsa sil.
+
+- [ ] **Step 6: Test — oturum açıkken `index.html`'e git**
+
+Geçerli bir session varken `http://localhost:3000/` aç:
+- Sayfa kısa süre görünmez (visibility:hidden)
+- Session kontrol edilir
+- `initScene()` çağrılır, uygulama yüklenir
+
+- [ ] **Step 7: Test — oturum yokken `index.html`'e git**
+
+Supabase'den çıkış yap (DevTools > Application > Clear Storage veya `supabaseClient.auth.signOut()`). `http://localhost:3000/` aç:
+- `login.html`'e yönlendirilmelisin
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add public/index.html
+git commit -m "feat: index.html — login overlay kaldırıldı, session guard eklendi (visibility:hidden)"
+```
+
+---
+
+## Chunk 4: Son kontroller ve temizlik
+
+### Task 4: Uçtan uca test ve temizlik
+
+**Files:**
+- Read: `public/css/lyra.css` (login CSS'i orada mı kalmış?)
+
+- [ ] **Step 1: Tam akış testi**
+
+1. Tarayıcıda oturum kapat
+2. `http://localhost:3000/` → `login.html`'e yönlenmeli
+3. Yeni kullanıcı kaydı: e-posta + Ad Soyad + güçlü şifre → Hesap Oluştur
+4. Giriş sonrası `index.html`'e yönlenmeli, uygulama yüklenmeli
+5. `http://localhost:3000/login.html` adresine git → zaten giriş yapılmışsa `index.html`'e yönlenmeli
+6. Şifremi Unuttum: e-posta gir → "Bağlantı Gönder" → success mesajı
+
+- [ ] **Step 2: `lyra.css`'te login sınıflarını kontrol et**
+
+```bash
+grep -n "login-overlay\|login-box\|login-tabs\|panel-signin\|panel-signup\|panel-out\|panel-in\|tab-slider" public/css/lyra.css | head -20
+```
+
+Bu sınıflar artık `index.html`'de kullanılmıyorsa `lyra.css`'ten silmek opsiyoneldir — bırakmak zarar vermez. Kapsam dışı, sadece not olarak.
+
+- [ ] **Step 3: Mobil görünüm testi**
+
+DevTools'da telefon boyutuna geç (375px genişlik). `login.html`'i kontrol et:
+- Kart sığıyor mu?
+- Input'lar kullanılabilir mi?
+- Sosyal butonlar düzgün görünüyor mu?
+
+- [ ] **Step 4: Final commit**
+
+```bash
+git add -A
+git commit -m "feat: login sayfası tamamlandı — login.html, session guard, akıllı form"
+```
