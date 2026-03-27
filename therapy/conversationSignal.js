@@ -131,21 +131,28 @@ export function decideConversationSignal({
     // 6. Tükenmişlik + kısa mesaj → PRESENCE
     if (primary === 'tükenmişlik' && (messageLength || 0) < 50) return 'PRESENCE';
 
-    // 7. Önceki turda soru soruldu → REFLECT (arka arkaya soru yok)
+    // 7. Kullanıcı yön istiyor → GUIDE (soru değil, yön)
+    const guidanceRequests = ['ne yapmalıyım', 'ne önerirsin', 'ne yapabilirim', 'nasıl yapabilirim', 'bilmiyorum ne yapacağımı', 'yardım et', 'ne yapacağımı bilmiyorum'];
+    if (guidanceRequests.some(w => content.includes(w)) && messageCount >= 3) return 'GUIDE';
+
+    // 8. Önceki turda soru soruldu → REFLECT (arka arkaya soru yok)
     if (lastLyraAction === 'asked_question') return 'REFLECT';
 
-    // 8. Kapanma trendi → VALIDATE (zorlamadan kabul et)
+    // 9. Kapanma trendi → VALIDATE (zorlamadan kabul et)
     if (rhythmState?.trend === 'closing_down') return 'VALIDATE';
 
-    // 9. Tekrarlayan konu + konuşma yerleşmiş → BRIDGE
+    // 10. Tekrarlayan konu + konuşma yerleşmiş → GUIDE (desen görülüyor)
+    if ((dominantTopics || []).length >= 2 && messageCount >= 8) return 'GUIDE';
+
+    // 11. Tekrarlayan konu + erken → BRIDGE
     if ((dominantTopics || []).length >= 2 && messageCount >= 6) return 'BRIDGE';
 
-    // 10. Açılıyor + konuşma yerleşmiş → EXPLORE_DEEP
+    // 12. Açılıyor + konuşma yerleşmiş → EXPLORE_DEEP
     if (rhythmState?.trend === 'opening_up' && messageCount >= 4) return 'EXPLORE_DEEP';
 
-    // 11. İlk seanslar veya karmaşa → EXPLORE_GENTLE
+    // 13. İlk seanslar veya karmaşa → EXPLORE_GENTLE
     if (messageCount < 4 || primary === 'karmaşa') return 'EXPLORE_GENTLE';
 
-    // 12. Varsayılan
+    // 14. Varsayılan
     return 'EXPLORE_DEEP';
 }
