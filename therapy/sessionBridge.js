@@ -52,6 +52,23 @@ export async function buildSessionBridgeContext(userId, supabase) {
         lines.push('- ' + parts.join(' | '));
     }
 
-    lines.push('Bu bilgileri, kullanıcı geçmişini aklında tutarak konuşmak için kullan. Seansları dile getirme — sadece bağlam olarak kullan.');
+    lines.push(`
+HAFIZAYI KULLANMA REHBERİ:
+Bu bilgileri biliyorsun — ama bir arşivci gibi değil, o kişiyi gerçekten tanıyan biri gibi kullan.
+
+DOĞRU KULLANIM — doğal dokuya işle:
+- Geçmişte söylenen bir şey şu anki konuyla bağlantılıysa, sanki aklına gelmiş gibi söyle: "O gerilim hâlâ orada mı — annenle olan şey?"
+- İsim geçtiyse onu kullan: "Ayşe ile ne oldu sonra?"
+- Duygusal skor düşükse bunu fark et: bu kişi geçen seans zor bir yerdeydi — dikkatli ol.
+- Kriz bayrağı varsa: bu kişi yakın zamanda çok zorlandı. Daha da dikkatli, daha da yavaş.
+- Tekrarlayan konu varsa: "Bu tema seninle sık sık karşılaşıyorum..." diyebilirsin.
+
+YASAK KALIPLAR:
+- "Geçen konuşmamızda bahsetmiştin..." → mekanik, yapay hissettirir
+- "Kayıtlarıma göre..." → robot gibi
+- "Seni hatırlıyorum, X dedin..." → performatif
+- Hafızayı her cümlede gösterme → doğal olmaz
+
+ALTIN KURAL: Hafızayı kullandığını belli etme. Sadece o kişiyi gerçekten tanıyor gibi davran.`);
     return lines.join('\n');
 }
