@@ -19,7 +19,7 @@ import { updateWeeklyMetrics, buildProgressContext } from './progress/progressTr
 import { evaluateCrisis } from './crisis/stabilizationProtocol.js';
 import { buildSessionContext } from './therapy/contextTracker.js';
 import { analyzeResponseQuality } from './progress/qualityAnalyzer.js';
-import { buildSessionBridgeContext } from './therapy/sessionBridge.js';
+import { buildSessionBridgeContext, buildDynamicOpener } from './therapy/sessionBridge.js';
 import { extractTopicsCombined } from './therapy/topicExtractor.js';
 import { buildOnboardingContext } from './therapy/onboardingFlow.js';
 import { analyzeConversationRhythm, decideConversationSignal, getLastLyraAction } from './therapy/conversationSignal.js';
@@ -2684,11 +2684,18 @@ app.post('/api/chat/completions', chatRateLimit, async (req, res) => {
                 // 7b. Önceki seans köprüsü
                 const sessionBridgeContext = await buildSessionBridgeContext(userId, supabase);
 
+                // 7c. Dinamik seans açılışı
+                const sessionOpener = await buildDynamicOpener(
+                    userId,
+                    supabase,
+                    psychProfile?.session_count || 0
+                );
+
                 // 8. Seans içi bağlam
                 const sessionContext = buildSessionContext(messages || []);
 
                 // 9. Dinamik sistem promptunu oluştur (sinyal + ritim + ikincil duygu dahil)
-                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion, conversationSignal, rhythmState, emotionResult, activeScenario);
+                dynamicSystemPrompt = buildSystemPrompt(psychProfile, therapyEngineOutput, currentEmotion, conversationSignal, rhythmState, emotionResult, activeScenario, sessionOpener);
                 if (progressContext) {
                     dynamicSystemPrompt += '\n\n' + progressContext;
                 }
@@ -3310,7 +3317,6 @@ app.get('/cron-checkin', async (req, res) => {
 const emotionRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
-    keyGenerator: (req) => req.body?.userId || req.ip,
     handler: (req, res) => {
         res.status(429).json({ duygu: 'sakin', guven: 0, yuz_var: false, rate_limited: true });
     },
@@ -3320,7 +3326,6 @@ const emotionRateLimit = rateLimit({
 const humeRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
-    keyGenerator: (req) => req.body?.userId || req.ip,
     handler: (req, res) => {
         res.status(429).json({ hume_scores: null, rate_limited: true });
     },
