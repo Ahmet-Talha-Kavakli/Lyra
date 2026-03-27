@@ -70,7 +70,8 @@ Kart genişliği: max `420px`, mobilde `90vw`.
 
 ### Adım 2b — Kayıt modu (hesap yoksa)
 - `fadeUp` animasyonuyla şu alanlar açılır: Ad Soyad, Şifre, Şifre Tekrar
-- Şifre gücü göstergesi (mevcut sistemden)
+- Şifre gücü göstergesi + kriterleri checklist (`c-len`, `c-upper`, `c-num`, `c-special`) — mevcut sistemden taşınır
+- "✨ Güçlü şifre öner" butonu — kapsam içinde, mevcut sistemden taşınır
 - Buton: "Hesap Oluştur"
 
 ### Hata durumları
@@ -113,7 +114,7 @@ Psikolog musunuz? Profesyonel girişi için tıklayın
 |---------|-----------|
 | Kart ilk yüklenme | `fadeUp` 0.6s ease |
 | Form alanı açılma | `fadeUp` 0.3s ease (staggered) |
-| Hata durumu | `shake` 0.4s |
+| Hata durumu | `shake` 0.4s — `lyra.css`'te tanımlı değil, `login.html` içi `<style>` bloğuna eklenir |
 | Buton loading | spinner (border-radius döndürme) |
 | Toast | mevcut `toastIn/toastOut` keyframe |
 
@@ -139,6 +140,8 @@ POST /auth/check-email   { email }  →  { exists: true/false }
 ```
 
 Bu endpoint sunucu tarafında Supabase admin client ile çalışır ve hesap enumerasyonu riskini istemciden gizler. İstemci bu sonuca göre Adım 2a veya 2b'yi gösterir.
+
+Sunucu implementasyonu: `supabase.auth.admin.getUserByEmail(email)` çağrısı yapılır. Kullanıcı bulunursa `{ exists: true }`, `UserNotFound` hatası alınırsa `{ exists: false }` döner. `server.js`'deki mevcut service-role client (satır ~231) kullanılır.
 
 ### Kayıt alanları
 
@@ -180,6 +183,12 @@ if (!session) {
 ### CSS stratejisi
 
 `login.html` `lyra.css`'i direkt import eder. `lyra.css` design token'larını (CSS variables, keyframe animasyonlar) içeriyor; `index.html`'e özel selectorlar olsa da bunlar login sayfasında sessizce eşleşmez ve zarar vermez. Ayrı `login.css` gerekmez.
+
+`shake` keyframe `lyra.css`'te bulunmuyor — `login.html` içindeki `<style>` bloğuna eklenir.
+
+### Static serving
+
+`server.js` satır ~215'te `express.static('public')` aktif. `window.location.href = '/'` login sonrası `public/index.html`'i doğru serve eder — ek route gerekmez.
 
 ---
 
