@@ -230,6 +230,26 @@ app.get('/', (req, res) => {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// ─── E-POSTA VARLIK KONTROLÜ ─────────────────────────────
+app.post('/auth/check-email', async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'email required' });
+    }
+    try {
+        const { data, error } = await supabase.auth.admin.getUserByEmail(email.trim().toLowerCase());
+        if (error && error.message && error.message.toLowerCase().includes('not found')) {
+            return res.json({ exists: false });
+        }
+        if (error) {
+            return res.status(500).json({ error: 'lookup failed' });
+        }
+        return res.json({ exists: !!data?.user });
+    } catch (err) {
+        return res.status(500).json({ error: 'lookup failed' });
+    }
+});
+
 // ─── DUYGU ANALİZİ YARDIMCILARI ─────────────────────────────
 const yogunlukToNum = (y) => ({ 'düşük': 30, 'orta': 60, 'yüksek': 90 }[y] ?? 60);
 
