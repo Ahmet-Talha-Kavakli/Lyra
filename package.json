@@ -33,10 +33,10 @@
     "rss-parser": "^3.13.0",
     "zod": "^3.22.4",
     "xss": "^1.0.14",
-    "dompurify": "^3.0.6",
-    "concurrently": "^8.2.2"
+    "dompurify": "^3.0.6"
   },
   "devDependencies": {
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "concurrently": "^8.2.2"
   }
 }
