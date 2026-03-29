@@ -7,7 +7,7 @@ import { requireOwnership } from '../lib/helpers.js';
 const router = express.Router();
 
 // ─── #17: DÜŞÜNCE KAYDI (CBT) ────────────────────────────────────────
-router.post('/record-thought', authMiddleware, async (req, res) => {
+router.post('/v1/record-thought', authMiddleware, async (req, res) => {
     try {
         const { userId, automatic_thought, evidence_for, evidence_against, realistic_response } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -38,7 +38,7 @@ router.post('/record-thought', authMiddleware, async (req, res) => {
 });
 
 // ─── #17: DÜŞÜNCE KAYITLARINI GETIR ─────────────────────────────────
-router.get('/thought-records/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/thought-records/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -63,7 +63,7 @@ router.get('/thought-records/:userId', authMiddleware, async (req, res) => {
 });
 
 // ─── #18: DEĞERLER KEŞFI (Values Discovery) ─────────────────────────
-router.post('/discover-values', authMiddleware, async (req, res) => {
+router.post('/v1/discover-values', authMiddleware, async (req, res) => {
     try {
         const { userId, selectedValues } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -95,7 +95,7 @@ router.post('/discover-values', authMiddleware, async (req, res) => {
 });
 
 // ─── #18: KULLANICININ DEĞERLERINI GETIR ────────────────────────────
-router.get('/user-values/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/user-values/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -118,7 +118,7 @@ router.get('/user-values/:userId', authMiddleware, async (req, res) => {
 });
 
 // ─── #19: HAFTALIK MİNİ GÖREVLER (Homework) ──────────────────────────
-router.post('/assign-homework', authMiddleware, async (req, res) => {
+router.post('/v1/assign-homework', authMiddleware, async (req, res) => {
     try {
         const { userId, sessionId, dominantEmotion, homework } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -156,7 +156,7 @@ router.post('/assign-homework', authMiddleware, async (req, res) => {
 });
 
 // ─── #19: HAFTA GÖREVLERINI GETIR ────────────────────────────────────
-router.get('/homework/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/homework/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -180,7 +180,7 @@ router.get('/homework/:userId', authMiddleware, async (req, res) => {
 });
 
 // ─── #19: GÖREVI TAMAMLA ─────────────────────────────────────────────
-router.post('/complete-homework/:taskId', authMiddleware, async (req, res) => {
+router.post('/v1/complete-homework/:taskId', authMiddleware, async (req, res) => {
     try {
         const { taskId } = req.params;
         const { error } = await supabase.from('homework_tasks')
@@ -200,7 +200,7 @@ router.post('/complete-homework/:taskId', authMiddleware, async (req, res) => {
 });
 
 // ─── #20: KRİZ SONRASI PROTOKOL (24-Hour Check-in) ──────────────────
-router.post('/log-crisis', authMiddleware, async (req, res) => {
+router.post('/v1/log-crisis', authMiddleware, async (req, res) => {
     try {
         const { userId, severity, description, triggerTopic } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -233,7 +233,7 @@ router.post('/log-crisis', authMiddleware, async (req, res) => {
 });
 
 // ─── #20: KRİZ TAKIBI ÖNEMLİ ─────────────────────────────────────────
-router.get('/crisis-followups-due/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/crisis-followups-due/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -258,7 +258,7 @@ router.get('/crisis-followups-due/:userId', authMiddleware, async (req, res) => 
 });
 
 // ─── #20: KRİZ TAKIP TAMAMLA ──────────────────────────────────────────
-router.post('/complete-crisis-followup/:crisisId', authMiddleware, async (req, res) => {
+router.post('/v1/complete-crisis-followup/:crisisId', authMiddleware, async (req, res) => {
     try {
         const { crisisId } = req.params;
         const { followupResponse } = req.body;
@@ -284,7 +284,7 @@ router.post('/complete-crisis-followup/:crisisId', authMiddleware, async (req, r
 });
 
 // ─── AVATAR: AZURE TTS + VİSEME SENTEZİ ──────────────────────────────────
-router.post('/synthesize', authMiddleware, async (req, res) => {
+router.post('/v1/synthesize', authMiddleware, async (req, res) => {
     const { text, userId } = req.body;
     if (!text) return res.status(400).json({ error: 'text zorunlu' });
 

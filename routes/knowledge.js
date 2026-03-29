@@ -160,7 +160,7 @@ const buildHypothesis = (userId, currentTopic, currentDuygu, patternMemory, gecm
 };
 
 // ─── HIPOTEZ MOTORU (Davranış Tahmini) ────────────────────────────────
-router.post('/hypothesis', authMiddleware, async (req, res) => {
+router.post('/v1/hypothesis', authMiddleware, async (req, res) => {
     try {
         const { userId, currentTopic, currentDuygu, sessionId } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -207,7 +207,7 @@ router.post('/hypothesis', authMiddleware, async (req, res) => {
 });
 
 // ─── HIPOTEZ DOĞRULUĞU TRACKING ────────────────────────────────────────
-router.post('/hypothesis-accuracy', authMiddleware, async (req, res) => {
+router.post('/v1/hypothesis-accuracy', authMiddleware, async (req, res) => {
     try {
         const { userId, predicted_emotion, actual_emotion, confidence } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -251,7 +251,7 @@ router.post('/hypothesis-accuracy', authMiddleware, async (req, res) => {
 });
 
 // ─── RAG: INSIGHT KAYIT + EMBEDDING ─────────────────────────────────────
-router.post('/save-insight', authMiddleware, async (req, res) => {
+router.post('/v1/save-insight', authMiddleware, async (req, res) => {
     try {
         const { userId, insights } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -298,7 +298,7 @@ router.post('/save-insight', authMiddleware, async (req, res) => {
 });
 
 // ─── RAG: VECTOR SIMILARITY SEARCH ──────────────────────────────────────
-router.get('/retrieve-knowledge', authMiddleware, async (req, res) => {
+router.get('/v1/retrieve-knowledge', authMiddleware, async (req, res) => {
     try {
         const { userId, query, limit } = req.query;
         if (!requireOwnership(userId, req, res)) return;
@@ -349,7 +349,7 @@ router.get('/retrieve-knowledge', authMiddleware, async (req, res) => {
 });
 
 // ─── BILGI BANKASI: BAŞLANGIÇ KAYNAKLARI SEEDING ──────────────────────────────
-router.post('/seed-knowledge', async (req, res) => {
+router.post('/v1/seed-knowledge', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
         console.log('[SEED] Başlangıç kaynakları yükleniyor...');
@@ -401,7 +401,7 @@ router.post('/seed-knowledge', async (req, res) => {
 });
 
 // ─── RAG: ADVANCED KNOWLEDGE RETRIEVAL ──────────────────────────────────────
-router.get('/retrieve-knowledge-advanced', authMiddleware, async (req, res) => {
+router.get('/v1/retrieve-knowledge-advanced', authMiddleware, async (req, res) => {
     try {
         const { query, category, limit = 5, userId } = req.query;
         if (!requireOwnership(userId, req, res)) return;
@@ -429,7 +429,7 @@ router.get('/retrieve-knowledge-advanced', authMiddleware, async (req, res) => {
 });
 
 // Bilgi Bankası Durumu Endpoint
-router.get('/knowledge-stats', async (req, res) => {
+router.get('/v1/knowledge-stats', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
         const { count: totalSources } = await supabase

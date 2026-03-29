@@ -8,7 +8,7 @@ import { updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';
 const router = express.Router();
 
 // ─── KULLANICI ONAYI (KVKK Madde 3/5/6) ────────────────────
-router.post('/consent-accept', authMiddleware, async (req, res) => {
+router.post('/v1/consent-accept', authMiddleware, async (req, res) => {
     const { userId, consentVersion = '1.0' } = req.body;
     if (!requireOwnership(userId, req, res)) return;
 
@@ -25,7 +25,7 @@ router.post('/consent-accept', authMiddleware, async (req, res) => {
     res.json({ ok: true });
 });
 
-router.get('/consent-status', authMiddleware, async (req, res) => {
+router.get('/v1/consent-status', authMiddleware, async (req, res) => {
     const userId = req.query.userId || req.userId;
     if (!requireOwnership(userId, req, res)) return;
 
@@ -39,7 +39,7 @@ router.get('/consent-status', authMiddleware, async (req, res) => {
 });
 
 // ─── VERİ SİLME (KVKK Madde 11/e) ──────────────────────────
-router.delete('/delete-my-data', authMiddleware, async (req, res) => {
+router.delete('/v1/delete-my-data', authMiddleware, async (req, res) => {
     const { userId, confirmPhrase } = req.body;
     if (!requireOwnership(userId, req, res)) return;
     if (!userId || confirmPhrase !== 'VERİLERİMİ SİL') {
@@ -69,7 +69,7 @@ router.delete('/delete-my-data', authMiddleware, async (req, res) => {
 });
 
 // ─── VERİ DIŞA AKTARMA (KVKK Madde 11/ç) ───────────────────
-router.get('/export-my-data', authMiddleware, async (req, res) => {
+router.get('/v1/export-my-data', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
 
@@ -90,7 +90,7 @@ router.get('/export-my-data', authMiddleware, async (req, res) => {
 });
 
 // ─── CONFIG (Frontend için Supabase bilgileri) ──────────────
-router.get('/config', (req, res) => {
+router.get('/v1/config', (req, res) => {
     res.json({
         supabaseUrl: process.env.SUPABASE_URL,
         supabaseAnonKey: process.env.SUPABASE_ANON_KEY
@@ -98,7 +98,7 @@ router.get('/config', (req, res) => {
 });
 
 // ─── İLERLEME VERİSİ (D1) ─────────────────────────────────
-router.get('/my-progress', authMiddleware, async (req, res) => {
+router.get('/v1/my-progress', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
@@ -160,7 +160,7 @@ router.get('/my-progress', authMiddleware, async (req, res) => {
 });
 
 // ─── ACİL KİŞİLER (D3) ────────────────────────────────────
-router.get('/emergency-contacts', authMiddleware, async (req, res) => {
+router.get('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
@@ -171,7 +171,7 @@ router.get('/emergency-contacts', authMiddleware, async (req, res) => {
     }
 });
 
-router.post('/emergency-contacts', authMiddleware, async (req, res) => {
+router.post('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     const { userId, name, phone, relation } = req.body;
     if (!requireOwnership(userId, req, res)) return;
     if (!name || !phone) return res.status(400).json({ error: 'name ve phone zorunlu' });
@@ -191,7 +191,7 @@ router.post('/emergency-contacts', authMiddleware, async (req, res) => {
 });
 
 // ─── SEANS GERİ BİLDİRİMİ (D4) ───────────────────────────
-router.post('/session-feedback', authMiddleware, async (req, res) => {
+router.post('/v1/session-feedback', authMiddleware, async (req, res) => {
     const { userId, sessionId, rating, note } = req.body;
     if (!requireOwnership(userId, req, res)) return;
     if (!sessionId || rating == null) {

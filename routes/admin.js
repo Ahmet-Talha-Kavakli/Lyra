@@ -238,7 +238,7 @@ const advancedFacialAnalysis = (landmarks, handLandmarks, eyeData) => {
 };
 
 // ─── CRON CHECK-IN ────────────────────────────────────────────────────
-router.get('/cron-checkin', async (req, res) => {
+router.get('/v1/cron-checkin', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
         const onceki24h = new Date(Date.now() - 24*60*60*1000).toISOString();
@@ -310,7 +310,7 @@ router.get('/cron-checkin', async (req, res) => {
 });
 
 // ─── TEST LANDMARK ANALYSIS ──────────────────────────────────────────
-router.get('/test-landmarks', async (req, res) => {
+router.get('/v1/test-landmarks', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const testLandmarks = {
         brow_down_left: 0.6,
@@ -334,7 +334,7 @@ router.get('/test-landmarks', async (req, res) => {
 });
 
 // ─── TEST ENDPOINT: ADVANCED FACIAL ANALYSIS ──────────────────────
-router.get('/test-advanced-facial', async (req, res) => {
+router.get('/v1/test-advanced-facial', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
         const testLandmarks1 = [
@@ -406,7 +406,7 @@ router.get('/test-advanced-facial', async (req, res) => {
 });
 
 // ─── CRON TEST ──────────────────────────────────────────────────────
-router.get('/cron-test/:job', async (req, res) => {
+router.get('/v1/cron-test/:job', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const { job } = req.params;
     try {

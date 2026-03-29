@@ -34,7 +34,7 @@ function signToken(userId, email) {
 }
 
 // ─── SIGNUP ──────────────────────────────────────────────────────────────────
-router.post('/signup', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/v1/signup', authRateLimit, validateAuthInput, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -80,7 +80,7 @@ router.post('/signup', authRateLimit, validateAuthInput, async (req, res) => {
 });
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
-router.post('/login', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/v1/login', authRateLimit, validateAuthInput, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -106,7 +106,7 @@ router.post('/login', authRateLimit, validateAuthInput, async (req, res) => {
 });
 
 // ─── LOGOUT ──────────────────────────────────────────────────────────────────
-router.post('/logout', async (_req, res) => {
+router.post('/v1/v1/logout', async (_req, res) => {
     try {
         res.clearCookie('lyra_token', { ...COOKIE_OPTIONS, maxAge: 0 });
         res.json({ success: true, message: 'Çıkış başarılı' });
@@ -117,7 +117,7 @@ router.post('/logout', async (_req, res) => {
 });
 
 // ─── REFRESH TOKEN ───────────────────────────────────────────────────────────
-router.post('/refresh', async (req, res) => {
+router.post('/v1/v1/refresh', async (req, res) => {
     try {
         // Cookie veya header'dan token al
         const oldToken = req.cookies?.lyra_token
@@ -158,7 +158,7 @@ router.post('/refresh', async (req, res) => {
 });
 
 // ─── VERIFY TOKEN ────────────────────────────────────────────────────────────
-router.post('/verify', async (req, res) => {
+router.post('/v1/v1/verify', async (req, res) => {
     try {
         const token = req.cookies?.lyra_token
             || req.headers.authorization?.split(' ')[1];
@@ -177,7 +177,7 @@ router.post('/verify', async (req, res) => {
 });
 
 // ─── E-POSTA VARLIK KONTROLÜ ─────────────────────────────────────────────────
-router.post('/check-email', async (req, res) => {
+router.post('/v1/v1/check-email', async (req, res) => {
     const { email } = req.body;
     if (!email || typeof email !== 'string') {
         return res.status(400).json({ error: 'email required' });

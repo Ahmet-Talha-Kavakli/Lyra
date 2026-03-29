@@ -151,7 +151,7 @@ const buildLandmarkContext = (lm) => {
 };
 
 // ─── YÜZDEN DUYGU ANALİZİ (GPT-4o Vision — Zengin) ────────
-router.post('/analyze-emotion', emotionRateLimit, authMiddleware, async (req, res) => {
+router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req, res) => {
     try {
         const { imageBase64, userId, sessionId, landmarks } = req.body;
 
@@ -327,7 +327,7 @@ router.post('/analyze-emotion', emotionRateLimit, authMiddleware, async (req, re
 });
 
 // ─── HUME SES ANALİZİ (48 Duygu, Prosody) ────────────────────────
-router.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, authMiddleware, async (req, res) => {
+router.post('/v1/analyze-hume-voice', upload.single('audio'), humeRateLimit, authMiddleware, async (req, res) => {
     try {
         const { userId } = req.body;
         const buf = req.file?.buffer;
@@ -489,7 +489,7 @@ async function analyzeHumanBehavior(userId, transcript, emotions) {
     }
 }
 
-router.post('/analyze-human-behavior', authMiddleware, async (req, res) => {
+router.post('/v1/analyze-human-behavior', authMiddleware, async (req, res) => {
     try {
         const { userId, transcript, emotions } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -514,7 +514,7 @@ router.post('/analyze-human-behavior', authMiddleware, async (req, res) => {
 });
 
 // ─── ANALYTICS: KAYNAK ETKİSİ ANALİZİ ────────────────────────────────────────
-router.get('/analytics/source-effectiveness/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/analytics/source-effectiveness/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -583,7 +583,7 @@ router.get('/analytics/source-effectiveness/:userId', authMiddleware, async (req
 });
 
 // ─── ANALYTICS: USER BEHAVIOR TIMELINE ───────────────────────────────────────
-router.get('/analytics/behavior-timeline/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/analytics/behavior-timeline/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
@@ -622,7 +622,7 @@ router.get('/analytics/behavior-timeline/:userId', authMiddleware, async (req, r
 });
 
 // ─── ANALYTICS: RECOMMENDATION EFFECTIVENESS ─────────────────────────────────
-router.post('/analytics/rate-recommendation', authMiddleware, async (req, res) => {
+router.post('/v1/analytics/rate-recommendation', authMiddleware, async (req, res) => {
     try {
         const { userId, knowledgeId, wasHelpful, context } = req.body;
         if (!requireOwnership(userId, req, res)) return;

@@ -43,7 +43,7 @@ function selectCharacterForProfile(profile) {
 }
 
 // GET /character?userId=xxx — kullanıcının karakter durumunu döner
-router.get('/character', authMiddleware, async (req, res) => {
+router.get('/v1/character', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
 
@@ -75,7 +75,7 @@ router.get('/character', authMiddleware, async (req, res) => {
 });
 
 // POST /character/assign — ilk seans sonrası karakter ata
-router.post('/character/assign', authMiddleware, async (req, res) => {
+router.post('/v1/character/assign', authMiddleware, async (req, res) => {
     const { userId } = req.body;
     if (!requireOwnership(userId, req, res)) return;
 

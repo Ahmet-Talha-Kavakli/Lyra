@@ -21,12 +21,12 @@ import { clearLanguageCache } from '../lib/languageDetector.js';
 const router = express.Router();
 
 // ─── PING ──────────────────────────────────────────────────
-router.get('/ping', (req, res) => {
+router.get('/v1/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
 });
 
 // ─── GÖRSELLEŞTİRME (Özellik 8) ──────────────────────────
-router.get('/start-visualization', (req, res) => {
+router.get('/v1/start-visualization', (req, res) => {
     const { tip } = req.query;
     const script = VISUALIZATION_SCRIPTS[tip];
     if (!script) return res.status(404).json({ error: 'Senaryo bulunamadı', mevcutlar: Object.keys(VISUALIZATION_SCRIPTS) });
@@ -34,7 +34,7 @@ router.get('/start-visualization', (req, res) => {
 });
 
 // ─── SEANS ÖNCESİ HAZIRLIK (Özellik 11) ───────────────────
-router.post('/session-prep', authMiddleware, async (req, res) => {
+router.post('/v1/session-prep', authMiddleware, async (req, res) => {
     try {
         const { userId, sessionId, soru1, soru2, soru3 } = req.body;
         if (!requireOwnership(userId, req, res)) return;
@@ -67,7 +67,7 @@ router.post('/session-prep', authMiddleware, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/session-prep', authMiddleware, async (req, res) => {
+router.get('/v1/session-prep', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.query;
         if (!requireOwnership(userId, req, res)) return;
@@ -77,7 +77,7 @@ router.get('/session-prep', authMiddleware, async (req, res) => {
 });
 
 // ─── FRONTEND ERROR LOGLAMA (#43) ──────────────────────────
-router.post('/log-error', async (req, res) => {
+router.post('/v1/log-error', async (req, res) => {
     const { userId, error, source, line, col } = req.body;
     if (!error) return res.sendStatus(400);
     await logError('/frontend', `${error} | ${source}:${line}:${col}`, userId || null);
@@ -85,7 +85,7 @@ router.post('/log-error', async (req, res) => {
 });
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
-router.post('/update-transcript', authMiddleware, (req, res) => {
+router.post('/v1/update-transcript', authMiddleware, (req, res) => {
     const {
         userId, fullTranscript, silenceDuration, lastSegment,
         sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk,
@@ -118,7 +118,7 @@ router.post('/update-transcript', authMiddleware, (req, res) => {
 });
 
 // ─── OTURUM BAŞLAT (Token doğrulama ile) ───────────────────
-router.post('/session-start', authMiddleware, async (req, res) => {
+router.post('/v1/session-start', authMiddleware, async (req, res) => {
     setActiveSessionUserId(req.userId);
     setActiveSessionId(crypto.randomUUID());
     console.log(`[SESSION] Aktif kullanıcı: ${req.userId} | sessionId: ${activeSessionId}`);
@@ -126,7 +126,7 @@ router.post('/session-start', authMiddleware, async (req, res) => {
 });
 
 // ─── HAFIZA OKUMA ───────────────────────────────────────────
-router.get('/memory', authMiddleware, async (req, res) => {
+router.get('/v1/memory', authMiddleware, async (req, res) => {
     const userId = req.query.userId;
     if (!requireOwnership(userId, req, res)) return;
 
@@ -172,7 +172,7 @@ router.get('/memory', authMiddleware, async (req, res) => {
 });
 
 // ─── VAPI WEBHOOK (Arama bitince hafızayı kaydet) ──────────
-router.post('/vapi-webhook', async (req, res) => {
+router.post('/v1/vapi-webhook', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.json({});
 
@@ -396,7 +396,7 @@ router.post('/vapi-webhook', async (req, res) => {
 });
 
 // ─── LOCAL MEMORY ENDPOINT ─────────────────────────────────
-router.post('/save-local-memory', authMiddleware, async (req, res) => {
+router.post('/v1/save-local-memory', authMiddleware, async (req, res) => {
     const { userId, transcript, bodyLanguageData } = req.body;
 
     if (!userId || !transcript || transcript.length < 50) {
@@ -478,7 +478,7 @@ router.post('/save-local-memory', authMiddleware, async (req, res) => {
 });
 
 // ─── RAG: AUTO-EXTRACTION AT SESSION END ────────────────────────────────
-router.post('/end-session', authMiddleware, async (req, res) => {
+router.post('/v1/end-session', authMiddleware, async (req, res) => {
     try {
         const { userId, sessionId, transcript } = req.body;
         if (!userId || !transcript || transcript.length < 100) {
@@ -557,7 +557,7 @@ router.post('/end-session', authMiddleware, async (req, res) => {
 });
 
 // ─── SEANS GEÇMİŞİ ────────────────────────────────────────────────────
-router.get('/session-history/:userId', authMiddleware, async (req, res) => {
+router.get('/v1/session-history/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
