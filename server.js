@@ -4,8 +4,6 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
-import cron from 'node-cron';
-import { cronManager } from './src/services/cron/cronManager.js';
 
 // ─── CONFIG & LOGGER (en önce yükle — kritik key kontrol) ─────────────────────
 import { config } from './lib/config.js';
@@ -31,14 +29,8 @@ import therapyRouter   from './routes/therapy.js';
 import characterRouter from './routes/character.js';
 import adminRouter     from './routes/admin.js';
 
-// ─── CRON JOB FUNCTIONS ───────────────────────────────────────────────────────
+// ─── DATABASE ─────────────────────────────────────────────────────────────────
 import { supabase } from './lib/supabase.js';
-import {
-    autonomousSourceDiscovery,
-    assessKnowledgeQuality,
-    detectKnowledgeGaps,
-    verifySourceCredibility
-} from './lib/cronJobs.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -173,28 +165,9 @@ app.use('/', therapyRouter);
 app.use('/', characterRouter);
 app.use('/', adminRouter);
 
-// ─── CRON ZAMANLANDIRMASı (REDIS LOCK PROTECTED) ────────────────────────────
-// All pods try to run cron, but only one acquires lock per job
-
-const cronJobs = [
-    { schedule: '0 2 * * *', name: 'autonomousSourceDiscovery', handler: autonomousSourceDiscovery, desc: 'Günlük kaynak keşfi (02:00)' },
-    { schedule: '0 3 * * 1', name: 'assessKnowledgeQuality', handler: assessKnowledgeQuality, desc: 'Haftalık kalite kontrolü (Pazartesi 03:00)' },
-    { schedule: '0 2 * * 5', name: 'detectKnowledgeGaps', handler: detectKnowledgeGaps, desc: 'Bilgi boşluğu tespiti (Cuma 02:00)' },
-    { schedule: '0 4 1 * *', name: 'verifySourceCredibility', handler: verifySourceCredibility, desc: 'Aylık güvenilirlik doğrulaması' },
-];
-
-cronJobs.forEach(job => {
-    try {
-        cron.schedule(job.schedule, async () => {
-            await cronManager.executeWithLock(job.name, job.handler);
-        });
-        logger.info('[CRON] Zamanlandı (lock protected)', { job: job.name, schedule: job.schedule, desc: job.desc });
-    } catch (err) {
-        logger.error('[CRON] Zamanlandırma hatası', { job: job.name, error: err.message });
-    }
-});
-
-logger.info('[CRON] Tüm cron işleri Redis lock koruması ile başlatıldı', { totalJobs: cronJobs.length });
+// ─── BACKGROUND JOBS ──────────────────────────────────────────────────────────
+// Cron jobs run in separate worker.js process
+// See worker.js for scheduled background tasks
 
 // ─── SUNUCU BAŞLAT ────────────────────────────────────────────────────────────
 let server;

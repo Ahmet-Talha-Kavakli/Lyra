@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "node server.js"
+    "start": "node server.js",
+    "worker": "node worker.js",
+    "dev": "concurrently \"node server.js\" \"node worker.js\""
   },
   "keywords": [],
   "author": "Ahmet Talha",
