@@ -154,9 +154,16 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
  * GET /v1/queue-status
  * Monitor job queue
  */
-router.get('/v1/queue-status', (req, res) => {
-    const { getQueueStatus } = require('../src/services/queue/analysisJobs.js');
-    res.json(getQueueStatus());
+router.get('/v1/queue-status', async (req, res) => {
+    try {
+        // Dynamic import for queue status (ESM compatible)
+        const { getQueueStatus } = await import('../src/services/queue/analysisJobs.js');
+        const status = getQueueStatus();
+        res.json(status);
+    } catch (err) {
+        logger.error('[QUEUE STATUS] Error', { error: err.message });
+        res.status(500).json({ error: 'Queue status unavailable' });
+    }
 });
 
 export default router;

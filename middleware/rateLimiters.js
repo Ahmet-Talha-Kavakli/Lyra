@@ -4,7 +4,41 @@
 // For production scale: migrate to Redis-backed store (ioredis package)
 
 import { rateLimit } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
+import { createClient } from 'redis';
 import { logger } from '../lib/logger.js';
+
+// Redis client for rate limiting (shared across all limiters)
+let redisRateLimitClient = null;
+let redisRateLimitStore = null;
+
+// Initialize Redis store for rate limiting
+async function initializeRedisRateLimitStore() {
+    try {
+        const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+        redisRateLimitClient = createClient({ url: redisUrl });
+
+        redisRateLimitClient.on('error', (err) => {
+            logger.error('[RateLimit Redis] Connection error', { error: err.message });
+        });
+
+        await redisRateLimitClient.connect();
+        redisRateLimitStore = new RedisStore({
+            client: redisRateLimitClient,
+            prefix: 'rl:',  // Rate limit key prefix
+        });
+
+        logger.info('[RateLimit Redis] Store initialized');
+    } catch (err) {
+        logger.warn('[RateLimit Redis] Fallback to memory store', { error: err.message });
+        redisRateLimitStore = null; // Use default MemoryStore
+    }
+}
+
+// Initialize on module load
+initializeRedisRateLimitStore().catch(err => {
+    logger.warn('[RateLimit] Deferred init', { error: err.message });
+});
 
 /**
  * Key generator: per user (authenticated) or per IP
@@ -37,8 +71,16 @@ const handleLimitExceeded = (req, res) => {
     res.status(429).json({ error: 'Çok fazla istek. Lütfen bekleyin.' });
 };
 
+// Common rateLimit config builder
+function createLimiter(config) {
+    return rateLimit({
+        ...config,
+        ...(redisRateLimitStore && { store: redisRateLimitStore }), // Redis if available
+    });
+}
+
 // ─── AUTHENTICATION ENDPOINTS (Strict) ──────────────────────────────────────
-export const authLimiter = rateLimit({
+export const authLimiter = createLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 attempts
     keyGenerator: keyGeneratorPerUser,
@@ -50,8 +92,7 @@ export const authLimiter = rateLimit({
 });
 
 // ─── CHAT COMPLETION (Moderate) ─────────────────────────────────────────────
-// Rate: 10 requests per 5 minutes per user
-export const chatLimiter = rateLimit({
+export const chatLimiter = createLimiter({
     windowMs: 5 * 60 * 1000,
     max: 10,
     keyGenerator: keyGeneratorPerUser,
@@ -63,8 +104,7 @@ export const chatLimiter = rateLimit({
 });
 
 // ─── API GENERAL (Loose) ────────────────────────────────────────────────────
-// Rate: 30 requests per minute per user
-export const apiGeneralLimiter = rateLimit({
+export const apiGeneralLimiter = createLimiter({
     windowMs: 60 * 1000,
     max: 30,
     keyGenerator: keyGeneratorPerUser,
@@ -75,8 +115,7 @@ export const apiGeneralLimiter = rateLimit({
 });
 
 // ─── PUBLIC ENDPOINTS (Very Loose) ──────────────────────────────────────────
-// Rate: 100 requests per minute per IP
-export const publicLimiter = rateLimit({
+export const publicLimiter = createLimiter({
     windowMs: 60 * 1000,
     max: 100,
     keyGenerator: keyGeneratorPerIP,
@@ -87,8 +126,7 @@ export const publicLimiter = rateLimit({
 });
 
 // ─── FILE UPLOAD (Very Strict) ──────────────────────────────────────────────
-// Rate: 5 uploads per hour per user
-export const uploadLimiter = rateLimit({
+export const uploadLimiter = createLimiter({
     windowMs: 60 * 60 * 1000,
     max: 5,
     keyGenerator: keyGeneratorPerUser,
@@ -99,8 +137,7 @@ export const uploadLimiter = rateLimit({
 });
 
 // ─── PASSWORD RESET (Strict) ────────────────────────────────────────────────
-// Rate: 3 requests per hour per IP (prevent enumeration)
-export const passwordResetLimiter = rateLimit({
+export const passwordResetLimiter = createLimiter({
     windowMs: 60 * 60 * 1000,
     max: 3,
     keyGenerator: keyGeneratorPerIP,
