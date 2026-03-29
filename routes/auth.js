@@ -1,40 +1,48 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import { rateLimit } from 'express-rate-limit';
 import { supabase } from '../lib/supabase.js';
 import { validateAuthInput } from '../lib/validators.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/tokenManager.js';
+import { logger } from '../lib/logger.js';
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-    console.error('[FATAL] JWT_SECRET environment variable is not set. Server cannot start safely.');
-    process.exit(1);
-}
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 const COOKIE_OPTIONS = {
     httpOnly: true,
-    secure: IS_PROD,        // HTTPS zorunlu (prod)
+    secure: IS_PROD,        // HTTPS mandatory in prod
     sameSite: IS_PROD ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 gün
     path: '/',
 };
 
+const ACCESS_TOKEN_COOKIE_OPTIONS = {
+    ...COOKIE_OPTIONS,
+    maxAge: 15 * 60 * 1000, // 15 minutes
+};
+
+const REFRESH_TOKEN_COOKIE_OPTIONS = {
+    ...COOKIE_OPTIONS,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
+
+// Rate limiting: 5 attempts per 15 minutes (strict for auth)
 const authRateLimit = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 dakika
-    max: 10,
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    keyGenerator: (req, _res) => {
+        // Per email (slower enumeration attacks) + per IP
+        const email = req.body?.email || req.ip;
+        return `${email}:${req.ip}`;
+    },
     message: { error: 'Çok fazla deneme. 15 dakika sonra tekrar deneyin.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => !IS_PROD, // Skip rate limit in dev
 });
 
-function signToken(userId, email) {
-    return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' });
-}
-
 // ─── SIGNUP ──────────────────────────────────────────────────────────────────
-router.post('/v1/v1/signup', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/signup', authRateLimit, validateAuthInput, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -42,8 +50,17 @@ router.post('/v1/v1/signup', authRateLimit, validateAuthInput, async (req, res) 
             return res.status(400).json({ error: 'Email ve şifre gerekli' });
         }
 
-        if (password.length < 6) {
-            return res.status(400).json({ error: 'Şifre en az 6 karakter olmalı' });
+        if (password.length < 6 || password.length > 128) {
+            return res.status(400).json({ error: 'Şifre 6-128 karakter arasında olmalı' });
+        }
+
+        // Check if user exists (prevents user enumeration partially)
+        const { data: existingUsers } = await supabase.auth.admin.listUsers({ perPage: 1 });
+        const exists = (existingUsers?.users ?? []).some(u => u.email?.toLowerCase() === email.toLowerCase());
+
+        if (exists) {
+            // Security: don't reveal if email exists
+            return res.status(400).json({ error: 'Bu email ile hesap oluşturulamaz. Yeniden deneyin.' });
         }
 
         const { data, error } = await supabase.auth.admin.createUser({
@@ -53,34 +70,54 @@ router.post('/v1/v1/signup', authRateLimit, validateAuthInput, async (req, res) 
         });
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            logger.warn('[/v1/signup] User creation failed', { email, error: error.message });
+            return res.status(400).json({ error: 'Kayıt başarısız. Lütfen tekrar deneyin.' });
         }
 
         const userId = data.user.id;
 
-        await supabase.from('psychological_profiles').insert({
-            user_id: userId,
-            session_count: 0,
-            attachment_style: null,
-            triggers: [],
-            life_schemas: [],
-            unconscious_patterns: [],
-            defense_mechanisms: [],
-            strengths: [],
+        // Initialize psychological profile
+        try {
+            await supabase.from('psychological_profiles').insert({
+                user_id: userId,
+                session_count: 0,
+                attachment_style: null,
+                triggers: [],
+                life_schemas: [],
+                unconscious_patterns: [],
+                defense_mechanisms: [],
+                strengths: [],
+            });
+        } catch (profileErr) {
+            logger.error('[/v1/signup] Profile creation failed', { userId, error: profileErr.message });
+            // Don't fail the signup, profile can be created later
+        }
+
+        // Issue tokens
+        const accessToken = signAccessToken(userId, email);
+        const refreshToken = signRefreshToken(userId, 1);
+
+        // Set cookies
+        res.cookie('lyra_access_token', accessToken, ACCESS_TOKEN_COOKIE_OPTIONS);
+        res.cookie('lyra_refresh_token', refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
+
+        logger.info('[/v1/signup] User registered', { userId, email });
+        res.status(201).json({
+            success: true,
+            message: 'Kayıt başarılı',
+            accessToken,
+            refreshToken,
+            userId,
+            email,
         });
-
-        const token = signToken(userId, email);
-
-        res.cookie('lyra_token', token, COOKIE_OPTIONS);
-        res.json({ success: true, message: 'Kayıt başarılı', token, userId, email });
     } catch (err) {
-        console.error('[/auth/signup] Hata:', err.message);
+        logger.error('[/v1/signup] Unexpected error', { error: err.message });
         res.status(500).json({ error: 'Kayıt sırasında hata oluştu' });
     }
 });
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
-router.post('/v1/v1/login', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/login', authRateLimit, validateAuthInput, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -91,108 +128,109 @@ router.post('/v1/v1/login', authRateLimit, validateAuthInput, async (req, res) =
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
         if (error || !data?.user) {
+            logger.warn('[/v1/login] Failed login attempt', { email });
+            // Security: generic error (don't reveal if user exists)
             return res.status(401).json({ error: 'Email veya şifre yanlış' });
         }
 
         const userId = data.user.id;
-        const token = signToken(userId, data.user.email);
 
-        res.cookie('lyra_token', token, COOKIE_OPTIONS);
-        res.json({ success: true, message: 'Giriş başarılı', token, userId, email: data.user.email });
+        // Issue tokens
+        const accessToken = signAccessToken(userId, data.user.email);
+        const refreshToken = signRefreshToken(userId, 1);
+
+        // Set cookies
+        res.cookie('lyra_access_token', accessToken, ACCESS_TOKEN_COOKIE_OPTIONS);
+        res.cookie('lyra_refresh_token', refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
+
+        logger.info('[/v1/login] User logged in', { userId, email });
+        res.json({
+            success: true,
+            message: 'Giriş başarılı',
+            accessToken,
+            refreshToken,
+            userId,
+            email: data.user.email,
+        });
     } catch (err) {
-        console.error('[/auth/login] Hata:', err.message);
+        logger.error('[/v1/login] Unexpected error', { error: err.message });
         res.status(500).json({ error: 'Giriş sırasında hata oluştu' });
     }
 });
 
 // ─── LOGOUT ──────────────────────────────────────────────────────────────────
-router.post('/v1/v1/logout', async (_req, res) => {
+router.post('/v1/logout', async (req, res) => {
     try {
-        res.clearCookie('lyra_token', { ...COOKIE_OPTIONS, maxAge: 0 });
+        const accessToken = req.cookies?.lyra_access_token;
+
+        // Revoke both tokens
+        if (accessToken) {
+            revokeToken(accessToken);
+        }
+
+        res.clearCookie('lyra_access_token', COOKIE_OPTIONS);
+        res.clearCookie('lyra_refresh_token', COOKIE_OPTIONS);
+
+        const userId = req.userId || 'unknown';
+        logger.info('[/v1/logout] User logged out', { userId });
+
         res.json({ success: true, message: 'Çıkış başarılı' });
     } catch (err) {
-        console.error('[/auth/logout] Hata:', err.message);
+        logger.error('[/v1/logout] Unexpected error', { error: err.message });
         res.status(500).json({ error: 'Çıkış sırasında hata oluştu' });
     }
 });
 
 // ─── REFRESH TOKEN ───────────────────────────────────────────────────────────
-router.post('/v1/v1/refresh', async (req, res) => {
+router.post('/v1/refresh', async (req, res) => {
     try {
-        // Cookie veya header'dan token al
-        const oldToken = req.cookies?.lyra_token
+        const refreshToken = req.cookies?.lyra_refresh_token
+            || req.body?.refreshToken
             || req.headers.authorization?.split(' ')[1];
 
-        if (!oldToken) {
-            return res.status(401).json({ error: 'Token gerekli' });
+        if (!refreshToken) {
+            return res.status(401).json({ error: 'Refresh token gerekli' });
         }
 
-        let decoded;
+        const { valid, decoded, error } = verifyRefreshToken(refreshToken);
+
+        if (!valid) {
+            logger.warn('[/v1/refresh] Invalid refresh token', { error });
+            return res.status(401).json({ error: error || 'Refresh token geçersiz' });
+        }
+
+        // Verify user still exists
         try {
-            // ignoreExpiration: süresi yeni dolmuş token'ları da yenile
-            decoded = jwt.verify(oldToken, JWT_SECRET, { ignoreExpiration: true });
-        } catch {
-            return res.status(401).json({ error: 'Token geçersiz' });
+            const { data: user, error: userError } = await supabase.auth.admin.getUserById(decoded.userId);
+            if (userError || !user?.user) {
+                logger.warn('[/v1/refresh] User not found', { userId: decoded.userId });
+                return res.status(401).json({ error: 'Kullanıcı bulunamadı. Yeniden giriş yapın.' });
+            }
+
+            // Check if user is disabled/deleted
+            if (user.user.deleted_at) {
+                logger.warn('[/v1/refresh] User deleted', { userId: decoded.userId });
+                return res.status(401).json({ error: 'Hesap silinmiş. Yeniden giriş yapın.' });
+            }
+
+            // Issue new access token (keep same refresh token unless expired)
+            const newAccessToken = signAccessToken(decoded.userId, user.user.email);
+
+            res.cookie('lyra_access_token', newAccessToken, ACCESS_TOKEN_COOKIE_OPTIONS);
+
+            logger.info('[/v1/refresh] Token refreshed', { userId: decoded.userId });
+            res.json({
+                success: true,
+                accessToken: newAccessToken,
+                refreshToken, // Return same refresh token (still valid)
+            });
+        } catch (userCheckErr) {
+            logger.error('[/v1/refresh] User verification failed', { error: userCheckErr.message });
+            return res.status(500).json({ error: 'Sunucu hatası' });
         }
-
-        // Süresi 7 günden fazla önce dolmuşsa reddet (güvenlik penceresi)
-        const expiredAgo = Math.floor(Date.now() / 1000) - decoded.exp;
-        if (expiredAgo > 7 * 24 * 60 * 60) {
-            return res.status(401).json({ error: 'Token çok eski, yeniden giriş yapın' });
-        }
-
-        // Kullanıcının hala aktif olduğunu kontrol et
-        const { data: user, error } = await supabase.auth.admin.getUserById(decoded.userId);
-        if (error || !user?.user) {
-            return res.status(401).json({ error: 'Kullanıcı bulunamadı' });
-        }
-
-        const newToken = signToken(decoded.userId, decoded.email);
-
-        res.cookie('lyra_token', newToken, COOKIE_OPTIONS);
-        res.json({ success: true, token: newToken });
     } catch (err) {
-        console.error('[/auth/refresh] Hata:', err.message);
-        res.status(500).json({ error: 'Token yenileme sırasında hata oluştu' });
-    }
-});
-
-// ─── VERIFY TOKEN ────────────────────────────────────────────────────────────
-router.post('/v1/v1/verify', async (req, res) => {
-    try {
-        const token = req.cookies?.lyra_token
-            || req.headers.authorization?.split(' ')[1];
-
-        if (!token) {
-            return res.status(401).json({ error: 'Token gerekli' });
-        }
-
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        res.json({ success: true, userId: decoded.userId, email: decoded.email });
-    } catch (err) {
-        console.error('[/auth/verify] Hata:', err.message);
-        res.status(401).json({ error: 'Token geçersiz veya süresi dolmuş' });
-    }
-});
-
-// ─── E-POSTA VARLIK KONTROLÜ ─────────────────────────────────────────────────
-router.post('/v1/v1/check-email', async (req, res) => {
-    const { email } = req.body;
-    if (!email || typeof email !== 'string') {
-        return res.status(400).json({ error: 'email required' });
-    }
-    try {
-        // Supabase admin API'sinde getUserByEmail yok — listUsers + filter kullanıyoruz
-        const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        if (error) {
-            return res.status(500).json({ error: 'lookup failed' });
-        }
-        const normalized = email.trim().toLowerCase();
-        const exists = (data?.users ?? []).some(u => u.email?.toLowerCase() === normalized);
-        return res.json({ exists });
-    } catch (err) {
-        return res.status(500).json({ error: 'lookup failed' });
+        logger.error('[/v1/refresh] Unexpected error', { error: err.message });
+        res.status(500).json({ error: 'Token yenileme başarısız' });
     }
 });
 

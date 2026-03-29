@@ -175,7 +175,7 @@ async function retrieveKnowledge(query, opts = {}) {
     }
 }
 
-router.post('/v1/v1/api/chat/completions', chatRateLimit, validateChatMessage, async (req, res) => {
+router.post('/v1/api/chat/completions', chatRateLimit, validateChatMessage, async (req, res) => {
     // Vapi Custom LLM secret doğrulaması
     const VAPI_SECRET = process.env.VAPI_SECRET;
     if (VAPI_SECRET) {

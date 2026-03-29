@@ -10,6 +10,11 @@ import cron from 'node-cron';
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 
+// ─── SECURITY INFRASTRUCTURE ──────────────────────────────────────────────────
+import { authMiddleware, optionalAuthMiddleware } from './middleware/auth.js';
+import { ddosProtectionMiddleware, chatLimiter, apiGeneralLimiter, publicLimiter } from './middleware/rateLimiters.js';
+import { auditContextMiddleware, logAuthEvent, EVENT_TYPES } from './lib/auditLogger.js';
+
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 import authRouter      from './routes/auth.js';
 import userRouter      from './routes/user.js';
@@ -68,6 +73,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// ─── GLOBAL SECURITY MIDDLEWARE ───────────────────────────────────────────────
+app.use(auditContextMiddleware); // Attach audit context
+app.use(ddosProtectionMiddleware); // DDoS protection (global)
 
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
