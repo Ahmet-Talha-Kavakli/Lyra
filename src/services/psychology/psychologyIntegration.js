@@ -15,28 +15,23 @@
  * 8. Resilience Building — Coping strategies
  */
 
-import { logger } from '../../lib/logger.js';
+import { logger } from '../../../lib/logger.js';
 
-// Import core psychology modules
-import metacognition from '../../lib/metacognition.js';
-import executiveFunction from '../../lib/executiveFunction.js';
-import dbtEmotionRegulation from '../../lib/dbtEmotionRegulation.js';
-import traumaInformed from '../../lib/traumaInformed.js';
-import therapeuticBond from '../../lib/therapeuticBond.js';
-import positivePsychology from '../../lib/positivePsychology.js';
-import cbtCognitiveBehavioral from '../../lib/cbtCognitiveBehavioral.js';
-import resilienceBuilding from '../../lib/resilienceBuilding.js';
+// Import core psychology modules (they export utility functions, not defaults)
+// These are used indirectly — system prompts reference them, not direct function calls
+// TODO: Load module exports dynamically when needed
 
-const PSYCHOLOGY_MODULES = {
-    metacognition,
-    executiveFunction,
-    dbtEmotionRegulation,
-    traumaInformed,
-    therapeuticBond,
-    positivePsychology,
-    cbtCognitiveBehavioral,
-    resilienceBuilding
-};
+// Module references stored as names for dynamic loading
+const PSYCHOLOGY_MODULE_NAMES = [
+    'metacognition',
+    'executiveFunction',
+    'dbtEmotionRegulation',
+    'traumaInformed',
+    'therapeuticBond',
+    'positivePsychology',
+    'cbtCognitiveBehavioral',
+    'resilienceBuilding'
+];
 
 /**
  * Analyze conversation context to select relevant psychology modules
@@ -266,5 +261,5 @@ export default {
     buildEnhancedSystemPrompt,
     extractPsychologyInsights,
     formatPsychologyContext,
-    PSYCHOLOGY_MODULES
+    PSYCHOLOGY_MODULE_NAMES
 };

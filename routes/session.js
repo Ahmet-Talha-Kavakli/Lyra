@@ -7,9 +7,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership, logError } from '../lib/helpers.js';
 import { VISUALIZATION_SCRIPTS } from '../lib/constants.js';
 import {
-    userEmotions, sessionTranscriptStore,
-    activeSessionUserId, activeSessionId,
-    setActiveSessionUserId, setActiveSessionId
+    getUserEmotion, setUserEmotion,
+    getSessionTranscript, setSessionTranscript,
+    getActiveSession, setActiveSession, deleteActiveSession
 } from '../src/services/cache/redisService.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
@@ -85,7 +85,7 @@ router.post('/v1/log-error', async (req, res) => {
 });
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
-router.post('/v1/update-transcript', authMiddleware, (req, res) => {
+router.post('/v1/update-transcript', authMiddleware, async (req, res) => {
     const {
         userId, fullTranscript, silenceDuration, lastSegment,
         sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk,
@@ -95,8 +95,8 @@ router.post('/v1/update-transcript', authMiddleware, (req, res) => {
     } = req.body;
     if (!requireOwnership(userId, req, res)) return;
 
-    const mevcut = sessionTranscriptStore.get(userId) || {};
-    sessionTranscriptStore.set(userId, {
+    // Store transcript to Redis
+    await setSessionTranscript(userId, {
         fullTranscript: fullTranscript || '',
         silenceDuration: silenceDuration || 0,
         lastSegment: lastSegment || '',
@@ -110,8 +110,8 @@ router.post('/v1/update-transcript', authMiddleware, (req, res) => {
         vokalBreak: vokalBreak || false,
         isWhisper: isWhisper || false,
         tempoSpike: tempoSpike || false,
-        phq9_cevaplar: { ...(mevcut.phq9_cevaplar || {}), ...(phq9_cevaplar || {}) },
-        kural_sayaci: mevcut.kural_sayaci || { rol_yapma: 0, tarama: 0, visualizasyon: 0 },
+        phq9_cevaplar: phq9_cevaplar || {},
+        karul_sayaci: { rol_yapma: 0, tarama: 0, visualizasyon: 0 },
         updatedAt: Date.now()
     });
     res.sendStatus(200);
@@ -119,9 +119,9 @@ router.post('/v1/update-transcript', authMiddleware, (req, res) => {
 
 // ─── OTURUM BAŞLAT (Token doğrulama ile) ───────────────────
 router.post('/v1/session-start', authMiddleware, async (req, res) => {
-    setActiveSessionUserId(req.userId);
-    setActiveSessionId(crypto.randomUUID());
-    console.log(`[SESSION] Aktif kullanıcı: ${req.userId} | sessionId: ${activeSessionId}`);
+    const sessionId = crypto.randomUUID();
+    await setActiveSession(req.userId, sessionId);
+    console.log(`[SESSION] Aktif kullanıcı: ${req.userId} | sessionId: ${sessionId}`);
     res.sendStatus(200);
 });
 
@@ -182,18 +182,19 @@ router.post('/v1/vapi-webhook', async (req, res) => {
     // call-start: metadata'dan userId al ve session başlat
     if (msgType === 'call-started' || msgType === 'status-update' && message.status === 'started') {
         const metaUserId = message.call?.metadata?.userId || message.metadata?.userId;
+        const callId = message.call?.id || crypto.randomUUID();
         if (metaUserId) {
-            setActiveSessionUserId(metaUserId);
-            setActiveSessionId(message.call?.id || crypto.randomUUID());
-            console.log(`[VAPI] Oturum başladı — userId: ${metaUserId} | callId: ${activeSessionId}`);
+            await setActiveSession(metaUserId, callId);
+            console.log(`[VAPI] Oturum başladı — userId: ${metaUserId} | callId: ${callId}`);
         }
         return res.json({});
     }
 
     if (msgType === 'end-of-call-report') {
         const transcript = message.artifact?.transcript || message.transcript || '';
-        // userId: önce call metadata, sonra global fallback
-        const userId = message.call?.metadata?.userId || activeSessionUserId;
+        // userId: call metadata'dan al
+        const userId = message.call?.metadata?.userId;
+        const sessionId = message.call?.id;
 
         if (!transcript || transcript.length < 50) {
             console.log('[END OF CALL] Konuşma çok kısa, özetlenmiyor.');
@@ -218,11 +219,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             // Seans emotion özetini çek ve hafızaya ekle
             let emotionOzeti = '';
             try {
-                if (activeSessionId) {
+                if (sessionId) {
                     const { data: logs } = await supabase
                         .from('emotion_logs')
                         .select('duygu, yogunluk, trend, guven')
-                        .eq('session_id', activeSessionId)
+                        .eq('session_id', sessionId)
                         .order('timestamp', { ascending: true });
 
                     if (logs && logs.length > 0) {
@@ -240,7 +241,7 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             const yogunlukToNum = (y) => ({ 'düşük': 30, 'orta': 60, 'yüksek': 90 }[y] ?? 60);
             let seansKarsilastirma = '';
             try {
-                if (activeSessionId) {
+                if (sessionId) {
                     const { data: allLogs } = await supabase
                         .from('emotion_logs')
                         .select('duygu, yogunluk, guven, timestamp')
@@ -378,8 +379,8 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             });
 
             // Eski sistem uyumluluğu için updateUserProfile (server.js'den inline çağrı)
-            // userEmotions referansı için state'ten al
-            const emotionStateForProfile = userEmotions.get(userId);
+            // userEmotions referansı için Redis'ten al
+            const emotionStateForProfile = await getUserEmotion(userId);
             // updateUserProfile is defined in server.js — keeping reference via import would create circular deps
             // So we do a minimal equivalent here:
             console.log(`[VAPI] Emotion state for profile update: ${emotionStateForProfile?.dominant_duygu || 'none'}`);
