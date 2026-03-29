@@ -1,7 +1,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { supabase } from '../lib/shared/supabase.js';
-import { validateAuthInput } from '../lib/shared/validators.js';
+import { validateUserRegistration, validateEmail } from '../lib/shared/validators.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/infrastructure/tokenManager.js';
 import { logger } from '../lib/infrastructure/logger.js';
 
@@ -42,7 +42,7 @@ const authRateLimit = rateLimit({
 });
 
 // ─── SIGNUP ──────────────────────────────────────────────────────────────────
-router.post('/v1/signup', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/signup', authRateLimit, validateUserRegistration, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -117,7 +117,7 @@ router.post('/v1/signup', authRateLimit, validateAuthInput, async (req, res) => 
 });
 
 // ─── LOGIN ───────────────────────────────────────────────────────────────────
-router.post('/v1/login', authRateLimit, validateAuthInput, async (req, res) => {
+router.post('/v1/login', authRateLimit, validateEmail, async (req, res) => {
     try {
         const { email, password } = req.body;
 

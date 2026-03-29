@@ -3,7 +3,7 @@
 // Each endpoint has different limits based on resource cost and abuse potential.
 // For production scale: migrate to Redis-backed store (ioredis package)
 
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { createClient } from 'redis';
 import { logger } from '../lib/infrastructure/logger.js';
@@ -42,21 +42,19 @@ initializeRedisRateLimitStore().catch(err => {
 
 /**
  * Key generator: per user (authenticated) or per IP
- * For production, use Redis-backed store with ipKeyGenerator helper
- * Dev mode: simple fallback
+ * Uses ipKeyGenerator() helper for IPv6-safe IP detection
  */
 const keyGeneratorPerUser = (req) => {
-    // In production, call ipKeyGenerator for IPv6 support
-    // For dev: simple user ID or client IP
-    return req.userId ? `user:${req.userId}` : (req.ip || 'unknown');
+    // Prefer user ID if authenticated, else use IPv6-safe IP
+    if (req.userId) return `user:${req.userId}`;
+    return ipKeyGenerator(req); // Safe IPv4/IPv6 detection
 };
 
 /**
  * Key generator: per IP (for unauthenticated endpoints)
+ * IPv6-safe using express-rate-limit's built-in helper
  */
-const keyGeneratorPerIP = (req) => {
-    return req.ip || 'unknown';
-};
+const keyGeneratorPerIP = ipKeyGenerator;
 
 /**
  * Handler: log rate limit violations (v7 uses handler instead of onLimitReached)
