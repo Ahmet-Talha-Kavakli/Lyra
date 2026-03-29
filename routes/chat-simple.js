@@ -16,8 +16,10 @@ import {
     getSessionTranscript, setSessionTranscript
 } from '../src/services/cache/redisService.js';
 import {
-    queueProfileUpdate, queueSessionAnalysis, queueHomeworkGeneration
-} from '../src/services/queue/analysisJobs.js';
+    queueProfileUpdatePersistent,
+    queueSessionAnalysisPersistent,
+    queueHomeworkGenerationPersistent
+} from '../src/services/queue/persistentQueue.js';
 import {
     selectPsychologyModules,
     buildEnhancedSystemPrompt,
@@ -135,8 +137,9 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
             res.end();
         }
 
-        // Queue background jobs with psychology context (fire and forget)
-        // This happens after streaming completes (response already sent to client)
+        // Queue background jobs with persistent BullMQ
+        // Response already sent to client, jobs will be processed in background
+        // If server crashes, jobs are recovered from Redis
         if (userId) {
             const transcript = messages.map(m => `${m.role}: ${m.content}`).join('\n');
             const sessionId = `${userId}_${Date.now()}`;
@@ -147,20 +150,21 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
                 timestamp: Date.now()
             });
 
-            // Queue jobs without blocking response
-            setImmediate(() => {
-                try {
-                    queueProfileUpdate(userId, transcript, psychologyContext, null, null);
-                    queueSessionAnalysis(userId, sessionId, transcript, psychologyContext, null, null, null, null, null);
-                    queueHomeworkGeneration(userId, sessionId, transcript, psychologyContext, 'belirsiz', null);
-                    logger.info('[QUEUE] Background jobs queued', {
-                        userId,
-                        modules: selectedModules
-                    });
-                } catch (qErr) {
-                    logger.warn('[QUEUE] Queueing error', { error: qErr.message });
-                }
-            });
+            // Queue jobs (persistent, survives server crashes)
+            try {
+                await queueProfileUpdatePersistent(userId, transcript, psychologyContext);
+                await queueSessionAnalysisPersistent(userId, sessionId, transcript, psychologyContext, null, null, null, null, null);
+                await queueHomeworkGenerationPersistent(userId, sessionId, transcript, psychologyContext, 'belirsiz', null);
+
+                logger.info('[QUEUE] Persistent jobs queued', {
+                    userId,
+                    sessionId,
+                    modules: selectedModules
+                });
+            } catch (qErr) {
+                logger.warn('[QUEUE] Queueing error', { error: qErr.message });
+                // Don't fail response — client already got chat response
+            }
         }
 
     } catch (error) {
