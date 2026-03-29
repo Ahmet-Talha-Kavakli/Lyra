@@ -11,7 +11,7 @@ import { logger } from './lib/infrastructure/logger.js';
 
 // ─── SECURITY INFRASTRUCTURE ──────────────────────────────────────────────────
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth.js';
-import { ddosProtectionMiddleware, chatLimiter, apiGeneralLimiter, publicLimiter } from './middleware/rateLimiters.js';
+import { chatLimiter, apiGeneralLimiter, publicLimiter } from './middleware/rateLimiters.js';
 import { auditContextMiddleware, logAuthEvent, EVENT_TYPES, getAuditStats } from './lib/infrastructure/auditLogger.js';
 import { securityHeadersMiddleware, apiSecurityHeadersMiddleware } from './lib/infrastructure/securityHeaders.js';
 import { getCacheHealth } from './lib/infrastructure/cacheManager.js';
@@ -74,7 +74,7 @@ app.use(cors({
 // ─── GLOBAL SECURITY MIDDLEWARE ───────────────────────────────────────────────
 app.use(securityHeadersMiddleware); // HTTP security headers
 app.use(auditContextMiddleware); // Attach audit context
-app.use(ddosProtectionMiddleware); // DDoS protection (global)
+// DDoS protection: Handled by Redis-backed rate limiters per endpoint (see middleware/rateLimiters.js)
 
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
