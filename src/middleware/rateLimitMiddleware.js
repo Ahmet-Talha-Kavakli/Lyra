@@ -4,7 +4,7 @@
 // For production scale: migrate to Redis-backed store (ioredis package)
 
 import { rateLimit } from 'express-rate-limit';
-import { logger } from '../lib/logger.js';
+import { logger } from '../lib/infrastructure/logger.js';
 
 /**
  * Key generator: per user (authenticated) or per IP

@@ -6,9 +6,9 @@
 // - Queue background analysis with psychology context
 
 import express from 'express';
-import { logger } from '../lib/logger.js';
-import { openai } from '../lib/openai.js';
-import { supabase } from '../lib/supabase.js';
+import { logger } from '../lib/infrastructure/logger.js';
+import { openai } from '../lib/shared/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimit } from 'express-rate-limit';
 import {

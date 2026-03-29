@@ -9,8 +9,8 @@
 //   4. Seans içinde kullanıcı ödevden bahsederse status güncellenir (completed/skipped)
 //   5. Hiç bahsedilmezse seans sonunda nazikçe hatırlatılır
 
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 
 // ─── ÖDEV ÜRETME ─────────────────────────────────────────────────────────────
 

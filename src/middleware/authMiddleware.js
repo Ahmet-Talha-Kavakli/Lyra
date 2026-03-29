@@ -1,5 +1,5 @@
-import { verifyAccessToken, signAccessToken } from '../lib/tokenManager.js';
-import { logger } from '../lib/logger.js';
+import { verifyAccessToken, signAccessToken } from '../lib/infrastructure/tokenManager.js';
+import { logger } from '../lib/infrastructure/logger.js';
 
 /**
  * Extract token from httpOnly cookie or Authorization header

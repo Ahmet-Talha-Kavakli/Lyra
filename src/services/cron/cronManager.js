@@ -8,7 +8,7 @@
  * - Lock TTL: 1 hour (auto-release if pod crashes)
  */
 
-import { logger } from '../../../lib/logger.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
 import { acquireLock, releaseLock } from '../cache/redisService.js';
 
 const LOCK_DURATION = 3600; // 1 hour in seconds

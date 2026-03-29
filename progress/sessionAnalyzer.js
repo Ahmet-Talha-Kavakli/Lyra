@@ -1,5 +1,5 @@
 // progress/sessionAnalyzer.js
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/shared/supabase.js';
 
 /**
  * Seans kaydını Supabase'e yazar.

@@ -9,8 +9,8 @@
  */
 
 import cron from 'node-cron';
-import { config } from './lib/config.js';
-import { logger } from './lib/logger.js';
+import { config } from './lib/infrastructure/config.js';
+import { logger } from './lib/infrastructure/logger.js';
 import { cronManager } from './src/services/cron/cronManager.js';
 
 // Import cron job handlers
@@ -19,7 +19,7 @@ import {
     assessKnowledgeQuality,
     detectKnowledgeGaps,
     verifySourceCredibility
-} from './lib/cronJobs.js';
+} from './lib/infrastructure/cronJobs.js';
 
 logger.info('🔄 Lyra Worker started', {
     env: config.NODE_ENV,

@@ -15,7 +15,7 @@
  * 8. Resilience Building — Coping strategies
  */
 
-import { logger } from '../../../lib/logger.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
 
 // Import core psychology modules (they export utility functions, not defaults)
 // These are used indirectly — system prompts reference them, not direct function calls

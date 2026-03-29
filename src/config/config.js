@@ -4,7 +4,7 @@
 // Yüklendikten sonra tüm modüller buradan config okur.
 //
 // Kullanım:
-//   import { config } from '../lib/config.js';
+//   import { config } from '../lib/infrastructure/config.js';
 //   const secret = config.JWT_SECRET;
 
 import dotenv from 'dotenv';

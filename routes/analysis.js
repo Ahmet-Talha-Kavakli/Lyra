@@ -2,15 +2,15 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireOwnership } from '../lib/helpers.js';
+import { requireOwnership } from '../lib/shared/helpers.js';
 import { getUserEmotion, getActiveSession } from '../src/services/cache/redisService.js';
-import { updateObjectTracker, buildObjectContext, clearObjectTracker } from '../lib/objectTracker.js';
-import { buildPhysicalHarmContext } from '../lib/physicalHarmTracker.js';
-import { buildColorContext } from '../lib/colorAnalyzer.js';
-import { buildVoiceBaselineContext } from '../lib/voiceBaselineEngine.js';
+import { updateObjectTracker, buildObjectContext, clearObjectTracker } from '../lib/shared/objectTracker.js';
+import { buildPhysicalHarmContext } from '../lib/shared/physicalHarmTracker.js';
+import { buildColorContext } from '../lib/shared/colorAnalyzer.js';
+import { buildVoiceBaselineContext } from '../lib/shared/voiceBaselineEngine.js';
 
 const router = express.Router();
 

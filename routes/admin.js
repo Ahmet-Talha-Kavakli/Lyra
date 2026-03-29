@@ -1,7 +1,7 @@
 // routes/admin.js
 import express from 'express';
-import { supabase } from '../lib/supabase.js';
-import { requireAdmin } from '../lib/helpers.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { requireAdmin } from '../lib/shared/helpers.js';
 
 const router = express.Router();
 

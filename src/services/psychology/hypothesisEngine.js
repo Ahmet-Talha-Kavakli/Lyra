@@ -9,8 +9,8 @@
 //   4. Hipotez psychological_profiles.therapeutic_hypothesis alanına yazılır
 //   5. Bir sonraki seans başında promptBuilder bunu inject eder
 
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 
 // ─── VERİ TOPLAMA ────────────────────────────────────────────────────────────
 

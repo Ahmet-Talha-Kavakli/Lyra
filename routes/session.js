@@ -1,11 +1,11 @@
 // routes/session.js
 import express from 'express';
 import crypto from 'crypto';
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireOwnership, logError } from '../lib/helpers.js';
-import { VISUALIZATION_SCRIPTS } from '../lib/constants.js';
+import { requireOwnership, logError } from '../lib/shared/helpers.js';
+import { VISUALIZATION_SCRIPTS } from '../lib/infrastructure/constants.js';
 import {
     getUserEmotion, setUserEmotion,
     getSessionTranscript, setSessionTranscript,
@@ -16,7 +16,7 @@ import { extractProfileUpdates, analyzeSession } from '../profile/profileExtract
 import { saveSessionRecord, updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';
 import { runPostSessionReflection } from '../therapy/reflectionEngine.js';
 import { updateWeeklyMetrics } from '../progress/progressTracker.js';
-import { clearLanguageCache } from '../lib/languageDetector.js';
+import { clearLanguageCache } from '../lib/shared/languageDetector.js';
 
 const router = express.Router();
 

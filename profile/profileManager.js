@@ -5,7 +5,7 @@
 //   - session_records
 //   - technique_effectiveness
 //   - progress_metrics
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/shared/supabase.js';
 
 export const EMPTY_PROFILE = Object.freeze({
   attachment_style: 'belirsiz',

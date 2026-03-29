@@ -1,8 +1,8 @@
 // routes/user.js
 import express from 'express';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireOwnership } from '../lib/helpers.js';
+import { requireOwnership } from '../lib/shared/helpers.js';
 import { updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';
 
 const router = express.Router();

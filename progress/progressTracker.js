@@ -1,5 +1,5 @@
 // progress/progressTracker.js
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/shared/supabase.js';
 
 export const updateWeeklyMetrics = async (userId, sessionAnalysis) => {
   if (!userId || !sessionAnalysis) return;

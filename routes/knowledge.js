@@ -1,9 +1,9 @@
 // routes/knowledge.js
 import express from 'express';
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { requireOwnership, requireAdmin } from '../lib/helpers.js';
+import { requireOwnership, requireAdmin } from '../lib/shared/helpers.js';
 
 const router = express.Router();
 

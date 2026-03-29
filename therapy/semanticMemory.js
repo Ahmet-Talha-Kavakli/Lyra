@@ -11,8 +11,8 @@
 //
 // Fallback: embedding başarısız olursa keyword overlap skoru kullanılır.
 
-import { supabase } from '../lib/supabase.js';
-import { openai } from '../lib/openai.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { openai } from '../lib/shared/openai.js';
 
 // ─── EMBEDDING ÜRETME ────────────────────────────────────────────────────────
 

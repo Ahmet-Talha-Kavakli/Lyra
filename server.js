@@ -6,17 +6,17 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 
 // ─── CONFIG & LOGGER (en önce yükle — kritik key kontrol) ─────────────────────
-import { config } from './lib/config.js';
-import { logger } from './lib/logger.js';
+import { config } from './lib/infrastructure/config.js';
+import { logger } from './lib/infrastructure/logger.js';
 
 // ─── SECURITY INFRASTRUCTURE ──────────────────────────────────────────────────
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth.js';
 import { ddosProtectionMiddleware, chatLimiter, apiGeneralLimiter, publicLimiter } from './middleware/rateLimiters.js';
-import { auditContextMiddleware, logAuthEvent, EVENT_TYPES, getAuditStats } from './lib/auditLogger.js';
-import { securityHeadersMiddleware, apiSecurityHeadersMiddleware } from './lib/securityHeaders.js';
-import { getCacheHealth } from './lib/cacheManager.js';
-import { getOptimizationStats, checkConnectionPoolHealth } from './lib/databaseOptimizer.js';
-import { apiDocsEndpoint, swaggerUIEndpoint, getEndpointStats } from './lib/apiDocumentation.js';
+import { auditContextMiddleware, logAuthEvent, EVENT_TYPES, getAuditStats } from './lib/infrastructure/auditLogger.js';
+import { securityHeadersMiddleware, apiSecurityHeadersMiddleware } from './lib/infrastructure/securityHeaders.js';
+import { getCacheHealth } from './lib/infrastructure/cacheManager.js';
+import { getOptimizationStats, checkConnectionPoolHealth } from './lib/infrastructure/databaseOptimizer.js';
+import { apiDocsEndpoint, swaggerUIEndpoint, getEndpointStats } from './lib/infrastructure/apiDocumentation.js';
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 import authRouter      from './routes/auth.js';
@@ -30,7 +30,7 @@ import characterRouter from './routes/character.js';
 import adminRouter     from './routes/admin.js';
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
-import { supabase } from './lib/supabase.js';
+import { supabase } from './lib/shared/supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

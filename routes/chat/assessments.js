@@ -2,7 +2,7 @@
 // 48 assessment block'ını single function'a çekmek
 // Her block try/catch ile wrapped, graceful degradation
 
-import { logger } from '../../lib/logger.js';
+import { logger } from '../../lib/infrastructure/logger.js';
 import { supabase } from '../../lib/supabase.js';
 import { getUserEmotion, getSessionTranscript, getActiveSession } from '../../src/services/cache/redisService.js';
 
@@ -11,15 +11,15 @@ import { runRuleEngine } from '../../therapy/ruleEngine.js';
 import { detectTopicBlindSpots, detectPatternBlindSpots, buildBlindSpotContext } from '../../therapy/blindSpotDetector.js';
 import { recallSimilarMoments, buildSemanticMemoryContext } from '../../therapy/semanticMemory.js';
 import { buildVoiceContext } from '../../therapy/voiceAnalyzer.js';
-import { buildObjectContext } from '../../lib/objectTracker.js';
-import { buildPhysicalHarmContext } from '../../lib/physicalHarmTracker.js';
-import { buildVoiceBaselineContext } from '../../lib/voiceBaselineEngine.js';
-import { buildWindowOfToleranceContext } from '../../lib/windowOfTolerance.js';
-import { buildSomaticMarkerContext } from '../../lib/somaticMarkers.js';
-import { buildResistanceContext } from '../../lib/resistancePatterns.js';
-import { buildTransferenceContext } from '../../lib/transferenceEngine.js';
-import { buildSessionContinuityContext } from '../../lib/sessionContinuity.js';
-import { buildHomeworkRecallContext } from '../../lib/homeworkRecall.js';
+import { buildObjectContext } from '../../lib/shared/objectTracker.js';
+import { buildPhysicalHarmContext } from '../../lib/shared/physicalHarmTracker.js';
+import { buildVoiceBaselineContext } from '../../lib/shared/voiceBaselineEngine.js';
+import { buildWindowOfToleranceContext } from '../../lib/shared/windowOfTolerance.js';
+import { buildSomaticMarkerContext } from '../../lib/shared/somaticMarkers.js';
+import { buildResistanceContext } from '../../lib/shared/resistancePatterns.js';
+import { buildTransferenceContext } from '../../lib/shared/transferenceEngine.js';
+import { buildSessionContinuityContext } from '../../lib/shared/sessionContinuity.js';
+import { buildHomeworkRecallContext } from '../../lib/shared/homeworkRecall.js';
 import { assessBondQuality, buildBondStrengtheningContext } from '../../lib/therapeuticBond.js';
 import { detectRupture, hypothesizeRuptureSource, buildRepairContext } from '../../lib/ruptureRepair.js';
 import { assessCulturalProfile, buildCulturalSensitivityContext } from '../../lib/culturalSensitivity.js';

@@ -1,9 +1,9 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { supabase } from '../lib/supabase.js';
-import { validateAuthInput } from '../lib/validators.js';
-import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/tokenManager.js';
-import { logger } from '../lib/logger.js';
+import { supabase } from '../lib/shared/supabase.js';
+import { validateAuthInput } from '../lib/shared/validators.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/infrastructure/tokenManager.js';
+import { logger } from '../lib/infrastructure/logger.js';
 
 const router = express.Router();
 

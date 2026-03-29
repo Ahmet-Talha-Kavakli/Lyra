@@ -4,7 +4,7 @@
 // Output: JSON (production) | human-readable (development)
 //
 // Kullanım:
-//   import { logger } from '../lib/logger.js';
+//   import { logger } from '../lib/infrastructure/logger.js';
 //   logger.info('Chat başladı', { userId, sessionId });
 //   logger.error('OpenAI hatası', { error: err.message, userId });
 

@@ -6,7 +6,7 @@
 import { rateLimit } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { createClient } from 'redis';
-import { logger } from '../lib/logger.js';
+import { logger } from '../lib/infrastructure/logger.js';
 
 // Redis client for rate limiting (shared across all limiters)
 let redisRateLimitClient = null;

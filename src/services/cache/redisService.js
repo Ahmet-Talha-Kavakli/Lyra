@@ -16,7 +16,7 @@
  */
 
 import { createClient } from 'redis';
-import { logger } from '../../../lib/logger.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
 
 // ─── REDIS CLIENT INITIALIZATION ──────────────────────────────────
 let redisClient = null;

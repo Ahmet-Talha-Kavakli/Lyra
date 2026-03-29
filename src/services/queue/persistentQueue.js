@@ -12,7 +12,7 @@
  */
 
 import Queue from 'bull';
-import { logger } from '../../../lib/logger.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
 
 // ─── QUEUE INITIALIZATION ────────────────────────────────────────
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';

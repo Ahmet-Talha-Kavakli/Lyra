@@ -1,7 +1,7 @@
 // profile/profileExtractor.js
 // Terapi transkriptlerinden psikolojik profil güncellemeleri ve seans analizi çıkarır.
 
-import { openai } from '../lib/openai.js';
+import { openai } from '../lib/shared/openai.js';
 
 /**
  * Transkriptten başlangıç + orta + son olmak üzere 3 bölüm örneği alır.
