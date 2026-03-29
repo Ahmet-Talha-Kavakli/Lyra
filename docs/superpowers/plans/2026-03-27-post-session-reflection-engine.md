@@ -222,13 +222,17 @@ export async function saveReflectionToDB(sessionId, reflection, nextSessionNote,
  * @param {Object} params.openai — OpenAI istemci örneği
  * @param {Object} params.supabase — Supabase istemci örneği
  */
-export async function runPostSessionReflection({ transcript, sessionId, userId, sessionAnalysis, profile, openai, supabase }) {
+export async function runPostSessionReflection({ transcript, sessionId, userId, sessionAnalysis, profile, openai, supabase, durationSeconds }) {
     if (!transcript || transcript.length < 100) {
         console.log('[REFLECTION] Transkript çok kısa, atlanıyor.');
         return;
     }
     if (!sessionId) {
         console.warn('[REFLECTION] sessionId yok, atlanıyor.');
+        return;
+    }
+    if (durationSeconds !== undefined && durationSeconds !== null && durationSeconds < 180) {
+        console.log(`[REFLECTION] Seans çok kısa (${durationSeconds}s < 180s), atlanıyor.`);
         return;
     }
     if (!sessionAnalysis) {
@@ -367,6 +371,7 @@ Satır 2480'deki `}` (inner catch'in kapanışı) hemen sonrasına, `// Eski sis
                 profile: _reflectionProfile,
                 openai,
                 supabase,
+                durationSeconds: message.durationSeconds ?? message.call?.durationSeconds ?? null,
             });
 ```
 

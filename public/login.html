@@ -6,19 +6,22 @@
     <title>Lyra — Giriş</title>
     <link rel="stylesheet" href="/css/lyra.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: var(--bg, #0a0806);
+            background: #0a0806;
             font-family: 'Outfit', sans-serif;
             overflow: hidden;
+            position: relative;
         }
 
+        /* ── CANVAS BG ── */
         #login-canvas {
             position: fixed;
             inset: 0;
@@ -27,171 +30,391 @@
             z-index: 0;
         }
 
-        .login-card {
+        /* ── PREMIUM CARD SHELL (Double-Bezel) ── */
+        .login-shell {
             position: relative;
             z-index: 1;
             width: 100%;
-            max-width: 420px;
+            max-width: 480px;
             margin: 0 20px;
-            background: rgba(14, 10, 6, 0.72);
-            border: 1px solid rgba(200, 169, 110, 0.18);
-            border-radius: 24px;
-            padding: 40px 36px 32px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: 0 8px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(200,169,110,0.08);
-            animation: fadeUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            padding: 2px;
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.08), rgba(200, 169, 110, 0.02));
+            border-radius: 28px;
+            border: 1px solid rgba(200, 169, 110, 0.12);
+            box-shadow:
+                0 0 1px rgba(200, 169, 110, 0.3),
+                0 8px 32px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(200, 169, 110, 0.08);
+            animation: shellEnter 0.9s cubic-bezier(0.32, 0.72, 0, 1) both;
         }
 
-        .login-logo-wrap {
+        @keyframes shellEnter {
+            0% {
+                opacity: 0;
+                transform: translateY(24px) scale(0.92);
+                filter: blur(12px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                filter: blur(0);
+            }
+        }
+
+        .login-card {
+            background: rgba(14, 10, 6, 0.78);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: calc(28px - 2px);
+            padding: 48px 40px 40px;
+            box-shadow: inset 0 1px 1px rgba(200, 169, 110, 0.1);
+        }
+
+        /* ── PREMIUM HEADER ── */
+        .login-header {
             text-align: center;
-            margin-bottom: 28px;
+            margin-bottom: 40px;
+            animation: headerFadeUp 0.8s cubic-bezier(0.32, 0.72, 0, 1) 0.15s both;
+        }
+
+        @keyframes headerFadeUp {
+            0% { opacity: 0; transform: translateY(12px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-eyebrow {
+            font-size: 10px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(200, 169, 110, 0.4);
+            font-weight: 500;
+            margin-bottom: 12px;
         }
 
         .login-logo-icon {
-            font-size: 28px;
-            color: var(--primary, #c8a96e);
-            display: block;
-            margin-bottom: 6px;
+            width: 48px;
+            height: 48px;
+            color: #c8a96e;
+            display: inline-block;
+            margin-bottom: 12px;
+            animation: iconFloat 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+        }
+
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(8deg); }
+        }
+
+        .icon-star {
+            width: 100%;
+            height: 100%;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .icon-star-inner {
+            animation: starGlow 2s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        @keyframes starGlow {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
         }
 
         .login-logo-text {
-            font-size: 22px;
-            font-weight: 600;
-            letter-spacing: 6px;
-            color: var(--primary, #c8a96e);
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: #c8a96e;
             text-transform: uppercase;
+            margin-bottom: 6px;
+            background: linear-gradient(135deg, #c8a96e 0%, #e8c99a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .login-subtitle {
             font-size: 12px;
-            color: rgba(200, 169, 110, 0.5);
-            letter-spacing: 1px;
-            margin-top: 4px;
+            color: rgba(200, 169, 110, 0.45);
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            font-weight: 300;
         }
 
+        /* ── FORM FIELDS (Staggered) ── */
         .login-field {
             position: relative;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
+            animation: fieldEnter 0.5s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+        }
+
+        .login-field:nth-child(1) { animation-delay: 0.25s; }
+        .login-field:nth-child(2) { animation-delay: 0.3s; }
+        .login-field:nth-child(3) { animation-delay: 0.35s; }
+
+        @keyframes fieldEnter {
+            0% { opacity: 0; transform: translateY(16px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-label {
+            position: absolute;
+            top: -10px;
+            left: 14px;
+            background: rgba(14, 10, 6, 0.96);
+            padding: 0 8px;
+            font-size: 9px;
+            letter-spacing: 1.8px;
+            color: rgba(200, 169, 110, 0.55);
+            text-transform: uppercase;
+            font-weight: 600;
+            z-index: 1;
         }
 
         .login-input {
             width: 100%;
-            background: rgba(200, 169, 110, 0.05);
-            border: 1px solid rgba(200, 169, 110, 0.2);
-            border-radius: 12px;
-            padding: 14px 16px;
-            color: rgba(255,255,255,0.9);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.04), rgba(200, 169, 110, 0.01));
+            border: 1.5px solid rgba(200, 169, 110, 0.14);
+            border-radius: 14px;
+            padding: 15px 16px;
+            color: rgba(255, 255, 255, 0.92);
             font-family: 'Outfit', sans-serif;
             font-size: 14px;
+            font-weight: 400;
             outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+            backdrop-filter: blur(4px);
+        }
+
+        .login-input::placeholder {
+            color: rgba(200, 169, 110, 0.28);
+        }
+
+        .login-input:hover {
+            border-color: rgba(200, 169, 110, 0.24);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.06), rgba(200, 169, 110, 0.02));
+            box-shadow: 0 0 0 2px rgba(200, 169, 110, 0.06);
         }
 
         .login-input:focus {
-            border-color: rgba(200, 169, 110, 0.5);
-            box-shadow: 0 0 0 3px rgba(200, 169, 110, 0.08);
-        }
-
-        .login-input::placeholder { color: rgba(200, 169, 110, 0.35); }
-
-        .login-label {
-            position: absolute;
-            top: -9px;
-            left: 12px;
-            background: rgba(14, 10, 6, 0.9);
-            padding: 0 6px;
-            font-size: 10px;
-            letter-spacing: 1.5px;
-            color: rgba(200, 169, 110, 0.6);
-            text-transform: uppercase;
-            border-radius: 4px;
+            border-color: rgba(200, 169, 110, 0.32);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.08), rgba(200, 169, 110, 0.04));
+            box-shadow: 0 0 0 3px rgba(200, 169, 110, 0.12), inset 0 0 12px rgba(200, 169, 110, 0.06);
         }
 
         .pwd-toggle {
             position: absolute;
-            right: 12px;
+            right: 14px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: rgba(200, 169, 110, 0.5);
             cursor: pointer;
-            font-size: 16px;
-            padding: 4px;
-            line-height: 1;
+            padding: 10px;
+            z-index: 2;
+            transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+            border-radius: 8px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .form-extra { display: none; }
-        .form-extra.visible {
+        .pwd-toggle svg {
+            width: 20px;
+            height: 20px;
+            color: rgba(200, 169, 110, 0.5);
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        .pwd-toggle:hover svg {
+            color: rgba(200, 169, 110, 0.8);
+        }
+
+        .pwd-toggle:hover {
+            background: rgba(200, 169, 110, 0.08);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .pwd-toggle:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+
+        .eye-pupil {
+            animation: pupilPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pupilPulse {
+            0%, 100% { r: 1.2; }
+            50% { r: 1.5; }
+        }
+
+        /* ── FORM SECTIONS ── */
+        .form-section {
+            display: none;
+        }
+
+        .form-section.active {
             display: block;
-            animation: fadeUp 0.3s ease both;
+            animation: sectionEnter 0.3s ease;
         }
 
+        @keyframes sectionEnter {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ── PASSWORD STRENGTH ── */
         .pwd-strength-wrap {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
+            gap: 12px;
+            margin: 16px 0 14px;
+            animation: fieldEnter 0.5s cubic-bezier(0.32, 0.72, 0, 1) 0.4s backwards;
         }
 
         .pwd-strength-bar {
             flex: 1;
-            height: 4px;
-            background: rgba(200, 169, 110, 0.1);
-            border-radius: 2px;
+            height: 6px;
+            background: rgba(200, 169, 110, 0.08);
+            border-radius: 3px;
             overflow: hidden;
+            position: relative;
         }
 
-        .pwd-strength-bar div {
+        .pwd-strength-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(200, 169, 110, 0.1), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .pwd-strength-fill {
             height: 100%;
-            width: 0;
-            border-radius: 2px;
-            transition: width 0.3s, background 0.3s;
+            width: 0%;
+            border-radius: 3px;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 0 12px currentColor;
         }
 
-        #pwd-strength-label {
+        .pwd-strength-label {
             font-size: 11px;
             color: rgba(200, 169, 110, 0.5);
             white-space: nowrap;
+            min-width: 80px;
+            font-weight: 500;
         }
 
+        /* ── CRITERIA ── */
         .pwd-criteria {
             list-style: none;
             display: flex;
             flex-wrap: wrap;
-            gap: 4px 10px;
-            margin-bottom: 10px;
+            gap: 8px 16px;
+            margin: 12px 0 16px;
+            animation: fieldEnter 0.5s cubic-bezier(0.32, 0.72, 0, 1) 0.45s backwards;
         }
 
         .pwd-criteria li {
-            font-size: 10px;
-            color: rgba(200, 169, 110, 0.35);
-            transition: color 0.2s;
+            font-size: 11px;
+            color: rgba(200, 169, 110, 0.34);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .pwd-criteria li::before { content: '○ '; }
-        .pwd-criteria li.met { color: #70c896; }
-        .pwd-criteria li.met::before { content: '● '; }
+        .pwd-criteria li::before {
+            content: '○';
+            font-size: 9px;
+            display: inline-block;
+            font-weight: 600;
+        }
 
+        .pwd-criteria li.met {
+            color: #70c896;
+        }
+
+        .pwd-criteria li.met::before {
+            content: '●';
+        }
+
+        /* ── SUGGEST BUTTON ── */
         .login-suggest-btn {
-            background: rgba(200, 169, 110, 0.08);
-            border: 1px solid rgba(200, 169, 110, 0.2);
-            border-radius: 8px;
+            width: 100%;
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.08), rgba(200, 169, 110, 0.02));
+            border: 1.5px solid rgba(200, 169, 110, 0.16);
+            border-radius: 12px;
             color: rgba(200, 169, 110, 0.7);
-            font-size: 12px;
-            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 11px 14px;
             cursor: pointer;
-            margin-bottom: 12px;
-            transition: background 0.2s, color 0.2s;
+            margin-bottom: 16px;
+            transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1);
             font-family: 'Outfit', sans-serif;
+            letter-spacing: 0.3px;
+            animation: fieldEnter 0.5s cubic-bezier(0.32, 0.72, 0, 1) 0.5s backwards;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .login-suggest-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: all 0.3s ease;
+        }
+
+        .spark {
+            animation: sparkShine 1.5s ease-in-out infinite;
+        }
+
+        @keyframes sparkShine {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
         }
 
         .login-suggest-btn:hover {
-            background: rgba(200, 169, 110, 0.14);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.12), rgba(200, 169, 110, 0.05));
+            border-color: rgba(200, 169, 110, 0.28);
             color: rgba(200, 169, 110, 0.9);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(200, 169, 110, 0.08);
         }
 
+        .login-suggest-btn:hover svg {
+            animation: sparkShine 0.8s ease-in-out infinite;
+        }
+
+        .login-suggest-btn:active {
+            transform: translateY(0);
+        }
+
+        /* ── FORGOT PASSWORD ── */
         .login-forgot {
             background: none;
             border: none;
@@ -199,85 +422,163 @@
             font-size: 12px;
             cursor: pointer;
             padding: 0;
-            text-decoration: underline;
-            text-underline-offset: 3px;
             font-family: 'Outfit', sans-serif;
-            display: block;
-            margin-bottom: 16px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-block;
+            position: relative;
+            margin-bottom: 14px;
+            font-weight: 400;
         }
 
-        .login-forgot:hover { color: rgba(200, 169, 110, 0.8); }
+        .login-forgot::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 0;
+            height: 1px;
+            background: rgba(200, 169, 110, 0.5);
+            transition: width 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+        }
 
+        .login-forgot:hover {
+            color: rgba(200, 169, 110, 0.85);
+        }
+
+        .login-forgot:hover::after {
+            width: 100%;
+        }
+
+        /* ── PREMIUM CTA BUTTON ── */
         .login-btn {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #c8a96e, #e8c99a);
+            padding: 15px;
+            background: linear-gradient(135deg, #c8a96e 0%, #e8c99a 100%);
             border: none;
-            border-radius: 12px;
+            border-radius: 13px;
             color: #0a0806;
             font-family: 'Outfit', sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.4px;
             text-transform: uppercase;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            transition: opacity 0.2s, transform 0.1s;
-            margin-bottom: 8px;
+            gap: 10px;
+            transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+            margin-bottom: 10px;
+            box-shadow:
+                0 8px 24px rgba(200, 169, 110, 0.2),
+                0 0 1px rgba(200, 169, 110, 0.3);
+            position: relative;
+            overflow: hidden;
         }
 
-        .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-        .login-btn:active { transform: translateY(0); }
-        .login-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .login-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.7s cubic-bezier(0.32, 0.72, 0, 1);
+        }
 
-        .btn-spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(10, 8, 6, 0.3);
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow:
+                0 12px 32px rgba(200, 169, 110, 0.28),
+                0 0 1px rgba(200, 169, 110, 0.3);
+        }
+
+        .login-btn:hover::before {
+            left: 100%;
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+            box-shadow:
+                0 4px 12px rgba(200, 169, 110, 0.15),
+                0 0 1px rgba(200, 169, 110, 0.3);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .login-btn-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(10, 8, 6, 0.25);
             border-top-color: #0a0806;
             border-radius: 50%;
-            animation: spin 0.7s linear infinite;
+            animation: spin 0.8s linear infinite;
             display: none;
         }
 
-        .login-btn.loading .btn-spinner { display: block; }
-        .login-btn.loading .btn-text { display: none; }
+        .login-btn.loading .login-btn-spinner {
+            display: block;
+        }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .login-btn.loading .login-btn-text {
+            display: none;
+        }
 
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ── ERROR MESSAGE ── */
         .login-error {
             font-size: 12px;
-            color: var(--danger, #d47777);
-            min-height: 18px;
-            margin-bottom: 10px;
+            color: #d47777;
+            min-height: 16px;
+            margin-bottom: 14px;
             text-align: center;
+            transition: all 0.3s ease;
         }
 
-        .login-error.success { color: var(--success, #70c896); }
+        .login-error.hidden {
+            display: none;
+        }
 
-        @keyframes shake {
+        .login-error.success {
+            color: #70c896;
+        }
+
+        .login-error:not(.hidden) {
+            animation: errorShake 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes errorShake {
             0%, 100% { transform: translateX(0); }
-            15%       { transform: translateX(-8px); }
-            30%       { transform: translateX(7px); }
-            45%       { transform: translateX(-6px); }
-            60%       { transform: translateX(5px); }
-            75%       { transform: translateX(-3px); }
-            90%       { transform: translateX(2px); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
         }
 
-        .shake { animation: shake 0.4s ease; }
-
+        /* ── DIVIDER ── */
         .login-divider {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin: 20px 0 16px;
-            color: rgba(200, 169, 110, 0.3);
-            font-size: 11px;
-            letter-spacing: 1px;
+            gap: 18px;
+            margin: 32px 0 28px;
+            color: rgba(200, 169, 110, 0.28);
+            font-size: 10px;
+            letter-spacing: 2.2px;
+            text-transform: uppercase;
+            font-weight: 500;
+            animation: dividerEnter 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.4s both;
+        }
+
+        @keyframes dividerEnter {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
         }
 
         .login-divider::before,
@@ -285,210 +586,354 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: rgba(200, 169, 110, 0.15);
+            background: linear-gradient(90deg, rgba(200, 169, 110, 0.08), transparent);
         }
 
+        .login-divider::after {
+            background: linear-gradient(90deg, transparent, rgba(200, 169, 110, 0.08));
+        }
+
+        /* ── SOCIAL BUTTONS (Premium Double-Bezel) ── */
         .social-btns {
             display: flex;
             justify-content: center;
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 16px;
+            margin-bottom: 28px;
+            animation: socialEnter 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.45s both;
+        }
+
+        @keyframes socialEnter {
+            0% { opacity: 0; transform: translateY(12px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .social-shell {
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.08), rgba(200, 169, 110, 0.01));
+            border-radius: 18px;
+            border: 1px solid rgba(200, 169, 110, 0.12);
+            box-shadow: 0 0 1px rgba(200, 169, 110, 0.2);
         }
 
         .social-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            border: 1px solid rgba(200, 169, 110, 0.25);
-            background: rgba(200, 169, 110, 0.04);
+            width: 60px;
+            height: 60px;
+            border-radius: calc(18px - 1px);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.06), rgba(200, 169, 110, 0.01));
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+            transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1);
             padding: 0;
+            position: relative;
+            overflow: hidden;
+            border: none;
+        }
+
+        .social-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 30% 30%, rgba(200, 169, 110, 0.12), transparent 70%);
+            opacity: 0;
+            transition: opacity 0.5s ease;
         }
 
         .social-btn:hover {
-            border-color: rgba(200, 169, 110, 0.5);
-            background: rgba(200, 169, 110, 0.08);
-            box-shadow: 0 0 12px rgba(200, 169, 110, 0.12);
+            background: linear-gradient(135deg, rgba(200, 169, 110, 0.1), rgba(200, 169, 110, 0.03));
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 0 1px rgba(200, 169, 110, 0.2);
         }
 
-        .social-btn svg { width: 20px; height: 20px; }
+        .social-shell:hover {
+            box-shadow: 0 0 20px rgba(200, 169, 110, 0.15);
+        }
+
+        .social-btn:hover::before {
+            opacity: 1;
+        }
+
+        .social-btn:active {
+            transform: translateY(0) scale(1);
+        }
+
+        .social-btn svg {
+            width: 28px;
+            height: 28px;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 0 2px rgba(200, 169, 110, 0.25));
+        }
+
+        /* ── PSYCHOLOGIST SECTION ── */
+        .psikolog-section {
+            text-align: center;
+            margin-top: 20px;
+            animation: psikologEnter 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.55s both;
+        }
+
+        @keyframes psikologEnter {
+            0% { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
 
         .psikolog-link {
-            text-align: center;
             font-size: 11px;
-            color: rgba(200, 169, 110, 0.4);
-            margin-top: 4px;
+            color: rgba(200, 169, 110, 0.45);
+            letter-spacing: 0.2px;
+            line-height: 1.6;
         }
 
         .psikolog-link a {
-            color: rgba(200, 169, 110, 0.5);
-            text-decoration: underline;
-            text-underline-offset: 3px;
+            color: rgba(200, 169, 110, 0.65);
+            text-decoration: none;
             cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+            position: relative;
+            border-bottom: 1px solid transparent;
+            border-bottom-color: rgba(200, 169, 110, 0.15);
+            padding-bottom: 1px;
         }
 
-        .psikolog-link a:hover { color: rgba(200, 169, 110, 0.8); }
+        .psikolog-link a:hover {
+            color: rgba(200, 169, 110, 0.9);
+            border-bottom-color: rgba(200, 169, 110, 0.4);
+        }
 
+        /* ── TOAST ── */
         .login-toast {
             position: fixed;
-            bottom: 28px;
+            bottom: 32px;
             left: 50%;
-            transform: translateX(-50%) translateY(20px);
-            background: rgba(14, 10, 6, 0.95);
-            border: 1px solid rgba(200, 169, 110, 0.3);
-            border-radius: 12px;
-            padding: 10px 20px;
+            transform: translateX(-50%) translateY(120px);
+            background: rgba(14, 10, 6, 0.96);
+            border: 1px solid rgba(200, 169, 110, 0.2);
+            border-radius: 13px;
+            padding: 13px 28px;
             color: rgba(200, 169, 110, 0.9);
             font-size: 13px;
             z-index: 100;
             opacity: 0;
-            transition: opacity 0.3s, transform 0.3s;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
             pointer-events: none;
             white-space: nowrap;
+            box-shadow:
+                0 10px 32px rgba(0, 0, 0, 0.4),
+                0 0 1px rgba(200, 169, 110, 0.2);
+            font-weight: 500;
         }
 
         .login-toast.show {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
         }
 
+        /* ── RESPONSIVE ── */
         @media (max-width: 480px) {
-            .login-card { padding: 32px 24px 24px; }
+            .login-shell {
+                margin: 0 16px;
+            }
+
+            .login-card {
+                padding: 36px 24px 28px;
+            }
+
+            .login-logo-text {
+                font-size: 24px;
+            }
+
+            .social-shell {
+                border-radius: 16px;
+                padding: 1px;
+            }
+
+            .social-btn {
+                width: 54px;
+                height: 54px;
+                border-radius: calc(16px - 1px);
+            }
+
+            .social-btn svg {
+                width: 24px;
+                height: 24px;
+            }
+
+            .login-field,
+            .login-input {
+                margin-bottom: 14px;
+            }
         }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <canvas id="login-canvas"></canvas>
 
-    <div class="login-card" id="login-card">
-        <div class="login-logo-wrap">
-            <span class="login-logo-icon">✦</span>
-            <div class="login-logo-text">Lyra</div>
-            <div class="login-subtitle">Kozmik Rehberinize Bağlanın</div>
-        </div>
-
-        <!-- Adım 1: E-posta -->
-        <div id="step-email">
-            <div class="login-field">
-                <input class="login-input" type="email" id="input-email" placeholder="ornek@email.com" autocomplete="email">
-                <label class="login-label">E-Posta</label>
-            </div>
-            <div class="login-error" id="email-error"></div>
-            <button class="login-btn" id="btn-devam">
-                <div class="btn-spinner"></div>
-                <span class="btn-text">Devam Et</span>
-            </button>
-        </div>
-
-        <!-- Adım 2a: Giriş modu -->
-        <div class="form-extra" id="step-signin">
-            <div class="login-field">
-                <input class="login-input" type="password" id="input-signin-pwd" placeholder="••••••••" autocomplete="current-password">
-                <label class="login-label">Şifre</label>
-                <button type="button" class="pwd-toggle" id="toggle-signin-pwd">👁</button>
-            </div>
-            <button type="button" class="login-forgot" id="btn-forgot">Şifremi Unuttum</button>
-            <div class="login-error" id="signin-error"></div>
-            <button class="login-btn" id="btn-giris">
-                <div class="btn-spinner"></div>
-                <span class="btn-text">Giriş Yap</span>
-            </button>
-            <button type="button" class="login-forgot" id="btn-back-from-signin" style="text-align:center;width:100%;margin-top:4px;">← E-postayı değiştir</button>
-        </div>
-
-        <!-- Adım 2b: Kayıt modu -->
-        <div class="form-extra" id="step-signup">
-            <div class="login-field">
-                <input class="login-input" type="text" id="input-fullname" placeholder="Ad Soyad" autocomplete="name">
-                <label class="login-label">Ad Soyad</label>
-            </div>
-            <div class="login-field">
-                <input class="login-input" type="password" id="input-signup-pwd" placeholder="••••••••" autocomplete="new-password">
-                <label class="login-label">Şifre</label>
-                <button type="button" class="pwd-toggle" id="toggle-signup-pwd">👁</button>
-            </div>
-            <div class="pwd-strength-wrap">
-                <div class="pwd-strength-bar"><div id="pwd-strength-fill"></div></div>
-                <span id="pwd-strength-label">Şifre gücü</span>
-            </div>
-            <ul class="pwd-criteria">
-                <li id="c-len">En az 8 karakter</li>
-                <li id="c-upper">Büyük harf</li>
-                <li id="c-num">Rakam</li>
-                <li id="c-special">Özel karakter</li>
-            </ul>
-            <button type="button" class="login-suggest-btn" id="btn-suggest">✨ Güçlü şifre öner</button>
-            <div class="login-field">
-                <input class="login-input" type="password" id="input-signup-pwd2" placeholder="••••••••" autocomplete="new-password">
-                <label class="login-label">Şifre Tekrar</label>
-            </div>
-            <div class="login-error" id="signup-error"></div>
-            <button class="login-btn" id="btn-kayit">
-                <div class="btn-spinner"></div>
-                <span class="btn-text">Hesap Oluştur</span>
-            </button>
-            <button type="button" class="login-forgot" id="btn-back-from-signup" style="text-align:center;width:100%;margin-top:4px;">← E-postayı değiştir</button>
-        </div>
-
-        <!-- Şifremi unuttum -->
-        <div class="form-extra" id="step-forgot">
-            <p style="font-size:13px;color:rgba(200,169,110,0.6);margin-bottom:16px;">E-posta adresine şifre sıfırlama bağlantısı gönderelim.</p>
-            <div class="login-field">
-                <input class="login-input" type="email" id="input-forgot-email" placeholder="ornek@email.com" autocomplete="email">
-                <label class="login-label">E-Posta</label>
-            </div>
-            <div class="login-error" id="forgot-error"></div>
-            <button class="login-btn" id="btn-forgot-send">
-                <div class="btn-spinner"></div>
-                <span class="btn-text">Bağlantı Gönder</span>
-            </button>
-            <button type="button" class="login-forgot" id="btn-back-from-forgot" style="text-align:center;width:100%;margin-top:4px;">← Geri dön</button>
-        </div>
-
-        <!-- Sosyal giriş -->
-        <div class="login-divider">VEYA</div>
-        <div class="social-btns">
-            <button class="social-btn" id="btn-google" title="Google ile giriş">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#c8a96e" opacity="0.8"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#c8a96e" opacity="0.6"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#c8a96e" opacity="0.4"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#c8a96e" opacity="0.9"/>
+    <div class="login-shell">
+        <div class="login-card" id="login-card">
+            <!-- HEADER -->
+            <div class="login-header">
+                <div class="login-eyebrow">Terapi Asistanı</div>
+                <svg class="login-logo-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                    <g class="icon-star-inner">
+                        <path d="M24 4L28.5 16H41L32 24L36.5 36L24 28L11.5 36L16 24L7 16H19.5L24 4Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </g>
                 </svg>
-            </button>
-            <button class="social-btn" id="btn-facebook" title="Facebook ile giriş">
-                <svg viewBox="0 0 24 24" fill="rgba(200,169,110,0.7)" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                </svg>
-            </button>
-            <button class="social-btn" id="btn-apple" title="Apple ile giriş">
-                <svg viewBox="0 0 24 24" fill="rgba(200,169,110,0.7)" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-                </svg>
-            </button>
-        </div>
+                <div class="login-logo-text">LYRA</div>
+                <div class="login-subtitle">Kozmik Rehberinize Bağlanın</div>
+            </div>
 
-        <div class="psikolog-link">
-            <a id="btn-psikolog">Psikolog musunuz? Profesyonel girişi için tıklayın</a>
+            <!-- STEP 1: EMAIL -->
+            <div class="form-section active" id="step-email">
+                <div class="login-field">
+                    <input class="login-input" type="email" id="input-email" placeholder="ornek@email.com" autocomplete="email">
+                    <label class="login-label">E-Posta</label>
+                </div>
+                <div class="login-error hidden" id="email-error"></div>
+                <button class="login-btn" id="btn-devam">
+                    <span class="login-btn-spinner"></span>
+                    <span class="login-btn-text">Devam Et</span>
+                </button>
+            </div>
+
+            <!-- STEP 2A: SIGNIN -->
+            <div class="form-section" id="step-signin">
+                <div class="login-field">
+                    <input class="login-input" type="password" id="input-signin-pwd" placeholder="••••••••" autocomplete="current-password">
+                    <label class="login-label">Şifre</label>
+                    <button type="button" class="pwd-toggle" id="toggle-signin-pwd">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <g stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                                <circle cx="12" cy="12" r="3" class="eye-pupil"/>
+                            </g>
+                        </svg>
+                    </button>
+                </div>
+                <button type="button" class="login-forgot" id="btn-forgot">Şifremi Unuttum</button>
+                <div class="login-error hidden" id="signin-error"></div>
+                <button class="login-btn" id="btn-giris">
+                    <span class="login-btn-spinner"></span>
+                    <span class="login-btn-text">Giriş Yap</span>
+                </button>
+                <button type="button" class="login-forgot" id="btn-back-signin" style="display: block; width: 100%; text-align: center; margin-top: 8px;">← E-postayı değiştir</button>
+            </div>
+
+            <!-- STEP 2B: SIGNUP -->
+            <div class="form-section" id="step-signup">
+                <div class="login-field">
+                    <input class="login-input" type="text" id="input-fullname" placeholder="Ad Soyad" autocomplete="name">
+                    <label class="login-label">Ad Soyad</label>
+                </div>
+                <div class="login-field">
+                    <input class="login-input" type="password" id="input-signup-pwd" placeholder="••••••••" autocomplete="new-password">
+                    <label class="login-label">Şifre</label>
+                    <button type="button" class="pwd-toggle" id="toggle-signup-pwd">
+                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <g stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                                <circle cx="12" cy="12" r="3" class="eye-pupil"/>
+                            </g>
+                        </svg>
+                    </button>
+                </div>
+                <div class="pwd-strength-wrap">
+                    <div class="pwd-strength-bar"><div class="pwd-strength-fill" id="pwd-strength-fill"></div></div>
+                    <span class="pwd-strength-label" id="pwd-strength-label">Şifre gücü</span>
+                </div>
+                <ul class="pwd-criteria">
+                    <li id="c-len">En az 8 karakter</li>
+                    <li id="c-upper">Büyük harf</li>
+                    <li id="c-num">Rakam</li>
+                    <li id="c-special">Özel karakter</li>
+                </ul>
+                <button type="button" class="login-suggest-btn" id="btn-suggest">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="spark">
+                        <g stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L15 10H23L16 15L19 23L12 18L5 23L8 15L1 10H9L12 2Z"/>
+                        </g>
+                    </svg>
+                    Güçlü şifre öner
+                </button>
+                <div class="login-field">
+                    <input class="login-input" type="password" id="input-signup-pwd2" placeholder="••••••••" autocomplete="new-password">
+                    <label class="login-label">Şifre Tekrar</label>
+                </div>
+                <div class="login-error hidden" id="signup-error"></div>
+                <button class="login-btn" id="btn-kayit">
+                    <span class="login-btn-spinner"></span>
+                    <span class="login-btn-text">Hesap Oluştur</span>
+                </button>
+                <button type="button" class="login-forgot" id="btn-back-signup" style="display: block; width: 100%; text-align: center; margin-top: 8px;">← E-postayı değiştir</button>
+            </div>
+
+            <!-- STEP 3: FORGOT PASSWORD -->
+            <div class="form-section" id="step-forgot">
+                <p style="font-size: 12px; color: rgba(200, 169, 110, 0.55); margin-bottom: 16px; font-weight: 300;">E-posta adresine şifre sıfırlama bağlantısı göndereceğiz.</p>
+                <div class="login-field">
+                    <input class="login-input" type="email" id="input-forgot-email" placeholder="ornek@email.com" autocomplete="email">
+                    <label class="login-label">E-Posta</label>
+                </div>
+                <div class="login-error hidden" id="forgot-error"></div>
+                <button class="login-btn" id="btn-forgot-send">
+                    <span class="login-btn-spinner"></span>
+                    <span class="login-btn-text">Bağlantı Gönder</span>
+                </button>
+                <button type="button" class="login-forgot" id="btn-back-forgot" style="display: block; width: 100%; text-align: center; margin-top: 8px;">← Geri Dön</button>
+            </div>
+
+            <!-- DIVIDER & SOCIAL -->
+            <div class="login-divider">VEYA</div>
+            <div class="social-btns">
+                <div class="social-shell">
+                    <button class="social-btn" id="btn-google" title="Google ile giriş" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#c8a96e"/>
+                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#c8a96e"/>
+                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#c8a96e"/>
+                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#c8a96e"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="social-shell">
+                    <button class="social-btn" id="btn-facebook" title="Facebook ile giriş" type="button">
+                        <svg viewBox="0 0 24 24" fill="#c8a96e" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="social-shell">
+                    <button class="social-btn" id="btn-apple" title="Apple ile giriş" type="button">
+                        <svg viewBox="0 0 24 24" fill="#c8a96e" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- PSYCHOLOGIST LINK -->
+            <div class="psikolog-section">
+                <div class="psikolog-link">
+                    <a id="btn-psikolog">Psikolog musunuz? <br> Profesyonel girişi için tıklayın</a>
+                </div>
+            </div>
         </div>
     </div>
 
     <div class="login-toast" id="login-toast"></div>
 
     <script>
-        // ── SMOKEY WEBGL ARKA PLAN ──
+        // ── SMOKEY WEBGL BACKGROUND ──
         (function initSmokey() {
             const canvas = document.getElementById('login-canvas');
             const gl = canvas.getContext('webgl');
             if (!gl) return;
+
             const vs = gl.createShader(gl.VERTEX_SHADER);
             gl.shaderSource(vs, `attribute vec4 p; void main(){ gl_Position=p; }`);
             gl.compileShader(vs);
+
             const fs = gl.createShader(gl.FRAGMENT_SHADER);
             gl.shaderSource(fs, `precision mediump float;
             uniform vec2 iRes; uniform float iTime; uniform vec2 iMouse;
@@ -508,27 +953,38 @@
               gl_FragColor = vec4(col,1.0);
             }`);
             gl.compileShader(fs);
+
             const prog = gl.createProgram();
-            gl.attachShader(prog,vs); gl.attachShader(prog,fs); gl.linkProgram(prog); gl.useProgram(prog);
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
+            gl.useProgram(prog);
+
             const buf = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER,buf);
-            gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
-            const loc = gl.getAttribLocation(prog,'p');
-            gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
-            const uRes=gl.getUniformLocation(prog,'iRes');
-            const uTime=gl.getUniformLocation(prog,'iTime');
-            const uMouse=gl.getUniformLocation(prog,'iMouse');
-            let mx=0,my=0,smx=0,smy=0,start=Date.now();
-            canvas.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
-            (function render(){
-                canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight;
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+
+            const loc = gl.getAttribLocation(prog, 'p');
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+            const uRes = gl.getUniformLocation(prog, 'iRes');
+            const uTime = gl.getUniformLocation(prog, 'iTime');
+            const uMouse = gl.getUniformLocation(prog, 'iMouse');
+
+            let mx = 0, my = 0, smx = 0, smy = 0, start = Date.now();
+            canvas.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+            (function render() {
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
                 smx += (mx - smx) * 0.03;
                 smy += (my - smy) * 0.03;
-                gl.viewport(0,0,canvas.width,canvas.height);
-                gl.uniform2f(uRes,canvas.width,canvas.height);
-                gl.uniform1f(uTime,(Date.now()-start)/1000);
-                gl.uniform2f(uMouse,smx,canvas.height-smy);
-                gl.drawArrays(gl.TRIANGLES,0,6);
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.uniform2f(uRes, canvas.width, canvas.height);
+                gl.uniform1f(uTime, (Date.now() - start) / 1000);
+                gl.uniform2f(uMouse, smx, canvas.height - smy);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
                 requestAnimationFrame(render);
             })();
         })();
@@ -547,32 +1003,23 @@
             btn.classList.toggle('loading', loading);
         }
 
-        function showExtra(id) {
-            ['step-signin','step-signup','step-forgot'].forEach(s => {
-                document.getElementById(s).classList.remove('visible');
+        function showSection(id) {
+            document.querySelectorAll('.form-section').forEach(s => {
+                s.classList.remove('active');
             });
-            if (id) document.getElementById(id).classList.add('visible');
-        }
-
-        function shakeCard() {
-            const card = document.getElementById('login-card');
-            card.classList.remove('shake');
-            void card.offsetWidth;
-            card.classList.add('shake');
-            setTimeout(() => card.classList.remove('shake'), 500);
+            if (id) document.getElementById(id).classList.add('active');
         }
 
         function setError(id, msg, isSuccess = false) {
             const el = document.getElementById(id);
             el.textContent = msg;
-            el.className = 'login-error' + (isSuccess ? ' success' : '');
-            if (msg && !isSuccess) shakeCard();
+            el.classList.toggle('hidden', !msg);
+            el.classList.toggle('success', isSuccess);
         }
 
         function togglePwd(inputId, btn) {
             const inp = document.getElementById(inputId);
             inp.type = inp.type === 'password' ? 'text' : 'password';
-            btn.textContent = inp.type === 'password' ? '👁' : '🙈';
         }
 
         function checkStrength(pwd) {
@@ -583,16 +1030,20 @@
                 special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)
             };
             const score = Object.values(c).filter(Boolean).length;
-            ['len','upper','num','special'].forEach(k => {
-                document.getElementById('c-'+k).classList.toggle('met', c[k]);
+
+            ['len', 'upper', 'num', 'special'].forEach(k => {
+                document.getElementById('c-' + k).classList.toggle('met', c[k]);
             });
+
             const fill = document.getElementById('pwd-strength-fill');
             const label = document.getElementById('pwd-strength-label');
-            const colors = ['','#d47777','#e8a85c','#e8c96a','#70c896'];
-            const labels = ['','Çok zayıf','Zayıf','İyi','Güçlü'];
+            const colors = ['', '#d47777', '#e8a85c', '#e8c96a', '#70c896'];
+            const labels = ['', 'Çok zayıf', 'Zayıf', 'İyi', 'Güçlü'];
+
             fill.style.width = (score * 25) + '%';
             fill.style.background = colors[score] || '';
             label.textContent = labels[score] || 'Şifre gücü';
+
             return c;
         }
 
@@ -607,54 +1058,67 @@
         function setupHandlers() {
             document.getElementById('btn-devam').addEventListener('click', handleDevam);
             document.getElementById('input-email').addEventListener('keydown', e => { if (e.key === 'Enter') handleDevam(); });
+
             document.getElementById('btn-giris').addEventListener('click', handleGiris);
             document.getElementById('input-signin-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') handleGiris(); });
+            document.getElementById('btn-back-signin').addEventListener('click', () => showSection('step-email'));
+
             document.getElementById('btn-kayit').addEventListener('click', handleKayit);
-            document.getElementById('btn-back-from-signin').addEventListener('click', resetToEmail);
-            document.getElementById('btn-back-from-signup').addEventListener('click', resetToEmail);
-            document.getElementById('btn-back-from-forgot').addEventListener('click', () => showExtra('step-signin'));
+            document.getElementById('btn-back-signup').addEventListener('click', () => showSection('step-email'));
+
             document.getElementById('btn-forgot').addEventListener('click', () => {
                 document.getElementById('input-forgot-email').value = document.getElementById('input-email').value;
-                showExtra('step-forgot');
+                showSection('step-forgot');
             });
             document.getElementById('btn-forgot-send').addEventListener('click', handleForgot);
-            document.getElementById('toggle-signin-pwd').addEventListener('click', function(){ togglePwd('input-signin-pwd', this); });
-            document.getElementById('toggle-signup-pwd').addEventListener('click', function(){ togglePwd('input-signup-pwd', this); });
-            document.getElementById('input-signup-pwd').addEventListener('input', function(){ checkStrength(this.value); });
+            document.getElementById('btn-back-forgot').addEventListener('click', () => showSection('step-signin'));
+
+            document.getElementById('toggle-signin-pwd').addEventListener('click', function() {
+                togglePwd('input-signin-pwd', this);
+            });
+            document.getElementById('toggle-signup-pwd').addEventListener('click', function() {
+                togglePwd('input-signup-pwd', this);
+            });
+
+            document.getElementById('input-signup-pwd').addEventListener('input', function() {
+                checkStrength(this.value);
+            });
+
             document.getElementById('btn-suggest').addEventListener('click', () => {
                 const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-                let pwd = 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)];
-                pwd += '23456789'[Math.floor(Math.random()*8)];
-                pwd += '!@#$%'[Math.floor(Math.random()*5)];
-                for (let i = 0; i < 9; i++) pwd += chars[Math.floor(Math.random()*chars.length)];
-                pwd = pwd.split('').sort(()=>Math.random()-0.5).join('');
+                let pwd = 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)];
+                pwd += '23456789'[Math.floor(Math.random() * 8)];
+                pwd += '!@#$%'[Math.floor(Math.random() * 5)];
+                for (let i = 0; i < 9; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+                pwd = pwd.split('').sort(() => Math.random() - 0.5).join('');
+
                 document.getElementById('input-signup-pwd').value = pwd;
                 document.getElementById('input-signup-pwd2').value = pwd;
                 document.getElementById('input-signup-pwd').type = 'text';
-                document.getElementById('toggle-signup-pwd').textContent = '🙈';
                 checkStrength(pwd);
             });
-            ['btn-google','btn-facebook','btn-apple'].forEach(id => {
+
+            ['btn-google', 'btn-facebook', 'btn-apple'].forEach(id => {
                 document.getElementById(id).addEventListener('click', () => showToast('Yakında aktif olacak'));
             });
+
             document.getElementById('btn-psikolog').addEventListener('click', e => {
                 e.preventDefault();
                 showToast('Yakında aktif olacak');
             });
         }
 
-        function resetToEmail() {
-            showExtra(null);
-            setError('email-error', '');
-            document.getElementById('input-email').focus();
-        }
-
         async function handleDevam() {
             const email = document.getElementById('input-email').value.trim();
-            if (!email || !email.includes('@')) { setError('email-error', 'Geçerli bir e-posta adresi gir.'); return; }
+            if (!email || !email.includes('@')) {
+                setError('email-error', 'Geçerli bir e-posta adresi gir.');
+                return;
+            }
+
             const btn = document.getElementById('btn-devam');
             setLoading(btn, true);
             setError('email-error', '');
+
             try {
                 const res = await fetch('/auth/check-email', {
                     method: 'POST',
@@ -662,12 +1126,13 @@
                     body: JSON.stringify({ email })
                 });
                 const { exists } = await res.json();
+
                 if (exists) {
-                    showExtra('step-signin');
-                    setTimeout(() => document.getElementById('input-signin-pwd').focus(), 50);
+                    showSection('step-signin');
+                    setTimeout(() => document.getElementById('input-signin-pwd').focus(), 100);
                 } else {
-                    showExtra('step-signup');
-                    setTimeout(() => document.getElementById('input-fullname').focus(), 50);
+                    showSection('step-signup');
+                    setTimeout(() => document.getElementById('input-fullname').focus(), 100);
                 }
             } catch {
                 setError('email-error', 'Bağlantı hatası, tekrar dene.');
@@ -679,16 +1144,39 @@
         async function handleGiris() {
             const email = document.getElementById('input-email').value.trim();
             const password = document.getElementById('input-signin-pwd').value;
-            if (!password) { setError('signin-error', 'Şifre zorunlu.'); return; }
+
+            if (!password) {
+                setError('signin-error', 'Şifre zorunlu.');
+                return;
+            }
+
             const btn = document.getElementById('btn-giris');
             setLoading(btn, true);
             setError('signin-error', '');
+
             try {
-                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-                if (error) { setError('signin-error', 'Hatalı e-posta veya şifre.'); return; }
-                window.location.href = '/';
-            } catch {
-                setError('signin-error', 'Bağlantı hatası, tekrar dene.');
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    setError('signin-error', data.error || 'Giriş başarısız.');
+                    return;
+                }
+
+                // Token'ı localStorage'a kaydet
+                localStorage.setItem('auth_token', data.token);
+                localStorage.setItem('user_id', data.userId);
+                localStorage.setItem('user_email', data.email);
+
+                showToast('Giriş başarılı!');
+                setTimeout(() => window.location.href = '/', 500);
+            } catch (err) {
+                setError('signin-error', 'Bağlantı hatası, tekrar dene: ' + err.message);
             } finally {
                 setLoading(btn, false);
             }
@@ -699,35 +1187,60 @@
             const fullName = document.getElementById('input-fullname').value.trim();
             const password = document.getElementById('input-signup-pwd').value;
             const password2 = document.getElementById('input-signup-pwd2').value;
+
             if (!fullName) { setError('signup-error', 'Ad Soyad zorunlu.'); return; }
             if (!password) { setError('signup-error', 'Şifre zorunlu.'); return; }
             if (password !== password2) { setError('signup-error', 'Şifreler eşleşmiyor.'); return; }
+
             const c = checkStrength(password);
-            if (!c.len || !c.upper || !c.num || !c.special) { setError('signup-error', 'Şifre yeterince güçlü değil.'); return; }
+            if (!c.len || !c.upper || !c.num || !c.special) {
+                setError('signup-error', 'Şifre yeterince güçlü değil.');
+                return;
+            }
+
             const btn = document.getElementById('btn-kayit');
             setLoading(btn, true);
             setError('signup-error', '');
-            const { data, error } = await supabaseClient.auth.signUp({
-                email, password,
-                options: { data: { full_name: fullName } }
-            });
-            setLoading(btn, false);
-            if (error) { setError('signup-error', error.message); return; }
-            if (data.user && data.session) {
-                window.location.href = '/';
-            } else {
-                setError('signup-error', '✓ Doğrulama e-postası gönderildi, e-postanı kontrol et.', true);
+
+            try {
+                const response = await fetch('/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    setError('signup-error', data.error || 'Kayıt başarısız.');
+                    setLoading(btn, false);
+                    return;
+                }
+
+                // Token'ı localStorage'a kaydet
+                localStorage.setItem('auth_token', data.token);
+                localStorage.setItem('user_id', data.userId);
+                localStorage.setItem('user_email', data.email);
+
+                showToast('Kayıt başarılı!');
+                setTimeout(() => window.location.href = '/', 500);
+            } catch (err) {
+                setError('signup-error', 'Bağlantı hatası: ' + err.message);
+                setLoading(btn, false);
             }
         }
 
         async function handleForgot() {
             const email = document.getElementById('input-forgot-email').value.trim();
             if (!email) { setError('forgot-error', 'E-posta adresi zorunlu.'); return; }
+
             const btn = document.getElementById('btn-forgot-send');
             setLoading(btn, true);
             setError('forgot-error', '');
+
             const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
             setLoading(btn, false);
+
             if (error) { setError('forgot-error', 'İşlem başarısız, tekrar dene.'); return; }
             showToast('Şifre sıfırlama e-postası gönderildi');
         }

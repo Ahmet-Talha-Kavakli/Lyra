@@ -2051,6 +2051,20 @@ app.get('/consent-status', async (req, res) => {
 
 // ─── VERİ SİLME (KVKK Madde 11/e) ──────────────────────────
 app.delete('/delete-my-data', async (req, res) => {
+    // ─── TOKEN DOĞRULAMA ────────────────────────────────────────────
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ error: 'Giriş yapmanız gerekliyor' });
+    }
+
+    try {
+        const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+        jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+        return res.status(401).json({ error: 'Token geçersiz veya süresi dolmuş' });
+    }
+    // ──────────────────────────────────────────────────────────────
+
     const { userId, confirmPhrase } = req.body;
     if (!userId || confirmPhrase !== 'VERİLERİMİ SİL') {
         return res.status(400).json({
@@ -2109,6 +2123,20 @@ app.get('/config', (req, res) => {
 
 // ─── İLERLEME VERİSİ (D1) ─────────────────────────────────
 app.get('/my-progress', async (req, res) => {
+    // ─── TOKEN DOĞRULAMA ────────────────────────────────────────────
+    const token_auth = req.headers.authorization?.split(' ')[1];
+    if (!token_auth) {
+        return res.status(401).json({ error: 'Giriş yapmanız gerekliyor' });
+    }
+
+    try {
+        const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+        jwt.verify(token_auth, JWT_SECRET);
+    } catch (err) {
+        return res.status(401).json({ error: 'Token geçersiz veya süresi dolmuş' });
+    }
+    // ──────────────────────────────────────────────────────────────
+
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'userId zorunlu' });
     try {
@@ -3822,6 +3850,22 @@ app.post('/analyze-hume-voice', upload.single('audio'), humeRateLimit, async (re
 // ─── #17: DÜŞÜNCE KAYDI (CBT — Bilişsel Davranışçı Terapi) ─────────
 app.post('/record-thought', async (req, res) => {
     try {
+        // ─── TOKEN DOĞRULAMA ────────────────────────────────────────────
+        console.log('[RECORD-THOUGHT] Gelen request - token:', req.headers.authorization?.split(' ')[0]);
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            console.log('[RECORD-THOUGHT] Token yok, 401 dönüyorum');
+            return res.status(401).json({ error: 'Giriş yapmanız gerekliyor' });
+        }
+
+        try {
+            const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+            jwt.verify(token, JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ error: 'Token geçersiz veya süresi dolmuş' });
+        }
+        // ──────────────────────────────────────────────────────────────
+
         const { userId, automatic_thought, evidence_for, evidence_against, realistic_response } = req.body;
         if (!userId || !automatic_thought) {
             return res.json({ error: 'userId ve automatic_thought gerekli' });

@@ -1,0 +1,13 @@
+[dotenv@17.3.1] injecting env (10) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+[STARTUP] authMiddleware defined: function
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+[CRON] ✅ Günlük kaynak keşfi zamanlandı (02:00)
+[CRON] ✅ Haftalık kalite kontrolü zamanlandı (Pazartesi 03:00)
+[CRON] ✅ Bilgi boşluğu tespiti zamanlandı (Cuma 02:00)
+[CRON] ✅ Aylık güvenilirlik doğrulaması zamanlandı
+-------------------------------------------
+🚀 Lyra Brain Sunucusu Çalışıyor!
+📍 Port: 3001
+🧠 Mimari: Vapi + Supabase Memory + Auth
+🤖 Otonom Agent: Aktif (4 cron job)
+-------------------------------------------

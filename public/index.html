@@ -207,6 +207,15 @@
         let persistentUserId = null;
         let supabaseToken = null;
 
+        // ── GET AUTH TOKEN ──
+        function getAuthHeader() {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                return { 'Authorization': `Bearer ${token}` };
+            }
+            return {};
+        }
+
         // ── SESSION GUARD ──
         async function initAuth() {
             const cfg = await fetch('/config').then(r => r.json());
@@ -710,7 +719,7 @@
 
                 const resp = await fetch('/analyze-emotion', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                     body: JSON.stringify({ imageBase64: base64, userId: persistentUserId, sessionId: null, landmarks: landmarkFeatures })
                 });
                 const result = await resp.json();
@@ -971,7 +980,9 @@
                 // İlk seans kontrolü — memory'den flag al
                 if (persistentUserId) {
                     try {
-                        const memResp = await fetch(`/memory?userId=${persistentUserId}`);
+                        const memResp = await fetch(`/memory?userId=${persistentUserId}`, {
+                            headers: getAuthHeader()
+                        });
                         const memData = await memResp.json();
                         if (memData.ilk_seans === true) {
                             ilkSeansFlag = true;
@@ -1320,7 +1331,7 @@
         async function startVapiSession() {
             await fetch('/session-start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                 body: JSON.stringify({ token: supabaseToken })
             });
             vapiInstance.start(VAPI_ASSISTANT_ID, {
@@ -1381,7 +1392,7 @@
                 }
                 fetch('/update-transcript', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                     body: JSON.stringify({
                         userId: persistentUserId,
                         fullTranscript: fullConversation,
@@ -1401,7 +1412,7 @@
                 const extractedTopic = lastUserMessage?.split(' ').slice(0, 3).join(' ') || 'genel';
                 fetch('/hypothesis', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                     body: JSON.stringify({
                         userId: persistentUserId,
                         currentTopic: extractedTopic,
@@ -1447,7 +1458,7 @@
                 if (fullConversation.length > 50) {
                     fetch('/save-local-memory', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                         body: JSON.stringify({ userId: persistentUserId, transcript: fullConversation })
                     }).catch(() => {});
                 }
@@ -1489,7 +1500,7 @@
                     // Save memory
                     const res = await fetch('/save-local-memory', {
                         method:'POST',
-                        headers:{'Content-Type':'application/json'},
+                        headers:{'Content-Type':'application/json', ...getAuthHeader()},
                         body: JSON.stringify({ userId: persistentUserId, transcript: fullConversation })
                     });
                     console.log('[MEMORY] save response:', res.status);
@@ -1497,7 +1508,7 @@
                     // RAG: Auto-extract knowledge from session
                     const ragRes = await fetch('/end-session', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                         body: JSON.stringify({
                             userId: persistentUserId,
                             sessionId,
@@ -1569,7 +1580,7 @@
                 if (message.transcript.length > 50 && persistentUserId) {
                     fetch('/save-local-memory', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                         body: JSON.stringify({ userId: persistentUserId, transcript: message.transcript })
                     }).then(r => console.log('[MEMORY] Kaydedildi:', r.status))
                       .catch(e => console.error('[MEMORY] Hata:', e));
@@ -1788,7 +1799,7 @@
             try {
                 const res = await fetch('/record-thought', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                     body: JSON.stringify({
                         userId: persistentUserId,
                         automatic_thought: thought,
@@ -1859,7 +1870,7 @@
             try {
                 const res = await fetch('/discover-values', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
                     body: JSON.stringify({
                         userId: persistentUserId,
                         selectedValues: selectedTexts
@@ -1912,7 +1923,7 @@
                                 const fd = new FormData();
                                 fd.append('audio', blob, 'chunk.webm');
                                 fd.append('userId', persistentUserId);
-                                fetch('/analyze-hume-voice', { method: 'POST', body: fd })
+                                fetch('/analyze-hume-voice', { method: 'POST', body: fd, headers: getAuthHeader() })
                                     .then(r => r.ok ? r.json() : null)
                                     .then(data => { if (data?.hume_scores) lastHumeScores = data.hume_scores; })
                                     .catch(() => {});
@@ -2033,7 +2044,9 @@
             list.innerHTML = '<div id="history-loading"><div class="history-spinner"></div><span>Yükleniyor...</span></div>';
 
             try {
-                const res = await fetch(`/session-history/${persistentUserId}`);
+                const res = await fetch(`/session-history/${persistentUserId}`, {
+                    headers: getAuthHeader()
+                });
                 const data = await res.json();
                 const sessions = data.sessions || [];
 

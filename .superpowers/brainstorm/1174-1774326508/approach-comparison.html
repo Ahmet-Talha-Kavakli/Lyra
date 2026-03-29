@@ -1,0 +1,74 @@
+<h2>Lyra Avatar Sistemi — Hangi Yaklaşım?</h2>
+<p class="subtitle">Bu karar her şeyi etkiliyor: kalite, maliyet, ölçeklenebilirlik</p>
+
+<div style="background: #1a1a2e; border: 1px solid #ff6b35; border-radius: 8px; padding: 16px; margin-bottom: 24px; color: #ff9a6c;">
+  ⚠️ <strong>Kritik gerçek:</strong> MetaHuman bir Unreal Engine teknolojisi — tarayıcıda doğrudan çalışmaz. Üç gerçekçi yol var:
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Unreal Pixel Streaming</h3>
+      <p><strong>Gerçek MetaHuman kalitesi.</strong> Unreal Engine sunucuda çalışır, tarayıcıya video stream gönderir. En yüksek kalite ama maliyeti çok yüksek.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>✅ Artılar</h4><ul>
+          <li>Gerçek MetaHuman</li>
+          <li>Sınırsız animasyon kalitesi</li>
+          <li>Foto-gerçekçi render</li>
+        </ul></div>
+        <div class="cons"><h4>❌ Eksiler</h4><ul>
+          <li>Her aktif kullanıcı için GPU sunucu (~$200-500/ay/kullanıcı)</li>
+          <li>Çok yüksek gecikme riski</li>
+          <li>Ölçeklenmesi imkansız (1000 kullanıcı = $200.000+/ay)</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Three.js + Yüksek Kalite GLTF + Viseme Lip Sync</h3>
+      <p><strong>Tarayıcıda çalışır, MetaHuman estetiğine yakın.</strong> Ready Player Me veya özel karakterler + Mixamo 3000+ animasyon + ElevenLabs/Azure viseme ile dudak senkronizasyonu.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>✅ Artılar</h4><ul>
+          <li>Tarayıcıda native çalışır</li>
+          <li>Sınırsız eş zamanlı kullanıcı</li>
+          <li>3000+ Mixamo animasyonu (ücretsiz)</li>
+          <li>Gerçek zamanlı lip sync</li>
+          <li>Kişiselleştirilmiş karakter oluşturulabilir</li>
+          <li>Maliyet: sadece geliştirme + RPM API ($0-50/ay)</li>
+        </ul></div>
+        <div class="cons"><h4>❌ Eksiler</h4><ul>
+          <li>MetaHuman'dan biraz daha az gerçekçi</li>
+          <li>Karakter oluşturma API'ye bağımlı</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Convai / Soul Machines (Hazır Servis)</h3>
+      <p><strong>Turn-key çözüm.</strong> AI + avatar + lip sync hepsi bir arada. Hızlı deploy ama tam kontrol yok.</p>
+      <div class="pros-cons" style="margin-top:12px">
+        <div class="pros"><h4>✅ Artılar</h4><ul>
+          <li>Hızlı kurulum</li>
+          <li>Profesyonel kalite</li>
+        </ul></div>
+        <div class="cons"><h4>❌ Eksiler</h4><ul>
+          <li>Karakter kişiselleştirme kısıtlı</li>
+          <li>Aylık $500-2000+ maliyet</li>
+          <li>Lyra'nın AI motoru entegre edilemez</li>
+          <li>Veriler 3. tarafa gider</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:16px; margin-top:20px; color:#8b949e;">
+  <strong style="color:#58a6ff">💡 Öneri:</strong> <span style="color:#e6edf3">B yolu — Three.js + GLTF. MetaHuman estetiğine çok yakın sonuç verir, binlerce kullanıcıya ücretsiz ölçeklenir, kişiselleştirilmiş karakter sistemi tam kontrollü yapılabilir.</span>
+</div>
