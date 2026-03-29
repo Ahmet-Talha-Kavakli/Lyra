@@ -10,7 +10,7 @@ import {
     userEmotions, sessionTranscriptStore,
     activeSessionUserId, activeSessionId,
     setActiveSessionUserId, setActiveSessionId
-} from '../lib/state.js';
+} from '../src/services/cache/redisService.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
 import { saveSessionRecord, updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';

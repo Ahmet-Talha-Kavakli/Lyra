@@ -9,7 +9,7 @@ import { sanitizeMessages, detectEmotion, extractTopics } from '../lib/helpers.j
 import {
     userEmotions, sessionTranscriptStore,
     activeSessionUserId, activeSessionId
-} from '../lib/state.js';
+} from '../src/services/cache/redisService.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
 import { buildSystemPrompt } from '../therapy/promptBuilder.js';

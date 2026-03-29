@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase.js';
 import { openai } from '../lib/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/helpers.js';
-import { userEmotions, activeSessionId } from '../lib/state.js';
+import { getUserEmotion, getActiveSession } from '../services/cache/redisService.js';
 import { updateObjectTracker, buildObjectContext, clearObjectTracker } from '../lib/objectTracker.js';
 import { buildPhysicalHarmContext } from '../lib/physicalHarmTracker.js';
 import { buildColorContext } from '../lib/colorAnalyzer.js';

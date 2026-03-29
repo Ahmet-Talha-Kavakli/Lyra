@@ -7,9 +7,10 @@ import { supabase } from '../lib/supabase.js';
 import { openai } from '../lib/openai.js';
 import { sanitizeMessages, detectEmotion, extractTopics } from '../lib/helpers.js';
 import {
-    userEmotions, sessionTranscriptStore,
-    activeSessionUserId, activeSessionId
-} from '../lib/state.js';
+    getUserEmotion, setUserEmotion,
+    getSessionTranscript, setSessionTranscript,
+    getActiveSession, setActiveSession, deleteActiveSession
+} from '../services/cache/redisService.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
 import { buildSystemPrompt } from '../therapy/promptBuilder.js';

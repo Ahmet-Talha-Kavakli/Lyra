@@ -7,10 +7,10 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership, logError } from '../lib/helpers.js';
 import { VISUALIZATION_SCRIPTS } from '../lib/constants.js';
 import {
-    userEmotions, sessionTranscriptStore,
-    activeSessionUserId, activeSessionId,
-    setActiveSessionUserId, setActiveSessionId
-} from '../lib/state.js';
+    getUserEmotion, setUserEmotion,
+    getSessionTranscript, setSessionTranscript,
+    getActiveSession, setActiveSession, deleteActiveSession
+} from '../services/cache/redisService.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
 import { saveSessionRecord, updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';

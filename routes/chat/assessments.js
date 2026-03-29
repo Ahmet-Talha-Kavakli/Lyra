@@ -4,7 +4,7 @@
 
 import { logger } from '../../lib/logger.js';
 import { supabase } from '../../lib/supabase.js';
-import { userEmotions, sessionTranscriptStore, activeSessionUserId, activeSessionId } from '../../lib/state.js';
+import { userEmotions, sessionTranscriptStore, activeSessionUserId, activeSessionId } from '../../src/services/cache/redisService.js';
 
 // Import all assessment modules
 import { runRuleEngine } from '../../therapy/ruleEngine.js';
