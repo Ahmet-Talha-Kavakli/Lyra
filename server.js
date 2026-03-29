@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
@@ -76,6 +77,7 @@ app.use(securityHeadersMiddleware); // HTTP security headers
 app.use(auditContextMiddleware); // Attach audit context
 // DDoS protection: Handled by Redis-backed rate limiters per endpoint (see middleware/rateLimiters.js)
 
+app.use(compression()); // Gzip compression for responses (production optimization)
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
