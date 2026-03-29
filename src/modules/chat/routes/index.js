@@ -76,89 +76,70 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
         // Build enhanced system prompt using selected psychology modules
         const systemPrompt = buildEnhancedSystemPrompt(selectedModules);
 
-        // Call OpenAI with psychology-informed context (REAL streaming)
+        // Call OpenAI with psychology-informed context
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        let fullContent = ''; // Accumulate for psychology analysis
+        const openaiResponse = await openai.chat.completions.create({
+            model: model || 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                ...messages
+            ],
+            max_tokens: 1000,
+            temperature: 0.7,
+            stream: false // Buffer full response, then send as single SSE chunk
+        });
 
-        try {
-            const stream = await openai.chat.completions.create({
-                model: model || 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...messages
-                ],
-                max_tokens: 1000,
-                temperature: 0.7,
-                stream: true // ✅ REAL streaming (was false before)
-            });
+        const content = openaiResponse.choices[0]?.message?.content || '';
 
-            // Stream tokens as they arrive
-            for await (const chunk of stream) {
-                const delta = chunk.choices[0]?.delta;
-                if (!delta) continue;
+        // Extract psychology insights from response for job tracking
+        const psychologyInsights = extractPsychologyInsights(content, selectedModules);
 
-                // Accumulate content for analysis
-                if (delta.content) {
-                    fullContent += delta.content;
-                }
+        // Send as SSE
+        const chunk = {
+            id: `chatcmpl-${Date.now()}`,
+            object: 'text_completion.chunk',
+            created: Date.now(),
+            model: openaiResponse.model,
+            choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }]
+        };
 
-                // Send SSE chunk
-                const sseChunk = {
-                    id: chunk.id || `chatcmpl-${Date.now()}`,
-                    object: 'text_completion.chunk',
-                    created: chunk.created || Date.now(),
-                    model: chunk.model,
-                    choices: [{ index: 0, delta, finish_reason: chunk.choices[0]?.finish_reason || null }]
-                };
+        const finishChunk = {
+            ...chunk,
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }]
+        };
 
-                res.write(`data: ${JSON.stringify(sseChunk)}\n\n`);
-            }
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
 
-            // Send finish message
-            res.write(`data: [DONE]\n\n`);
-            res.end();
-
-            // Extract psychology insights from complete response (after streaming ends)
-            const psychologyInsights = extractPsychologyInsights(fullContent, selectedModules);
-
-            logger.info('[CHAT] Streaming complete', {
-                userId,
-                contentLength: fullContent.length,
-                psychologyInsights: psychologyInsights.intervention_type
-            });
-        } catch (streamErr) {
-            logger.error('[CHAT] Stream error', { error: streamErr.message });
-            res.write(`data: ${JSON.stringify({ error: streamErr.message })}\n\n`);
-            res.end();
-        }
+        logger.info('[CHAT] Response sent', {
+            userId,
+            contentLength: content.length,
+            psychologyInsights: psychologyInsights.intervention_type
+        });
 
         // Queue background jobs with psychology context (fire and forget)
-        // This happens after streaming completes (response already sent to client)
         if (userId) {
             const transcript = messages.map(m => `${m.role}: ${m.content}`).join('\n');
             const sessionId = `${userId}_${Date.now()}`;
-            const psychologyContext = formatPsychologyContext(selectedModules, {
-                intervention_type: 'streaming_based_analysis',
-                emotional_tone: 'engaged',
-                action_items: [],
-                timestamp: Date.now()
-            });
+            const psychologyContext = formatPsychologyContext(selectedModules, psychologyInsights);
 
-            // Queue jobs without blocking response
+            // These run in background, don't block response
             setImmediate(() => {
                 try {
                     queueProfileUpdate(userId, transcript, psychologyContext, null, null);
                     queueSessionAnalysis(userId, sessionId, transcript, psychologyContext, null, null, null, null, null);
                     queueHomeworkGeneration(userId, sessionId, transcript, psychologyContext, 'belirsiz', null);
-                    logger.info('[QUEUE] Background jobs queued', {
+                    logger.info('[QUEUE] Background jobs queued with psychology context', {
                         userId,
                         modules: selectedModules
                     });
                 } catch (qErr) {
-                    logger.warn('[QUEUE] Queueing error', { error: qErr.message });
+                    logger.warn('[QUEUE] Error queueing jobs', { error: qErr.message });
                 }
             });
         }
