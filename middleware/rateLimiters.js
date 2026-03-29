@@ -8,29 +8,33 @@ import { logger } from '../lib/logger.js';
 
 /**
  * Key generator: per user (authenticated) or per IP
- * Prevents cross-user abuse from single IP
+ * For production, use Redis-backed store with ipKeyGenerator helper
+ * Dev mode: simple fallback
  */
 const keyGeneratorPerUser = (req) => {
-    return req.userId ? `user:${req.userId}` : `ip:${req.ip}`;
+    // In production, call ipKeyGenerator for IPv6 support
+    // For dev: simple user ID or client IP
+    return req.userId ? `user:${req.userId}` : (req.ip || 'unknown');
 };
 
 /**
  * Key generator: per IP (for unauthenticated endpoints)
  */
-const keyGeneratorPerIP = (_req, res) => {
-    return res.locals.clientIP || _req.ip;
+const keyGeneratorPerIP = (req) => {
+    return req.ip || 'unknown';
 };
 
 /**
- * Handler: log rate limit violations
+ * Handler: log rate limit violations (v7 uses handler instead of onLimitReached)
  */
-const onLimitReached = (req, res, _options, _count) => {
+const handleLimitExceeded = (req, res) => {
     logger.warn('[RateLimit] Limit exceeded', {
         endpoint: req.path,
         method: req.method,
         userId: req.userId,
         ip: req.ip,
     });
+    res.status(429).json({ error: 'Çok fazla istek. Lütfen bekleyin.' });
 };
 
 // ─── AUTHENTICATION ENDPOINTS (Strict) ──────────────────────────────────────
@@ -42,7 +46,7 @@ export const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => process.env.NODE_ENV !== 'production',
-    onLimitReached,
+    handler: handleLimitExceeded,
 });
 
 // ─── CHAT COMPLETION (Moderate) ─────────────────────────────────────────────
@@ -55,7 +59,7 @@ export const chatLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => process.env.NODE_ENV !== 'production',
-    onLimitReached,
+    handler: handleLimitExceeded,
 });
 
 // ─── API GENERAL (Loose) ────────────────────────────────────────────────────
