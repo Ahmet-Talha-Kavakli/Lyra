@@ -13,7 +13,11 @@ import { logger } from './lib/logger.js';
 // ─── SECURITY INFRASTRUCTURE ──────────────────────────────────────────────────
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth.js';
 import { ddosProtectionMiddleware, chatLimiter, apiGeneralLimiter, publicLimiter } from './middleware/rateLimiters.js';
-import { auditContextMiddleware, logAuthEvent, EVENT_TYPES } from './lib/auditLogger.js';
+import { auditContextMiddleware, logAuthEvent, EVENT_TYPES, getAuditStats } from './lib/auditLogger.js';
+import { securityHeadersMiddleware, apiSecurityHeadersMiddleware } from './lib/securityHeaders.js';
+import { getCacheHealth } from './lib/cacheManager.js';
+import { getOptimizationStats, checkConnectionPoolHealth } from './lib/databaseOptimizer.js';
+import { apiDocsEndpoint, swaggerUIEndpoint, getEndpointStats } from './lib/apiDocumentation.js';
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 import authRouter      from './routes/auth.js';
@@ -75,6 +79,7 @@ app.use(cors({
 }));
 
 // ─── GLOBAL SECURITY MIDDLEWARE ───────────────────────────────────────────────
+app.use(securityHeadersMiddleware); // HTTP security headers
 app.use(auditContextMiddleware); // Attach audit context
 app.use(ddosProtectionMiddleware); // DDoS protection (global)
 
@@ -105,27 +110,56 @@ app.get('/health', async (_req, res) => {
         status = 'degraded';
     }
 
-    // Memory
+    // Memory usage
     const mem = process.memoryUsage();
     const heapPct = Math.round((mem.heapUsed / mem.heapTotal) * 100);
-    checks.memory = heapPct < 85 ? 'healthy' : 'warning';
+    checks.memory = {
+        status: heapPct < 85 ? 'healthy' : heapPct > 95 ? 'unhealthy' : 'warning',
+        heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+        percentUsed: heapPct,
+    };
     if (heapPct > 95) status = 'unhealthy';
 
     // Uptime
     checks.uptime = Math.round(process.uptime()) + 's';
 
+    // Cache stats
+    checks.cache = getCacheHealth().cache;
+
+    // Database optimization stats
+    checks.databaseOptimization = getOptimizationStats();
+
+    // Audit logging
+    checks.audit = getAuditStats();
+
+    // API endpoint stats
+    checks.api = getEndpointStats();
+
     res.status(status === 'unhealthy' ? 503 : 200).json({
         status,
         timestamp: new Date().toISOString(),
         env: config.NODE_ENV,
+        version: '1.0.0',
         checks,
     });
 });
 
 // ─── ROOT ──────────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
-    res.send('<h1>Lyra Brain is Running</h1><p>Visit <a href="/health">/health</a> to check status.</p>');
+    res.send(`
+        <h1>Lyra Brain is Running</h1>
+        <ul>
+            <li><a href="/health">/health</a> — System health check</li>
+            <li><a href="/api/docs">/api/docs</a> — Interactive API documentation</li>
+            <li><a href="/api/docs.json">/api/docs.json</a> — OpenAPI schema</li>
+        </ul>
+    `);
 });
+
+// ─── API DOCUMENTATION ─────────────────────────────────────────────────────────
+app.get('/api/docs', swaggerUIEndpoint);
+app.get('/api/docs.json', apiDocsEndpoint);
 
 // ─── ROUTE MOUNTS ─────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
