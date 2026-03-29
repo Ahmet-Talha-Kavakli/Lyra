@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import cron from 'node-cron';
+import { cronManager } from './src/services/cron/cronManager.js';
 
 // ─── CONFIG & LOGGER (en önce yükle — kritik key kontrol) ─────────────────────
 import { config } from './lib/config.js';
@@ -172,30 +173,28 @@ app.use('/', therapyRouter);
 app.use('/', characterRouter);
 app.use('/', adminRouter);
 
-// ─── CRON ZAMANLANDIRMASı ────────────────────────────────────────────────────
-// Duplicate protection: only primary pod runs cron jobs (HOSTNAME-based)
-const IS_PRIMARY_POD = !process.env.HOSTNAME || process.env.HOSTNAME.endsWith('-0') || process.env.HOSTNAME.endsWith('primary');
-const SHOULD_RUN_CRON = IS_PRIMARY_POD && process.env.VERCEL !== '1';
+// ─── CRON ZAMANLANDIRMASı (REDIS LOCK PROTECTED) ────────────────────────────
+// All pods try to run cron, but only one acquires lock per job
 
-if (SHOULD_RUN_CRON) {
+const cronJobs = [
+    { schedule: '0 2 * * *', name: 'autonomousSourceDiscovery', handler: autonomousSourceDiscovery, desc: 'Günlük kaynak keşfi (02:00)' },
+    { schedule: '0 3 * * 1', name: 'assessKnowledgeQuality', handler: assessKnowledgeQuality, desc: 'Haftalık kalite kontrolü (Pazartesi 03:00)' },
+    { schedule: '0 2 * * 5', name: 'detectKnowledgeGaps', handler: detectKnowledgeGaps, desc: 'Bilgi boşluğu tespiti (Cuma 02:00)' },
+    { schedule: '0 4 1 * *', name: 'verifySourceCredibility', handler: verifySourceCredibility, desc: 'Aylık güvenilirlik doğrulaması' },
+];
+
+cronJobs.forEach(job => {
     try {
-        cron.schedule('0 2 * * *', autonomousSourceDiscovery);
-        logger.info('[CRON] Günlük kaynak keşfi zamanlandı (02:00)');
-
-        cron.schedule('0 3 * * 1', assessKnowledgeQuality);
-        logger.info('[CRON] Haftalık kalite kontrolü zamanlandı (Pazartesi 03:00)');
-
-        cron.schedule('0 2 * * 5', detectKnowledgeGaps);
-        logger.info('[CRON] Bilgi boşluğu tespiti zamanlandı (Cuma 02:00)');
-
-        cron.schedule('0 4 1 * *', verifySourceCredibility);
-        logger.info('[CRON] Aylık güvenilirlik doğrulaması zamanlandı');
+        cron.schedule(job.schedule, async () => {
+            await cronManager.executeWithLock(job.name, job.handler);
+        });
+        logger.info('[CRON] Zamanlandı (lock protected)', { job: job.name, schedule: job.schedule, desc: job.desc });
     } catch (err) {
-        logger.error('[CRON] Zamanlandırma hatası', { error: err.message });
+        logger.error('[CRON] Zamanlandırma hatası', { job: job.name, error: err.message });
     }
-} else {
-    logger.info('[CRON] SKIPPED — secondary pod or Vercel env', { isPrimary: IS_PRIMARY_POD, isVercel: process.env.VERCEL === '1' });
-}
+});
+
+logger.info('[CRON] Tüm cron işleri Redis lock koruması ile başlatıldı', { totalJobs: cronJobs.length });
 
 // ─── SUNUCU BAŞLAT ────────────────────────────────────────────────────────────
 let server;
