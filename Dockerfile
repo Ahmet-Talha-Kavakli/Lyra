@@ -1,42 +1,44 @@
-# Dockerfile
-# Multi-stage build: prod-ready image
+# Multi-stage Dockerfile for Lyra AI Therapist
+# Stage 1: Builder (dependencies + optimization)
+# Stage 2: Runtime (minimal production image)
 
-FROM node:20-alpine AS base
+# ─── STAGE 1: BUILDER ─────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
 WORKDIR /app
 
-# Install dumb-init (graceful shutdown)
-RUN apk add --no-cache dumb-init
-
-# ─── BUILD STAGE ──────────────────────────────────────────────
-FROM base AS builder
+# Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
 
-# ─── FINAL STAGE ──────────────────────────────────────────────
-FROM base AS runtime
+# Install dependencies (dev + prod)
+RUN npm ci --ignore-scripts
 
-# Security: non-root user
-RUN addgroup -g 1000 nodejs && adduser -D -u 1000 -G nodejs nodejs
+# ─── STAGE 2: RUNTIME ────────────────────────────────────────────────────
+FROM node:20-alpine
 
-# Copy built dependencies
+# Production environment
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Copy only necessary files from builder
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs . .
 
 # Set user
 USER nodejs
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Graceful shutdown
-ENTRYPOINT ["/usr/sbin/dumb-init", "--"]
-CMD ["node", "server.js"]
-
-# Expose
+# Expose port
 EXPOSE 3000
 
-# Metadata
-LABEL org.opencontainers.image.title="Lyra Brain" \
-      org.opencontainers.image.description="AI Therapist Backend" \
-      org.opencontainers.image.vendor="Lyra"
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+# Start application
+CMD ["node", "server.js"]

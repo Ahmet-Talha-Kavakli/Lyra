@@ -1,0 +1,36 @@
+# Role Based Access Control for Lyra
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lyra-app
+  namespace: lyra
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lyra-app-role
+  namespace: lyra
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lyra-app-rolebinding
+  namespace: lyra
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lyra-app-role
+subjects:
+  - kind: ServiceAccount
+    name: lyra-app
+    namespace: lyra

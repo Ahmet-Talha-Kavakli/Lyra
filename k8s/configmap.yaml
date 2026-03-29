@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lyra-config
+  namespace: lyra
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  REDIS_URL: "redis://redis-service:6379"
+  PORT: "3000"
+  APP_PORT: "3000"
