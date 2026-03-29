@@ -1,6 +1,9 @@
 // routes/chat-simple.js
-// TEMPORARY: Simple chat endpoint that works (replacing broken routes/chat.js)
-// TODO: Merge with complex routes/chat.js when syntax error fixed
+// Lyra Chat Endpoint with Psychology Integration
+// AŞAMA 5: Psychology modules integrated
+// - Dynamically select psychology modules based on conversation
+// - Build enhanced system prompts using therapeutic approaches
+// - Queue background analysis with psychology context
 
 import express from 'express';
 import { logger } from '../lib/logger.js';
@@ -15,6 +18,12 @@ import {
 import {
     queueProfileUpdate, queueSessionAnalysis, queueHomeworkGeneration
 } from '../src/services/queue/analysisJobs.js';
+import {
+    selectPsychologyModules,
+    buildEnhancedSystemPrompt,
+    extractPsychologyInsights,
+    formatPsychologyContext
+} from '../src/services/psychology/psychologyIntegration.js';
 
 const router = express.Router();
 
@@ -30,14 +39,15 @@ const chatRateLimit = rateLimit({
 
 /**
  * POST /v1/api/chat/completions
- * Vapi Custom LLM endpoint
+ * Vapi Custom LLM endpoint with Psychology Integration
  *
- * Quick Implementation:
+ * Flow:
  * 1. Accept messages array
- * 2. Build simple system prompt
- * 3. Call OpenAI
- * 4. Stream response
- * 5. Queue background jobs
+ * 2. Select relevant psychology modules based on conversation
+ * 3. Build enhanced system prompt using therapeutic approaches
+ * 4. Call OpenAI with psychology-informed context
+ * 5. Stream response via SSE
+ * 6. Queue background analysis jobs with psychology insights
  */
 router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
     try {
@@ -56,12 +66,17 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
             model: model || 'gpt-4o-mini'
         });
 
-        // Simple system prompt
-        const systemPrompt = `You are Lyra, a compassionate AI therapist.
-Respond warmly, empathetically, and provide actionable psychological support.
-Respond in Turkish if the user writes in Turkish.`;
+        // AŞAMA 5: Select psychology modules based on conversation context
+        const selectedModules = selectPsychologyModules(messages);
+        logger.info('[PSYCHOLOGY] Modules selected', {
+            userId,
+            modules: selectedModules
+        });
 
-        // Call OpenAI
+        // Build enhanced system prompt using selected psychology modules
+        const systemPrompt = buildEnhancedSystemPrompt(selectedModules);
+
+        // Call OpenAI with psychology-informed context
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
@@ -78,6 +93,9 @@ Respond in Turkish if the user writes in Turkish.`;
         });
 
         const content = openaiResponse.choices[0]?.message?.content || '';
+
+        // Extract psychology insights from response for job tracking
+        const psychologyInsights = extractPsychologyInsights(content, selectedModules);
 
         // Send as SSE
         const chunk = {
@@ -98,20 +116,28 @@ Respond in Turkish if the user writes in Turkish.`;
         res.write('data: [DONE]\n\n');
         res.end();
 
-        logger.info('[CHAT] Response sent', { userId, contentLength: content.length });
+        logger.info('[CHAT] Response sent', {
+            userId,
+            contentLength: content.length,
+            psychologyInsights: psychologyInsights.intervention_type
+        });
 
-        // Queue background jobs (fire and forget)
+        // Queue background jobs with psychology context (fire and forget)
         if (userId) {
             const transcript = messages.map(m => `${m.role}: ${m.content}`).join('\n');
             const sessionId = `${userId}_${Date.now()}`;
+            const psychologyContext = formatPsychologyContext(selectedModules, psychologyInsights);
 
             // These run in background, don't block response
             setImmediate(() => {
                 try {
-                    queueProfileUpdate(userId, transcript, null, null, null);
-                    queueSessionAnalysis(userId, sessionId, transcript, null, null, null, null, null, null);
-                    queueHomeworkGeneration(userId, sessionId, transcript, null, 'belirsiz', null);
-                    logger.info('[QUEUE] Background jobs queued', { userId });
+                    queueProfileUpdate(userId, transcript, psychologyContext, null, null);
+                    queueSessionAnalysis(userId, sessionId, transcript, psychologyContext, null, null, null, null, null);
+                    queueHomeworkGeneration(userId, sessionId, transcript, psychologyContext, 'belirsiz', null);
+                    logger.info('[QUEUE] Background jobs queued with psychology context', {
+                        userId,
+                        modules: selectedModules
+                    });
                 } catch (qErr) {
                     logger.warn('[QUEUE] Error queueing jobs', { error: qErr.message });
                 }
