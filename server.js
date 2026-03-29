@@ -24,7 +24,9 @@ import { apiDocsEndpoint, swaggerUIEndpoint, getEndpointStats } from './lib/apiD
 import authRouter      from './routes/auth.js';
 import userRouter      from './routes/user.js';
 import sessionRouter   from './routes/session.js';
-import chatRouter      from './routes/chat.js';
+// TEMPORARY: Use chat-simple.js (routes/chat.js has syntax error)
+// TODO: Fix routes/chat.js syntax error and revert to original
+import chatRouter      from './routes/chat-simple.js';
 import knowledgeRouter from './routes/knowledge.js';
 import analysisRouter  from './routes/analysis.js';
 import therapyRouter   from './routes/therapy.js';
