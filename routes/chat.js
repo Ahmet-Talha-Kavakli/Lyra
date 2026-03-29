@@ -7,9 +7,14 @@ import { supabase } from '../lib/supabase.js';
 import { openai } from '../lib/openai.js';
 import { sanitizeMessages, detectEmotion, extractTopics } from '../lib/helpers.js';
 import {
-    userEmotions, sessionTranscriptStore,
-    activeSessionUserId, activeSessionId
+    getUserEmotion, setUserEmotion,
+    getSessionTranscript, setSessionTranscript,
+    getActiveSession, setActiveSession, deleteActiveSession
 } from '../src/services/cache/redisService.js';
+import {
+    queueProfileUpdate, queueSessionAnalysis, queueTechniqueTracking,
+    queueHypothesisEngine, queueSemanticMemory, queueHomeworkGeneration, getQueueStatus
+} from '../src/services/queue/analysisJobs.js';
 import { getProfile, updateProfile, incrementSessionCount } from '../profile/profileManager.js';
 import { extractProfileUpdates, analyzeSession } from '../profile/profileExtractor.js';
 import { buildSystemPrompt } from '../therapy/promptBuilder.js';
