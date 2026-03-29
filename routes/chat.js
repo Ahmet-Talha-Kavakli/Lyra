@@ -1064,44 +1064,55 @@ router.post('/v1/v1/api/chat/completions', chatRateLimit, validateChatMessage, a
         }
         console.log(`[CUSTOM LLM] Kullanıcı ID: ${userId}`);
 
-        // Hafıza okuma
+        // ─── OPTİMİZED: Tüm hafıza verisini tek query'de çek (N+1 fix) ─────────
         let userMemory = '';
+        let isimInjection = '';
+        let toplamSeans = 1;
         try {
-            const { data } = await supabase.from('memories').select('content').eq('user_id', userId).single();
-            const raw = data?.content || '';
-            if (raw && String(raw).startsWith('ENC:')) {
-                const cryptoMod = await import('crypto');
-                const ENC_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex') : null;
-                if (ENC_KEY) {
+            const { data: memoryRow } = await supabase
+                .from('memories')
+                .select('content, user_profile, pattern_memory')
+                .eq('user_id', userId)
+                .single();
+
+            if (memoryRow) {
+                // 1. Content (encryption)
+                const raw = memoryRow.content || '';
+                if (raw && String(raw).startsWith('ENC:')) {
                     try {
-                        const [, ivHex, encHex, tagHex] = String(raw).split(':');
-                        const iv = Buffer.from(ivHex, 'hex');
-                        const enc = Buffer.from(encHex, 'hex');
-                        const tag = Buffer.from(tagHex, 'hex');
-                        const decipher = cryptoMod.default.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
-                        decipher.setAuthTag(tag);
-                        userMemory = Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
+                        const cryptoMod = await import('crypto');
+                        const ENC_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex') : null;
+                        if (ENC_KEY) {
+                            const [, ivHex, encHex, tagHex] = String(raw).split(':');
+                            const iv = Buffer.from(ivHex, 'hex');
+                            const enc = Buffer.from(encHex, 'hex');
+                            const tag = Buffer.from(tagHex, 'hex');
+                            const decipher = cryptoMod.default.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+                            decipher.setAuthTag(tag);
+                            userMemory = Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
+                        } else {
+                            userMemory = raw;
+                        }
                     } catch { userMemory = raw; }
                 } else {
                     userMemory = raw;
                 }
-            } else {
-                userMemory = raw;
+
+                // 2. User profile (special names)
+                const ozelIsimler = memoryRow.user_profile?.ozel_isimler || {};
+                if (Object.keys(ozelIsimler).length > 0) {
+                    const isimStr = Object.entries(ozelIsimler).map(([k, v]) => `${k}: ${v}`).join(', ');
+                    isimInjection = `\n\n[KULLANICININ YAKIN KİŞİLERİ]: ${isimStr}. Bu isimleri sohbette doğal şekilde kullan, kişisel bağlantı kur.`;
+                }
+
+                // 3. Pattern memory (session count for onboarding)
+                toplamSeans = memoryRow.pattern_memory?.toplam_seans || 1;
             }
-        } catch { userMemory = ''; }
+        } catch (err) {
+            logger.warn('Memory fetch (combined)', { error: err?.message });
+        }
 
         const enrichedMessages = [...messages];
-
-        // #15 — Özel İsimler Hafızasını inject et
-        let isimInjection = '';
-        try {
-            const { data: profileRow } = await supabase.from('memories').select('user_profile').eq('user_id', userId).single();
-            const ozelIsimler = profileRow?.user_profile?.ozel_isimler || {};
-            if (Object.keys(ozelIsimler).length > 0) {
-                const isimStr = Object.entries(ozelIsimler).map(([k, v]) => `${k}: ${v}`).join(', ');
-                isimInjection = `\n\n[KULLANICININ YAKIN KİŞİLERİ]: ${isimStr}. Bu isimleri sohbette doğal şekilde kullan, kişisel bağlantı kur.`;
-            }
-        } catch { /* profil yükleme başarısız */ }
 
         // RAG — Bilgi Bankası Knowledge Injection
         let knowledgeInjection = '';
@@ -1162,10 +1173,8 @@ router.post('/v1/v1/api/chat/completions', chatRateLimit, validateChatMessage, a
         }
 
         // ── İLK SEANS ONBOARDING INJECT ─────────────────────
-        try {
-            const { data: patternRow } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
-            const toplamSeans = patternRow?.pattern_memory?.toplam_seans || 0;
-            if (toplamSeans === 0) {
+        // toplamSeans değişkeni combined query'den geliyor (N+1 optimization)
+        if (toplamSeans === 0 || toplamSeans === 1) {
                 const onboardingInject = `\n\n[İLK SEANS PROTOKOLÜ — KRİTİK]\nBu kullanıcı Lyra'yı ilk kez kullanıyor. Şu akışı TAKİP ET:\n1. SICAK KARŞILAMA: "Merhaba, buraya geldiğin için teşekkür ederim. Seninle tanışmak güzel." de.\n2. LYRA'YI TANIT: Ne yapabildiğini kısaca anlat. Yapay zeka olduğunu doğal şekilde kabul et.\n3. GİZLİLİK: "Burada söylediklerin güvende, yargılamadan dinliyorum." de.\n4. HEDEF SOR: "Sana bugün en çok ne konuda yardımcı olmamı istersin?" diye sor. Cevaba göre seansı şekillendir.\n5. BEKLENTI: Kullanıcı çok büyük beklenti içindeyse: "Birlikte çalışarak süreci hızlandırabiliriz, ama bu yolculuk senin." de.\n6. DOĞAL GEÇİŞ: Tanışma sonrası keşif moduna geç.\nYASAK: İlk seansta ödev verme, ağır teknikler kullanma, hızlıca mod geçme.\nHEDEF: Güvende hissetmesi ve bir sonraki seansa gelmek istemesi.`;
                 const sysIdx2 = enrichedMessages.findIndex(m => m.role === 'system');
                 if (sysIdx2 !== -1) {

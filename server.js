@@ -130,20 +130,28 @@ app.use('/', characterRouter);
 app.use('/', adminRouter);
 
 // ─── CRON ZAMANLANDIRMASı ────────────────────────────────────────────────────
-try {
-    cron.schedule('0 2 * * *', autonomousSourceDiscovery);
-    logger.info('[CRON] Günlük kaynak keşfi zamanlandı (02:00)');
+// Duplicate protection: only primary pod runs cron jobs (HOSTNAME-based)
+const IS_PRIMARY_POD = !process.env.HOSTNAME || process.env.HOSTNAME.endsWith('-0') || process.env.HOSTNAME.endsWith('primary');
+const SHOULD_RUN_CRON = IS_PRIMARY_POD && process.env.VERCEL !== '1';
 
-    cron.schedule('0 3 * * 1', assessKnowledgeQuality);
-    logger.info('[CRON] Haftalık kalite kontrolü zamanlandı (Pazartesi 03:00)');
+if (SHOULD_RUN_CRON) {
+    try {
+        cron.schedule('0 2 * * *', autonomousSourceDiscovery);
+        logger.info('[CRON] Günlük kaynak keşfi zamanlandı (02:00)');
 
-    cron.schedule('0 2 * * 5', detectKnowledgeGaps);
-    logger.info('[CRON] Bilgi boşluğu tespiti zamanlandı (Cuma 02:00)');
+        cron.schedule('0 3 * * 1', assessKnowledgeQuality);
+        logger.info('[CRON] Haftalık kalite kontrolü zamanlandı (Pazartesi 03:00)');
 
-    cron.schedule('0 4 1 * *', verifySourceCredibility);
-    logger.info('[CRON] Aylık güvenilirlik doğrulaması zamanlandı');
-} catch (err) {
-    logger.error('[CRON] Zamanlandırma hatası', { error: err.message });
+        cron.schedule('0 2 * * 5', detectKnowledgeGaps);
+        logger.info('[CRON] Bilgi boşluğu tespiti zamanlandı (Cuma 02:00)');
+
+        cron.schedule('0 4 1 * *', verifySourceCredibility);
+        logger.info('[CRON] Aylık güvenilirlik doğrulaması zamanlandı');
+    } catch (err) {
+        logger.error('[CRON] Zamanlandırma hatası', { error: err.message });
+    }
+} else {
+    logger.info('[CRON] SKIPPED — secondary pod or Vercel env', { isPrimary: IS_PRIMARY_POD, isVercel: process.env.VERCEL === '1' });
 }
 
 // ─── SUNUCU BAŞLAT ────────────────────────────────────────────────────────────
