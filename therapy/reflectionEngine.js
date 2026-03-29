@@ -121,7 +121,7 @@ JSON formatı (başka hiçbir şey yazma):
 }`;
 
     const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 900,
         temperature: 0.3,
@@ -164,8 +164,9 @@ export async function saveReflectionToDB(sessionId, reflection, nextSessionNote,
  * @param {Object} params.openai — OpenAI istemci örneği
  * @param {Object} params.supabase — Supabase istemci örneği
  * @param {number|null} params.durationSeconds — Seans süresi (saniye)
+ * @param {Function|null} params.updateTechniqueEffectiveness — Teknik etkinliği güncelle
  */
-export async function runPostSessionReflection({ transcript, sessionId, userId, sessionAnalysis, profile, openai, supabase, durationSeconds }) {
+export async function runPostSessionReflection({ transcript, sessionId, userId, sessionAnalysis, profile, openai, supabase, durationSeconds, updateTechniqueEffectiveness }) {
     if (!transcript || transcript.length < 100) {
         console.log('[REFLECTION] Transkript çok kısa, atlanıyor.');
         return;
@@ -189,7 +190,21 @@ export async function runPostSessionReflection({ transcript, sessionId, userId, 
 
         const nextSessionNote = reflection.next_session_context || null;
 
-        // 2. Dependency signals hesapla
+        // 2. Technique signals → DB'ye yaz
+        if (updateTechniqueEffectiveness && Array.isArray(reflection.technique_signals)) {
+            for (const sig of reflection.technique_signals) {
+                try {
+                    await updateTechniqueEffectiveness(userId, sig.id, sig.signal === 'positive');
+                } catch (techErr) {
+                    console.warn(`[REFLECTION] Teknik güncelleme hatası (${sig.id}):`, techErr.message);
+                }
+            }
+            if (reflection.technique_signals.length > 0) {
+                console.log(`[REFLECTION] ${reflection.technique_signals.length} teknik sinyali kaydedildi.`);
+            }
+        }
+
+        // 3. Dependency signals hesapla
         const freq7d = await getSessionFrequency7d(userId, supabase);
         const socialIsolation = detectSocialIsolationSignal(transcript);
         const dependencySignals = {
@@ -199,7 +214,7 @@ export async function runPostSessionReflection({ transcript, sessionId, userId, 
             threshold_exceeded: (freq7d !== null && freq7d >= 5) || (socialIsolation && freq7d !== null && freq7d >= 3),
         };
 
-        // 3. DB'ye yaz
+        // 4. DB'ye yaz
         await saveReflectionToDB(sessionId, reflection, nextSessionNote, dependencySignals, supabase);
 
         console.log(`[REFLECTION] ✅ Tamamlandı | sessionId: ${sessionId} | self_score: ${reflection.self_score}`);

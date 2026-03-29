@@ -1,31 +1,51 @@
 // crisis/crisisDetector.js
 
-// Negasyon kalıpları — bunlar varsa sinyal geçersiz sayılır
+// Negasyon kalıpları — doğrudan sinyal içinde geçenleri geçersiz sayar
+// KURAL: HIGH sinyalleri için negasyon eşiği çok yüksek tutulur.
+// "Ölmek istemiyorum" → negasyon ✓ (sinyal yok)
+// "Ölmek istiyorum ama korkuyorum" → sinyal var, "korkuyorum" negasyon değil ✓
 const NEGATION_PATTERNS = [
-  'istemiyorum', 'değil', 'yok', 'olmaz', 'etmem', 'yapmam',
-  'hayır', 'asla', 'hiç', 'korkmuyorum', 'düşünmüyorum'
+  'istemiyorum', 'etmiyorum', 'düşünmüyorum', 'planlamıyorum',
+  'yapmayacağım', 'olmayacak', 'korkmuyorum',
 ];
 
-// Mesajda negasyon var mı kontrol et (sinyal öncesinde veya sonrasında 6 kelime içinde)
+// Negasyon kontrolü — sadece sinyalin kendisi içinde veya hemen önünde (25 karakter)
+// Geniş pencere kullanmıyoruz — "Ölmek istemiyorum ama çok kötüyüm" gibi cümlelerde
+// "ölmek istiyorum" sinyali tetiklenmemeli ama "ölmek istiyorum, korkmuyorum" tetiklenmeli
 function hasNegationNear(text, signal) {
   const idx = text.indexOf(signal);
   if (idx === -1) return false;
-  const window = text.slice(Math.max(0, idx - 60), idx + signal.length + 60);
-  return NEGATION_PATTERNS.some(neg => window.includes(neg));
+  // Sinyalin 25 karakter öncesi + sinyal içi — dar pencere, kasıtlı
+  const before = text.slice(Math.max(0, idx - 25), idx);
+  const signalText = signal;
+  const combined = before + signalText;
+  return NEGATION_PATTERNS.some(neg => combined.includes(neg));
+}
+
+// HIGH sinyaller için ek güvenlik: sinyal içinde zaten negasyon varsa otomatik geçersiz
+// Örn: "yaşamak istemiyorum" → signal listede ama "istemiyorum" içinde negasyon var → tetiklemez
+function signalContainsNegation(signal) {
+  return NEGATION_PATTERNS.some(neg => signal.includes(neg));
 }
 
 const CRISIS_SIGNALS = {
   HIGH: [
-    // Doğrudan intihar niyeti
-    'ölmek istiyorum', 'yaşamak istemiyorum', 'öldürmek istiyorum kendimi',
+    // Doğrudan intihar niyeti — negasyon içermeyen ifadeler
+    'ölmek istiyorum', 'öldürmek istiyorum kendimi',
     'intihar etmeyi düşünüyorum', 'intihar planım var',
     'kendimi öldüreceğim', 'hayatıma son vereceğim',
+    'intihar edeceğim', 'canıma kıyacağım',
     // Araç/yöntem belirtme
     'ilaçları içeceğim', 'atlayacağım', 'keseceğim kendimi',
+    'kendimi yaralayacağım',
     // Yük hissi + çaresizlik kombine
     'herkese yük oluyorum', 'olmadan daha iyi olurdu', 'daha iyi olurdu olmasaydım',
+    'olmasaydım keşke', 'yok olmak istiyorum',
     // Veda/hazırlık sinyalleri
-    'herkese veda etmek istiyorum', 'bir daha göremeyebilirsiniz'
+    'herkese veda etmek istiyorum', 'bir daha göremeyebilirsiniz',
+    'son kez konuşuyoruz', 'herşeyi hallettim artık',
+    // Yaşamak istememe — açık ifade
+    'yaşamak istemiyorum', 'artık yaşamak istemiyorum',
   ],
   MEDIUM: [
     'dayanamıyorum artık', 'hiçbir çıkış yok', 'umut kalmadı',
@@ -48,10 +68,12 @@ export const detectCrisisLevel = (message) => {
   if (!message) return { level: null, signals: [] };
   const lower = message.toLowerCase();
 
-  // HIGH sinyalleri — negasyon kontrolü ile
+  // HIGH sinyalleri — dar pencere negasyon kontrolü
   const highFound = CRISIS_SIGNALS.HIGH.filter(signal => {
     if (!lower.includes(signal)) return false;
-    // Negasyon varsa bu sinyal geçersiz
+    // Sinyal zaten negasyon içeriyorsa (liste hatası) geçersiz say
+    if (signalContainsNegation(signal)) return false;
+    // Kullanıcı mesajında sinyal öncesinde negasyon var mı?
     if (hasNegationNear(lower, signal)) return false;
     return true;
   });

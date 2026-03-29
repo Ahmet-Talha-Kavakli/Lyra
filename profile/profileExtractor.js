@@ -1,9 +1,7 @@
 // profile/profileExtractor.js
 // Terapi transkriptlerinden psikolojik profil güncellemeleri ve seans analizi çıkarır.
 
-import OpenAI from 'openai';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { openai } from '../lib/openai.js';
 
 /**
  * Transkriptten başlangıç + orta + son olmak üzere 3 bölüm örneği alır.
@@ -67,7 +65,7 @@ Konuşmadan kanıta dayalı olarak çıkarılabilen alanları içeren JSON dönd
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -78,7 +76,33 @@ Konuşmadan kanıta dayalı olarak çıkarılabilen alanları içeren JSON dönd
     });
 
     const text = response.choices[0]?.message?.content || '';
-    return JSON.parse(text);
+    if (!text || text.trim() === '') {
+      console.warn('[extractProfileUpdates] GPT boş cevap döndü');
+      return null;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      // JSON bozuksa ```json wrapper temizle ve tekrar dene
+      const cleaned = text.replace(/```json\s*/i, '').replace(/```\s*$/, '').trim();
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        console.warn('[extractProfileUpdates] JSON parse başarısız:', text.slice(0, 200));
+        return null;
+      }
+    }
+
+    // Boş obje döndüyse kaydetme
+    if (!parsed || Object.keys(parsed).length === 0) {
+      console.warn('[extractProfileUpdates] GPT boş JSON döndü');
+      return null;
+    }
+
+    console.log(`[extractProfileUpdates] ✅ ${Object.keys(parsed).length} alan güncellendi`);
+    return parsed;
   } catch (err) {
     console.warn('[extractProfileUpdates] Hata:', err.message);
     return null;
@@ -121,7 +145,7 @@ Aşağıdaki formatta JSON döndür:
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -132,7 +156,31 @@ Aşağıdaki formatta JSON döndür:
     });
 
     const text = response.choices[0]?.message?.content || '';
-    return JSON.parse(text);
+    if (!text || text.trim() === '') {
+      console.warn('[analyzeSession] GPT boş cevap döndü');
+      return null;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const cleaned = text.replace(/```json\s*/i, '').replace(/```\s*$/, '').trim();
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        console.warn('[analyzeSession] JSON parse başarısız:', text.slice(0, 200));
+        return null;
+      }
+    }
+
+    // Zorunlu alanlar eksikse null dön
+    if (!parsed?.dominant_emotion) {
+      console.warn('[analyzeSession] dominant_emotion eksik, analiz atlandı');
+      return null;
+    }
+
+    return parsed;
   } catch (err) {
     console.warn('[analyzeSession] Hata:', err.message);
     return null;

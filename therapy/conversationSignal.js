@@ -36,7 +36,11 @@ export function analyzeConversationRhythm(messages) {
     }
 
     // Duygusal ark — ağır kelimeler artıyor mu azalıyor mu
-    const HEAVY_WORDS = ['ağlıyorum', 'dayanamıyorum', 'tükendim', 'yalnızım', 'korku', 'panik', 'üzgün', 'bitik'];
+    const HEAVY_WORDS = [
+        'ağlıyorum', 'dayanamıyorum', 'tükendim', 'yalnızım', 'korku', 'panik', 'üzgün', 'bitik',
+        'suçlu', 'pişman', 'mahvettim', 'çaresiz', 'hüsran', 'rezil', 'utandım',
+        'korkuyorum', 'dehşet', 'vicdanım', 'affedilmek', 'elimden gelmiyor',
+    ];
     const half = Math.ceil(userMessages.length / 2);
     const firstMsgs = userMessages.slice(0, half);
     const lastMsgs = userMessages.slice(half);

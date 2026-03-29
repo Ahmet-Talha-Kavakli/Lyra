@@ -208,12 +208,39 @@
         let supabaseToken = null;
 
         // ── GET AUTH TOKEN ──
+        // Cookie otomatik gider (same-origin), localStorage fallback geriye dönük uyumluluk için
         function getAuthHeader() {
             const token = localStorage.getItem('auth_token');
             if (token) {
                 return { 'Authorization': `Bearer ${token}` };
             }
             return {};
+        }
+
+        // ── TOKEN REFRESH ──
+        // 401 gelirse token'ı yenile, sonra tekrar dene
+        async function authFetch(url, options = {}) {
+            const res = await fetch(url, { credentials: 'include', ...options });
+            if (res.status !== 401) return res;
+
+            // Token yenilemeyi dene
+            const refreshRes = await fetch('/auth/refresh', {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (!refreshRes.ok) {
+                window.location.href = '/login.html';
+                return res;
+            }
+            const { token } = await refreshRes.json();
+            if (token) localStorage.setItem('auth_token', token);
+
+            // Orijinal isteği tekrarla
+            return fetch(url, {
+                credentials: 'include',
+                ...options,
+                headers: { ...options.headers, 'Authorization': `Bearer ${token}` },
+            });
         }
 
         // ── SESSION GUARD ──
@@ -823,12 +850,236 @@
         const MP_IDX = {
             L_BROW_INNER: 107, R_BROW_INNER: 336, L_BROW_MID: 105, R_BROW_MID: 334,
             L_EYE_TOP: 159, L_EYE_BOT: 145, R_EYE_TOP: 386, R_EYE_BOT: 374,
+            // Göz iris merkezi (gaze için)
+            L_IRIS_CENTER: 468, R_IRIS_CENTER: 473,
+            // Göz köşeleri (gaze direction hesabı için)
+            L_EYE_INNER: 133, L_EYE_OUTER: 33,
+            R_EYE_INNER: 362, R_EYE_OUTER: 263,
             MOUTH_TOP: 13, MOUTH_BOT: 14, MOUTH_L: 61, MOUTH_R: 291,
-            CHIN: 152, NOSE_TIP: 1, FOREHEAD: 10
+            CHIN: 152, NOSE_TIP: 1, FOREHEAD: 10,
+            // Omuz noktaları — nefes takibi için (pose değil face, yaklaşık)
+            // MediaPipe FaceLandmarker'da omuz yok, boyun/alt yüz kullanıyoruz
+            NECK_L: 234, NECK_R: 454,
+            // Yanak renk örnekleme noktaları
+            L_CHEEK: 205, R_CHEEK: 425,
+            L_FOREHEAD: 108, R_FOREHEAD: 337,
         };
 
         function euclidean2D(a, b) {
             return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+        }
+
+        // ── YÜZ RENK ÖRNEKLEMESİ ──────────────────────────────────────────────
+        // Canvas üzerinden yanak/alın bölgesinin ortalama RGB'sini alır
+        // Kızarma (R artışı) ve solgunluk (tüm kanallar düşüşü) tespiti için
+        let faceColorBaseline = null; // { r, g, b } — ilk 8 örnekten kurulur
+        let faceColorSamples = [];
+        let lastFaceColorSent = 0;
+
+        function sampleFaceColor(landmarks) {
+            if (!landmarks || landmarks.length < 430) return null;
+            const canvas = document.getElementById('hidden-canvas');
+            if (!canvas) return null;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const W = canvas.width, H = canvas.height;
+            if (W < 10 || H < 10) return null;
+
+            // Yanak ve alın noktalarından piksel al
+            const samplePoints = [
+                MP_IDX.L_CHEEK, MP_IDX.R_CHEEK,
+                MP_IDX.L_FOREHEAD, MP_IDX.R_FOREHEAD
+            ];
+
+            let totalR = 0, totalG = 0, totalB = 0, count = 0;
+            for (const idx of samplePoints) {
+                if (!landmarks[idx]) continue;
+                const px = Math.floor(landmarks[idx].x * W);
+                const py = Math.floor(landmarks[idx].y * H);
+                if (px < 2 || py < 2 || px > W-2 || py > H-2) continue;
+                // 5x5 alan ortalaması al — tek piksel gürültülü
+                const d = ctx.getImageData(px - 2, py - 2, 5, 5).data;
+                for (let i = 0; i < d.length; i += 4) {
+                    totalR += d[i]; totalG += d[i+1]; totalB += d[i+2]; count++;
+                }
+            }
+            if (count === 0) return null;
+            return { r: totalR/count, g: totalG/count, b: totalB/count, ts: Date.now() };
+        }
+
+        function analyzeFaceColor(sample) {
+            if (!sample) return null;
+
+            // Baseline oluşturma — ilk 8 örnek
+            if (faceColorSamples.length < 8) {
+                faceColorSamples.push(sample);
+                if (faceColorSamples.length === 8) {
+                    faceColorBaseline = {
+                        r: faceColorSamples.reduce((s,v) => s+v.r, 0) / 8,
+                        g: faceColorSamples.reduce((s,v) => s+v.g, 0) / 8,
+                        b: faceColorSamples.reduce((s,v) => s+v.b, 0) / 8,
+                    };
+                    console.log('[RENK BASELINE] Kuruldu:', faceColorBaseline);
+                }
+                return null;
+            }
+            if (!faceColorBaseline) return null;
+
+            const dR = sample.r - faceColorBaseline.r;
+            const dG = sample.g - faceColorBaseline.g;
+            const dB = sample.b - faceColorBaseline.b;
+
+            // Kızarma: R belirgin artış, G ve B çok değişmedi
+            if (dR > 18 && Math.abs(dG) < 10 && Math.abs(dB) < 10) {
+                const intensity = Math.min(1, dR / 40);
+                return { type: 'kizarma', intensity: Math.round(intensity * 100) / 100, delta_r: Math.round(dR), delta_g: Math.round(dG), delta_b: Math.round(dB) };
+            }
+
+            // Solgunluk: tüm kanallar düşüş
+            if (dR < -18 && dG < -12 && dB < -12) {
+                const intensity = Math.min(1, Math.abs(dR + dG + dB) / 90);
+                return { type: 'solgunluk', intensity: Math.round(intensity * 100) / 100, delta_r: Math.round(dR), delta_g: Math.round(dG), delta_b: Math.round(dB) };
+            }
+
+            return null;
+        }
+
+        // ── GAZE DIRECTION TESPİTİ ────────────────────────────────────────────
+        // Iris merkezi ile göz köşelerini karşılaştırarak bakış yönü hesapla
+        // Psikolojik anlam: sağ-yukarı=hayal, sol-aşağı=iç ses, ekran kaçışı=disosiyasyon
+        let gazeHistory = []; // son 5 gaze sonucu — kararlı tespit için
+
+        function detectGazeDirection(landmarks) {
+            // MediaPipe iris landmarks sadece refine_landmarks=true ile gelir
+            // İris yoksa göz merkezini yaklaşık hesapla
+            if (!landmarks || landmarks.length < 470) return null;
+            try {
+                const r = v => Math.round(v * 1000) / 1000;
+
+                // Sol göz iris — 468 noktası (eğer mevcutsa)
+                let lIrisX, lIrisY, rIrisX, rIrisY;
+                if (landmarks[468] && landmarks[473]) {
+                    lIrisX = landmarks[468].x; lIrisY = landmarks[468].y;
+                    rIrisX = landmarks[473].x; rIrisY = landmarks[473].y;
+                } else {
+                    // Iris yoksa göz merkezini kullan
+                    lIrisX = (landmarks[MP_IDX.L_EYE_INNER].x + landmarks[MP_IDX.L_EYE_OUTER].x) / 2;
+                    lIrisY = (landmarks[MP_IDX.L_EYE_TOP].y + landmarks[MP_IDX.L_EYE_BOT].y) / 2;
+                    rIrisX = (landmarks[MP_IDX.R_EYE_INNER].x + landmarks[MP_IDX.R_EYE_OUTER].x) / 2;
+                    rIrisY = (landmarks[MP_IDX.R_EYE_TOP].y + landmarks[MP_IDX.R_EYE_BOT].y) / 2;
+                }
+
+                // Sol göz yatay pozisyonu: iç köşe ile dış köşe arasında normalize et
+                const lEyeW = landmarks[MP_IDX.L_EYE_OUTER].x - landmarks[MP_IDX.L_EYE_INNER].x;
+                const lGazeX = lEyeW > 0.001 ? (lIrisX - landmarks[MP_IDX.L_EYE_INNER].x) / lEyeW : 0.5;
+
+                const rEyeW = landmarks[MP_IDX.R_EYE_INNER].x - landmarks[MP_IDX.R_EYE_OUTER].x;
+                const rGazeX = rEyeW > 0.001 ? (rIrisX - landmarks[MP_IDX.R_EYE_OUTER].x) / rEyeW : 0.5;
+
+                const avgGazeX = (lGazeX + rGazeX) / 2; // 0=sol, 0.5=merkez, 1=sağ
+                const avgGazeY = (lIrisY + rIrisY) / 2;  // 0=yukarı, 1=aşağı
+
+                // Yön belirleme
+                let horizontal = 'merkez', vertical = 'orta';
+                if (avgGazeX < 0.35)      horizontal = 'sag';  // görüntü mirror'lı
+                else if (avgGazeX > 0.65) horizontal = 'sol';
+
+                // Yüz referans Y'sine göre normalize
+                const faceTopY = landmarks[MP_IDX.FOREHEAD].y;
+                const faceBottomY = landmarks[MP_IDX.CHIN].y;
+                const faceH = faceBottomY - faceTopY;
+                const relY = faceH > 0 ? (avgGazeY - faceTopY) / faceH : 0.5;
+
+                if (relY < 0.38)      vertical = 'yukari';
+                else if (relY > 0.55) vertical = 'asagi';
+
+                // Ekrandan kaçış — hem yatay hem dikey uç değerler
+                const lookingAway = (avgGazeX < 0.2 || avgGazeX > 0.8) && (relY < 0.3 || relY > 0.65);
+
+                // Psikolojik yorum
+                let psychological = null;
+                if (lookingAway) psychological = 'kacis'; // dissosiyasyon/kaçınma
+                else if (horizontal === 'sag' && vertical === 'yukari') psychological = 'hayal'; // görsel hafıza/yaratıcılık
+                else if (horizontal === 'sol' && vertical === 'asagi') psychological = 'ic_ses'; // iç diyalog/duygu
+                else if (horizontal === 'merkez' && vertical === 'asagi') psychological = 'dusunce'; // içe dönük düşünce
+                else if (vertical === 'yukari' && horizontal === 'merkez') psychological = 'hatirlama'; // hafıza erişimi
+
+                const result = { horizontal, vertical, gaze_x: r(avgGazeX), gaze_y: r(relY), looking_away: lookingAway, psychological };
+
+                // Son 5 sonucu tut — kararlı pattern için
+                gazeHistory.push(result);
+                if (gazeHistory.length > 5) gazeHistory.shift();
+
+                return result;
+            } catch(e) {
+                return null;
+            }
+        }
+
+        // Gaze'in kararlı pattern'ini döner (5 frame çoğunluğu)
+        function getStableGaze() {
+            if (gazeHistory.length < 3) return null;
+            const counts = {};
+            gazeHistory.forEach(g => { if (g.psychological) counts[g.psychological] = (counts[g.psychological] || 0) + 1; });
+            const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+            return (top && top[1] >= 3) ? { psychological: top[0], confidence: top[1] / gazeHistory.length } : null;
+        }
+
+        // ── OMUZ HAREKETİ / NEFES TAKİBİ ─────────────────────────────────────
+        // FaceLandmarker'da omuz yok — boyun alt noktalarını (234, 454) kullan
+        // Bunlar nefes sırasında dikey hareket eder
+        let shoulderYHistory = []; // { y, ts } — son 30 saniye
+        let lastBreathData = null;
+
+        function trackBreathFromLandmarks(landmarks) {
+            if (!landmarks) return null;
+            // Boyun/alt yüz bölgesi — 234 (sol) ve 454 (sağ) kulak önü noktaları
+            // Bunlar omuz yerine geçer, gerçek omuz MediaPipe Pose gerektirir
+            // Alternatif: 152 (çene) Y değeri de nefesle hafifçe salınır
+            const neckL = landmarks[234], neckR = landmarks[454];
+            if (!neckL || !neckR) return null;
+
+            const avgY = (neckL.y + neckR.y) / 2;
+            const now = Date.now();
+
+            shoulderYHistory.push({ y: avgY, ts: now });
+            // Son 30 saniyeyi tut
+            shoulderYHistory = shoulderYHistory.filter(s => now - s.ts < 30000);
+
+            if (shoulderYHistory.length < 10) return null;
+
+            // Tepe noktalarını bul (zirve = nefes alma)
+            const peaks = [];
+            for (let i = 1; i < shoulderYHistory.length - 1; i++) {
+                const prev = shoulderYHistory[i-1].y, curr = shoulderYHistory[i].y, next = shoulderYHistory[i+1].y;
+                // Y azalma = yukarı hareket = nefes alma (Y 0=üst 1=alt)
+                if (curr < prev && curr < next && (prev - curr) > 0.003) {
+                    peaks.push(shoulderYHistory[i].ts);
+                }
+            }
+
+            if (peaks.length < 2) return { bpm: null, pattern: 'unknown' };
+
+            // BPM hesapla
+            const intervals = [];
+            for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i-1]);
+            const avgInterval = intervals.reduce((s,v) => s+v, 0) / intervals.length;
+            const bpm = avgInterval > 0 ? Math.round(60000 / avgInterval) : null;
+
+            // Amplitüd — yüzeysel nefes tespiti
+            const ys = shoulderYHistory.map(s => s.y);
+            const amplitude = Math.max(...ys) - Math.min(...ys);
+
+            // Son peak'ten bu yana süre — nefes tutma
+            const timeSinceLastPeak = peaks.length > 0 ? now - peaks[peaks.length-1] : 999999;
+
+            let pattern = 'normal';
+            if (bpm !== null && bpm > 22)          pattern = 'rapid';
+            else if (amplitude < 0.004)             pattern = 'shallow';
+            else if (timeSinceLastPeak > 8000)      pattern = 'holding';
+            else if (bpm !== null && bpm < 10)      pattern = 'slow';
+
+            lastBreathData = { bpm, pattern, amplitude: Math.round(amplitude * 1000) / 1000, shoulder_y: Math.round(avgY * 1000) / 1000 };
+            return lastBreathData;
         }
 
         function extractLandmarkFeatures(landmarks, blendshapes) {
@@ -862,6 +1113,22 @@
                 const EAR = (eyeOpenLeft + eyeOpenRight) / 2;
                 const r = v => Math.round(v * 1000) / 1000;
 
+                // ── YENİ: Gaze direction
+                const gaze = detectGazeDirection(lm);
+                const stableGaze = getStableGaze();
+
+                // ── YENİ: Nefes / omuz hareketi
+                const breath = trackBreathFromLandmarks(lm);
+
+                // ── YENİ: Yüz renk örneklemesi (her 3s'de bir)
+                let faceColor = null;
+                const now = Date.now();
+                if (now - lastFaceColorSent > 3000) {
+                    const rawSample = sampleFaceColor(lm);
+                    faceColor = analyzeFaceColor(rawSample);
+                    lastFaceColorSent = now;
+                }
+
                 return {
                     brow_angle_left: r(browAngleLeft), brow_angle_right: r(browAngleRight),
                     brow_down_left: r(browDownL), brow_down_right: r(browDownR),
@@ -872,7 +1139,12 @@
                     head_tilt: r(headTilt),
                     head_yaw: r(lm[MP_IDX.NOSE_TIP].x - faceCenterX),
                     nose_wrinkle: r(noseWrinkle), cheek_raise: r(cheekRaise),
-                    lip_corner_pull: r(lipCornerPull), blink_detected: EAR < 0.2, ear: r(EAR)
+                    lip_corner_pull: r(lipCornerPull), blink_detected: EAR < 0.2, ear: r(EAR),
+                    // ── YENİ ALANLAR ──
+                    gaze: gaze ? { horizontal: gaze.horizontal, vertical: gaze.vertical, looking_away: gaze.looking_away, psychological: gaze.psychological } : null,
+                    stable_gaze: stableGaze,   // 5 frame kararlı pattern
+                    breath: breath,            // { bpm, pattern, amplitude }
+                    face_color: faceColor,     // { type: 'kizarma'|'solgunluk', intensity }
                 };
             } catch (err) {
                 console.warn('[MEDİAPİPE] Özellik çıkarım hatası:', err.message);

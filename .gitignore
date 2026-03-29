@@ -1,8 +1,36 @@
 node_modules/
+
+# Environment — hiçbir zaman commit edilmez
 .env
-persistent_memory.json
+.env.*
+!.env.example
+
+# Loglar
+*.log
+logs/
+
+# Runtime
 tmp/
 history.json
+persistent_memory.json
+
+# Backup dosyalar
+*.backup
+*.backup2
+*.bak
+
+# Dev araçları
 patch4.cjs
 test-openai.js
+
+# Docs (büyük, repo dışında tutulur)
 docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Audit raporları (opsiyonel — commit etmek istersen sil)
+PROFESSIONAL_AUDIT_REPORT.md
+CODE_ISSUES_DETAILED.md
+AUDIT_EXECUTIVE_SUMMARY.md

@@ -1168,8 +1168,7 @@
                     return;
                 }
 
-                // Token'ı localStorage'a kaydet
-                localStorage.setItem('auth_token', data.token);
+                // Token httpOnly cookie olarak sunucu tarafından set edildi
                 localStorage.setItem('user_id', data.userId);
                 localStorage.setItem('user_email', data.email);
 
@@ -1217,8 +1216,7 @@
                     return;
                 }
 
-                // Token'ı localStorage'a kaydet
-                localStorage.setItem('auth_token', data.token);
+                // Token httpOnly cookie olarak sunucu tarafından set edildi
                 localStorage.setItem('user_id', data.userId);
                 localStorage.setItem('user_email', data.email);
 
