@@ -20,6 +20,10 @@ import { clearLanguageCache } from '../lib/languageDetector.js';
 
 const router = express.Router();
 
+// Track active session for VAPI webhook (temporary, per-instance)
+let currentActiveSessionUserId = null;
+let currentActiveSessionId = null;
+
 // ─── PING ──────────────────────────────────────────────────
 router.get('/v1/ping', (req, res) => {
     res.send('Lyra Brain is ALIVE! 🌌');
@@ -85,44 +89,56 @@ router.post('/v1/log-error', async (req, res) => {
 });
 
 // ─── TRANSCRIPT GÜNCELLEME ────────────────────────────────
-router.post('/v1/update-transcript', authMiddleware, (req, res) => {
-    const {
-        userId, fullTranscript, silenceDuration, lastSegment,
-        sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk,
-        sessizlikTipi, hume_scores,
-        // Yeni alanlar (Özellik 3, 5)
-        vokalBreak, isWhisper, tempoSpike, phq9_cevaplar
-    } = req.body;
-    if (!requireOwnership(userId, req, res)) return;
+router.post('/v1/update-transcript', authMiddleware, async (req, res) => {
+    try {
+        const {
+            userId, fullTranscript, silenceDuration, lastSegment,
+            sesYogunlukOrt, sesTitreme, konusmaTempo, tempoTrend, sesMonotonluk,
+            sessizlikTipi, hume_scores,
+            // Yeni alanlar (Özellik 3, 5)
+            vokalBreak, isWhisper, tempoSpike, phq9_cevaplar
+        } = req.body;
+        if (!requireOwnership(userId, req, res)) return;
 
-    const mevcut = sessionTranscriptStore.get(userId) || {};
-    sessionTranscriptStore.set(userId, {
-        fullTranscript: fullTranscript || '',
-        silenceDuration: silenceDuration || 0,
-        lastSegment: lastSegment || '',
-        sesYogunlukOrt: sesYogunlukOrt || 0,
-        sesTitreme: sesTitreme || false,
-        sesMonotonluk: sesMonotonluk || false,
-        konusmaTempo: konusmaTempo || 0,
-        tempoTrend: tempoTrend || 'stabil',
-        sessizlikTipi: sessizlikTipi || 'normal',
-        hume_scores: hume_scores || null,
-        vokalBreak: vokalBreak || false,
-        isWhisper: isWhisper || false,
-        tempoSpike: tempoSpike || false,
-        phq9_cevaplar: { ...(mevcut.phq9_cevaplar || {}), ...(phq9_cevaplar || {}) },
-        kural_sayaci: mevcut.kural_sayaci || { rol_yapma: 0, tarama: 0, visualizasyon: 0 },
-        updatedAt: Date.now()
-    });
-    res.sendStatus(200);
+        const mevcut = await getSessionTranscript(userId) || {};
+        await setSessionTranscript(userId, {
+            fullTranscript: fullTranscript || '',
+            silenceDuration: silenceDuration || 0,
+            lastSegment: lastSegment || '',
+            sesYogunlukOrt: sesYogunlukOrt || 0,
+            sesTitreme: sesTitreme || false,
+            sesMonotonluk: sesMonotonluk || false,
+            konusmaTempo: konusmaTempo || 0,
+            tempoTrend: tempoTrend || 'stabil',
+            sessizlikTipi: sessizlikTipi || 'normal',
+            hume_scores: hume_scores || null,
+            vokalBreak: vokalBreak || false,
+            isWhisper: isWhisper || false,
+            tempoSpike: tempoSpike || false,
+            phq9_cevaplar: { ...(mevcut.phq9_cevaplar || {}), ...(phq9_cevaplar || {}) },
+            kural_sayaci: mevcut.kural_sayaci || { rol_yapma: 0, tarama: 0, visualizasyon: 0 },
+            updatedAt: Date.now()
+        });
+        res.sendStatus(200);
+    } catch (err) {
+        logger.error('[update-transcript] Hata:', { error: err.message });
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ─── OTURUM BAŞLAT (Token doğrulama ile) ───────────────────
 router.post('/v1/session-start', authMiddleware, async (req, res) => {
-    setActiveSessionUserId(req.userId);
-    setActiveSessionId(crypto.randomUUID());
-    console.log(`[SESSION] Aktif kullanıcı: ${req.userId} | sessionId: ${activeSessionId}`);
-    res.sendStatus(200);
+    try {
+        const sessionId = crypto.randomUUID();
+        currentActiveSessionUserId = req.userId;
+        currentActiveSessionId = sessionId;
+        await setActiveSession(req.userId, sessionId);
+        console.log(`[SESSION] Aktif kullanıcı: ${req.userId} | sessionId: ${sessionId}`);
+        res.sendStatus(200);
+    } catch (err) {
+        logger.error('[session-start] Hata:', { error: err.message });
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ─── HAFIZA OKUMA ───────────────────────────────────────────
@@ -183,9 +199,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
     if (msgType === 'call-started' || msgType === 'status-update' && message.status === 'started') {
         const metaUserId = message.call?.metadata?.userId || message.metadata?.userId;
         if (metaUserId) {
-            setActiveSessionUserId(metaUserId);
-            setActiveSessionId(message.call?.id || crypto.randomUUID());
-            console.log(`[VAPI] Oturum başladı — userId: ${metaUserId} | callId: ${activeSessionId}`);
+            const sessionId = message.call?.id || crypto.randomUUID();
+            currentActiveSessionUserId = metaUserId;
+            currentActiveSessionId = sessionId;
+            await setActiveSession(metaUserId, sessionId);
+            console.log(`[VAPI] Oturum başladı — userId: ${metaUserId} | callId: ${sessionId}`);
         }
         return res.json({});
     }
@@ -193,7 +211,7 @@ router.post('/v1/vapi-webhook', async (req, res) => {
     if (msgType === 'end-of-call-report') {
         const transcript = message.artifact?.transcript || message.transcript || '';
         // userId: önce call metadata, sonra global fallback
-        const userId = message.call?.metadata?.userId || activeSessionUserId;
+        const userId = message.call?.metadata?.userId || currentActiveSessionUserId;
 
         if (!transcript || transcript.length < 50) {
             console.log('[END OF CALL] Konuşma çok kısa, özetlenmiyor.');
@@ -218,11 +236,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             // Seans emotion özetini çek ve hafızaya ekle
             let emotionOzeti = '';
             try {
-                if (activeSessionId) {
+                if (currentActiveSessionId) {
                     const { data: logs } = await supabase
                         .from('emotion_logs')
                         .select('duygu, yogunluk, trend, guven')
-                        .eq('session_id', activeSessionId)
+                        .eq('session_id', currentActiveSessionId)
                         .order('timestamp', { ascending: true });
 
                     if (logs && logs.length > 0) {
@@ -240,11 +258,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             const yogunlukToNum = (y) => ({ 'düşük': 30, 'orta': 60, 'yüksek': 90 }[y] ?? 60);
             let seansKarsilastirma = '';
             try {
-                if (activeSessionId) {
+                if (currentActiveSessionId) {
                     const { data: allLogs } = await supabase
                         .from('emotion_logs')
                         .select('duygu, yogunluk, guven, timestamp')
-                        .eq('session_id', activeSessionId)
+                        .eq('session_id', currentActiveSessionId)
                         .order('timestamp', { ascending: true });
 
                     if (allLogs && allLogs.length >= 4) {
@@ -378,8 +396,8 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             });
 
             // Eski sistem uyumluluğu için updateUserProfile (server.js'den inline çağrı)
-            // userEmotions referansı için state'ten al
-            const emotionStateForProfile = userEmotions.get(userId);
+            // emotion state'ten al
+            const emotionStateForProfile = await getUserEmotion(userId);
             // updateUserProfile is defined in server.js — keeping reference via import would create circular deps
             // So we do a minimal equivalent here:
             console.log(`[VAPI] Emotion state for profile update: ${emotionStateForProfile?.dominant_duygu || 'none'}`);
@@ -389,7 +407,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
         }
 
         // Seans bitti, ID'yi sıfırla
-        setActiveSessionId(null);
+        if (userId) {
+            await deleteActiveSession(userId);
+        }
+        currentActiveSessionUserId = null;
+        currentActiveSessionId = null;
     }
 
     res.json({});

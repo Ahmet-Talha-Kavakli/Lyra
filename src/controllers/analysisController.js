@@ -235,7 +235,7 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
         }
 
         if (userId && result.yuz_var) {
-            const mevcut = userEmotions.get(userId) || { gecmis: [] };
+            const mevcut = await getUserEmotion(userId) || { gecmis: [] };
             const yeniGecmis = [...mevcut.gecmis, {
                 duygu: result.duygu,
                 yogunluk: result.yogunluk,
@@ -253,10 +253,10 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
                 aktif_sinyal: getAktifSinyaller(result.jestler),
                 son_analiz: result
             };
-            userEmotions.set(userId, guncel);
+            await setUserEmotion(userId, guncel);
             console.log(`[DUYGU] ${userId}: ${result.duygu} | yogunluk:${result.yogunluk} | trend:${guncel.trend} | sinyaller:${guncel.aktif_sinyal.join(',') || '-'}`);
 
-            const sid = sessionId || activeSessionId;
+            const sid = sessionId || null;
             if (sid) {
                 supabase.from('emotion_logs').insert({
                     user_id: userId,
@@ -278,7 +278,7 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
 
         // ── YENİ: Çoklu analiz modülleri — arka planda çalıştır, sonucu result'a ekle ──
         if (userId && result.yuz_var) {
-            const sid = sessionId || activeSessionId;
+            const sid = sessionId || null;
 
             // 1. Nesne takibi — GPT'nin tespit ettiği nesneleri frame'ler arası izle
             const nesneGuncelleme = updateObjectTracker(userId, result.ortam?.nesneler || [], result.timestamp);
