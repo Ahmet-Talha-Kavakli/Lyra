@@ -14,8 +14,8 @@
  *  I just noticed you did exactly the same thing when you mentioned your boss."
  */
 
-import { logger } from '../logging/logger.js';
-import { supabase } from '../../infrastructure/database/supabase.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
+import { supabase } from '../../../lib/shared/supabase.js';
 import OpenAI from 'openai';
 
 export class EpisodicMemoryService {

@@ -20,9 +20,9 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../logging/logger.js';
-import { EpisodicMemoryService } from './EpisodicMemoryService.js';
-import { supabase } from '../../lib/shared/supabase.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
+import { EpisodicMemoryService } from '../services/EpisodicMemoryService.js';
+import { supabase } from '../../../lib/shared/supabase.js';
 
 export class TherapistAgent {
     constructor(options = {}) {

@@ -16,8 +16,8 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../logging/logger.js';
-import { EpisodicMemoryService } from './EpisodicMemoryService.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
+import { EpisodicMemoryService } from '../services/EpisodicMemoryService.js';
 
 export class IntakeAgent {
     constructor(options = {}) {
@@ -256,14 +256,14 @@ This patient may be in immediate danger.
 
 ${crisisInfo.reason === 'SEVERE_PHYSICAL_HARM' ? `
 SEVERE PHYSICAL HARM DETECTED:
-Injuries: ${crisisInfo.indicators?.map(i => \`\${i.type} on \${i.location}\`).join(', ')}
+Injuries: ${crisisInfo.indicators?.map(i => `${i.type} on ${i.location}`).join(', ')}
 Severity: SEVERE (requires medical attention)
 This may indicate abuse, violence, or self-harm.
 ` : ''}
 
 ${crisisInfo.reason === 'PATTERN_OF_HARM' ? `
 PATTERN OF HARM DETECTED:
-Multiple injuries: ${crisisInfo.indicators?.map(i => \`\${i.type}\`).join(', ')}
+Multiple injuries: ${crisisInfo.indicators?.map(i => `${i.type}`).join(', ')}
 Prior harm history: YES
 Pattern indicates ongoing abuse or crisis cycle.
 ` : ''}

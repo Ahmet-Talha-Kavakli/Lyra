@@ -10,9 +10,9 @@
  * Sonuç: Agent hastayı 10 yıl tanıyormuş gibi davranabilir 🧠
  */
 
-import { openai } from '../../lib/shared/openai.js';
-import { supabase } from '../../lib/shared/supabase.js';
-import { logger } from '../../src/application/logging/logger.js';
+import { openai } from '../../../lib/shared/openai.js';
+import { supabase } from '../../../lib/shared/supabase.js';
+import { logger } from '../../../lib/infrastructure/logger.js';
 
 /**
  * Main: Generate comprehensive patient profile from intake transcript
