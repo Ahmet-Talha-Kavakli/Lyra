@@ -19,6 +19,8 @@ import { rateLimit } from 'express-rate-limit';
 import { validateRequest, chatCompletionSchema } from '../lib/infrastructure/validationSchemas.js';
 import { getRedisClient } from '../lib/shared/redis.js';
 import { TherapistAgent } from '../src/application/agents/TherapistAgent.js';
+import { IntakeAgent } from '../src/application/agents/IntakeAgent.js';
+import { generateComprehensiveProfile } from '../src/services/queue/profileSynthesisJob.js';
 
 const router = express.Router();
 const redis = await getRedisClient();
@@ -32,6 +34,79 @@ const chatRateLimit = rateLimit({
         res.status(429).json({ error: 'Too many requests' });
     }
 });
+
+/**
+ * Helper: Queue profile synthesis job
+ * Triggers async generation of comprehensive patient profile
+ */
+async function queueProfileSynthesis(userId, sessionId, intakeSummary) {
+    try {
+        // Run profile synthesis in background (non-blocking)
+        generateComprehensiveProfile(userId, sessionId, intakeSummary)
+            .then(() => {
+                logger.info('[QUEUE] Profile synthesis completed', { userId, sessionId });
+            })
+            .catch(err => {
+                logger.error('[QUEUE] Profile synthesis failed:', err.message);
+            });
+
+        return true;
+    } catch (error) {
+        logger.warn('[QUEUE] Profile synthesis queueing failed:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Helper: Check if this is user's first session
+ * Returns true if session_count === 0 or is_first_session flag is set
+ */
+async function isFirstSession(userId) {
+    try {
+        // Check Supabase user_profile table
+        const { data, error } = await supabase
+            .from('user_profile')
+            .select('session_count, is_first_session')
+            .eq('user_id', userId)
+            .single();
+
+        if (error || !data) return true; // Assume first if no record exists
+
+        // First session if count is 0 or flag is true
+        return data.session_count === 0 || data.is_first_session === true;
+    } catch (err) {
+        logger.warn('[CHAT] First session check failed:', err.message);
+        return true; // Default to first session
+    }
+}
+
+/**
+ * Helper: Update session counter in Supabase
+ */
+async function incrementSessionCount(userId) {
+    try {
+        const { data } = await supabase
+            .from('user_profile')
+            .select('session_count')
+            .eq('user_id', userId)
+            .single();
+
+        const newCount = (data?.session_count || 0) + 1;
+
+        await supabase
+            .from('user_profile')
+            .update({
+                session_count: newCount,
+                is_first_session: false,
+                last_session_date: new Date().toISOString()
+            })
+            .eq('user_id', userId);
+
+        logger.info('[CHAT] Session count incremented', { userId, newCount });
+    } catch (err) {
+        logger.warn('[CHAT] Session increment failed:', err.message);
+    }
+}
 
 /**
  * Helper: Fetch object context from Redis (ObjectTracker)
@@ -130,12 +205,27 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             physicalHarmContext
         };
 
-        // ── INITIALIZE THERAPIST AGENT ──
-        const therapistAgent = new TherapistAgent({
-            userId,
-            sessionId,
-            model: 'claude-3-5-sonnet-20241022'
-        });
+        // ── CHECK IF FIRST SESSION ──
+        const firstSession = await isFirstSession(userId);
+        let agent;
+
+        if (firstSession) {
+            // INTAKE SESSION MODE
+            logger.info('[CHAT] Starting INTAKE SESSION', { userId, sessionId });
+            agent = new IntakeAgent({
+                userId,
+                sessionId,
+                model: 'claude-3-5-sonnet-20241022'
+            });
+        } else {
+            // REGULAR THERAPIST SESSION MODE
+            logger.info('[CHAT] Starting THERAPIST SESSION', { userId, sessionId });
+            agent = new TherapistAgent({
+                userId,
+                sessionId,
+                model: 'claude-3-5-sonnet-20241022'
+            });
+        }
 
         // ── SETUP REAL-TIME SSE STREAM ──
         res.setHeader('Content-Type', 'text/event-stream');
@@ -147,9 +237,14 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             let totalTokens = '';
             let firstTokenTime = null;
             let tokenCount = 0;
+            let intakeSummary = null;
 
             // ── REAL STREAMING: for await...of on async generator ──
-            for await (const event of therapistAgent.generateResponse(clinicalData)) {
+            const generatorInput = firstSession
+                ? userMessage
+                : clinicalData;
+
+            for await (const event of agent.generateResponse(generatorInput)) {
 
                 // Record first token arrival time (TTFB)
                 if (firstTokenTime === null && event.type === 'token') {
@@ -207,6 +302,25 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
                         error: event.error
                     };
                     res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+                }
+
+                // Trigger profile synthesis when intake complete
+                if (firstSession && event.type === 'complete' && event.isIntakeComplete) {
+                    intakeSummary = agent.getIntakeSummary();
+                    logger.info('[CHAT] INTAKE COMPLETE - Triggering profile synthesis', {
+                        userId,
+                        sessionId,
+                        messageCount: intakeSummary.messageCount
+                    });
+
+                    // Queue profile synthesis job (runs in background)
+                    // Will be picked up by queue processor and generate comprehensive profile
+                    queueProfileSynthesis(userId, sessionId, intakeSummary).catch(err => {
+                        logger.warn('[CHAT] Profile synthesis queue failed:', err.message);
+                    });
+
+                    // Increment session count after intake complete
+                    await incrementSessionCount(userId);
                 }
             }
 

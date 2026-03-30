@@ -22,6 +22,7 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { logger } from '../logging/logger.js';
 import { EpisodicMemoryService } from './EpisodicMemoryService.js';
+import { supabase } from '../../lib/shared/supabase.js';
 
 export class TherapistAgent {
     constructor(options = {}) {
@@ -45,11 +46,44 @@ export class TherapistAgent {
         // Conversation history (for multi-turn context)
         this.conversationHistory = [];
 
+        // Patient profile (loaded from intake session)
+        this.patientProfile = null;
+
         logger.info('[TherapistAgent] Initialized', {
             model: this.model,
             userId: this.userId,
             sessionId: this.sessionId
         });
+    }
+
+    /**
+     * Load patient's comprehensive profile from Supabase
+     * Called before generating response to provide deep context
+     */
+    async loadPatientProfile() {
+        try {
+            const { data, error } = await supabase
+                .from('user_profile')
+                .select('comprehensive_profile, intake_pillars')
+                .eq('user_id', this.userId)
+                .single();
+
+            if (error || !data?.comprehensive_profile) {
+                logger.warn('[TherapistAgent] No profile found:', error?.message);
+                return null;
+            }
+
+            this.patientProfile = data.comprehensive_profile;
+            logger.info('[TherapistAgent] Patient profile loaded', {
+                userId: this.userId,
+                hasProfile: !!this.patientProfile
+            });
+
+            return this.patientProfile;
+        } catch (err) {
+            logger.error('[TherapistAgent] Profile load failed:', err);
+            return null;
+        }
     }
 
     /**
@@ -72,17 +106,23 @@ export class TherapistAgent {
                 physicalHarmContext = {}
             } = data;
 
+            // Load comprehensive patient profile (from intake session)
+            if (!this.patientProfile) {
+                await this.loadPatientProfile();
+            }
+
             // Get patient history context
             const similarMoments = await this.memory.findSimilarMoments(transcript, 3);
             const therapeuticThemes = await this.memory.getTherapeuticThemes();
             const memoryInsights = await this.memory.generateMemoryInsights();
 
-            // Build system prompt with all context including environmental & safety data
+            // Build system prompt with all context including environmental & safety data & patient profile
             const systemPrompt = this.buildSystemPrompt({
                 memoryInsights,
                 therapeuticThemes,
                 objectContext,
                 physicalHarmContext,
+                patientProfile: this.patientProfile,
                 model: this.model
             });
 
@@ -203,10 +243,10 @@ export class TherapistAgent {
     /**
      * BUILD SYSTEM PROMPT
      * Tells Claude to act as a somatic-aware therapist
-     * INCLUDES: Patient history + somatic signatures + environmental context + safety awareness
+     * INCLUDES: Patient history + somatic signatures + environmental context + safety awareness + INTAKE PROFILE
      */
     buildSystemPrompt(options) {
-        const { memoryInsights, therapeuticThemes, objectContext = {}, physicalHarmContext = {}, model } = options;
+        const { memoryInsights, therapeuticThemes, objectContext = {}, physicalHarmContext = {}, patientProfile = null, model } = options;
 
         let prompt = `You are Lyra, a deeply compassionate and clinically trained somatic-aware psychotherapist.
 
@@ -219,6 +259,39 @@ YOUR CLINICAL APPROACH:
 - You are aware of the patient's environment and physical safety
 
 YOUR KNOWLEDGE OF THIS PATIENT:
+${patientProfile ? `
+COMPREHENSIVE INTAKE PROFILE (Generated from first session):
+presenting_concern: ${patientProfile.presenting_concern}
+chief_complaints: ${patientProfile.chief_complaints?.join(', ')}
+
+HISTORY & DEPTH:
+- Onset: ${patientProfile.history?.onset}
+- Progression: ${patientProfile.history?.progression}
+- Family patterns: ${patientProfile.history?.family_history}
+
+SUPPORT SYSTEM:
+- Primary supports: ${patientProfile.support_system?.primary_supports}
+- Isolation level: ${patientProfile.support_system?.isolation_level}/10
+- Relationship quality: ${patientProfile.support_system?.relationship_quality}
+
+COPING MECHANISMS:
+- Healthy coping: ${patientProfile.coping_mechanisms?.healthy_coping?.join(', ')}
+- Resilience factors: ${patientProfile.coping_mechanisms?.resilience_factors}
+
+SOMATIC BASELINE:
+- Primary tension location: ${patientProfile.somatic_baseline?.primary_tension_location}
+- Physical symptoms: ${patientProfile.somatic_baseline?.physical_symptoms?.join(', ')}
+
+THERAPEUTIC GOALS:
+- Explicit goals: ${patientProfile.therapeutic_goals?.explicit_goals}
+- Vision of wellbeing: ${patientProfile.therapeutic_goals?.vision_of_wellbeing}
+
+CLINICAL IMPRESSIONS:
+- Primary hypothesis: ${patientProfile.clinical_impressions?.primary_diagnosis_hypothesis}
+- Protective factors: ${patientProfile.clinical_impressions?.protective_factors}
+- Recommended approach: ${patientProfile.therapeutic_approach?.recommended_modality}
+
+` : ''}
 ${therapeuticThemes.length > 0 ? `
 Key therapeutic themes we've explored:
 ${therapeuticThemes.slice(0, 5).map(t => `- "${t.theme_name}" (appeared ${t.frequency} times, last: ${t.last_occurrence})`).join('\n')}
