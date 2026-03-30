@@ -1,13 +1,5 @@
 {
   "version": 2,
-  "env": {
-    "VITE_API_URL": "@vite_api_url",
-    "VITE_WS_URL": "@vite_ws_url",
-    "UPSTASH_REDIS_REST_URL": "@upstash_redis_rest_url",
-    "UPSTASH_REDIS_REST_TOKEN": "@upstash_redis_rest_token",
-    "QSTASH_TOKEN": "@qstash_token",
-    "SUPABASE_JWT_SECRET": "@supabase_jwt_secret"
-  },
   "builds": [
     {
       "src": "middleware.ts",
