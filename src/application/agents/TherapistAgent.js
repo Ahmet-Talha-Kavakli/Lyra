@@ -53,10 +53,11 @@ export class TherapistAgent {
     }
 
     /**
-     * GENERATE THERAPEUTIC RESPONSE
-     * Main entry point: takes somatic data + transcript, returns compassionate guidance
+     * GENERATE THERAPEUTIC RESPONSE WITH REAL STREAMING
+     * Returns async iterable that yields tokens as they arrive from Claude
+     * Frontend can use for await...of to display response in real-time (typewriter effect)
      */
-    async generateResponse(data) {
+    async *generateResponse(data) {
         try {
             const {
                 transcript,
@@ -66,7 +67,9 @@ export class TherapistAgent {
                 emotionalState,
                 autonomicState,
                 recommendations,
-                baselineDeviation
+                baselineDeviation,
+                objectContext = {},
+                physicalHarmContext = {}
             } = data;
 
             // Get patient history context
@@ -74,10 +77,12 @@ export class TherapistAgent {
             const therapeuticThemes = await this.memory.getTherapeuticThemes();
             const memoryInsights = await this.memory.generateMemoryInsights();
 
-            // Build system prompt with all context
+            // Build system prompt with all context including environmental & safety data
             const systemPrompt = this.buildSystemPrompt({
                 memoryInsights,
                 therapeuticThemes,
+                objectContext,
+                physicalHarmContext,
                 model: this.model
             });
 
@@ -91,11 +96,17 @@ export class TherapistAgent {
                 autonomicState,
                 recommendations,
                 baselineDeviation,
-                similarMoments
+                similarMoments,
+                objectContext,
+                physicalHarmContext
             });
 
-            // Get Claude's response
-            const response = await this.client.messages.create({
+            // Stream Claude's response in real-time
+            let fullContent = '';
+            let inputTokens = 0;
+            let outputTokens = 0;
+
+            const stream = await this.client.messages.stream({
                 model: this.model,
                 max_tokens: this.maxTokens,
                 system: systemPrompt,
@@ -105,7 +116,29 @@ export class TherapistAgent {
                 ]
             });
 
-            const therapistResponse = response.content[0].text;
+            // Process stream tokens and yield them
+            for await (const event of stream) {
+                // ContentBlockDeltaEvent: text token arrived
+                if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                    const token = event.delta.text;
+                    fullContent += token;
+                    yield {
+                        type: 'token',
+                        content: token,
+                        timestamp: Date.now()
+                    };
+                }
+
+                // MessageStartEvent: get input tokens
+                if (event.type === 'message_start') {
+                    inputTokens = event.message?.usage?.input_tokens || 0;
+                }
+
+                // MessageDeltaEvent: get output tokens and stop reason
+                if (event.type === 'message_delta') {
+                    outputTokens = event.usage?.output_tokens || 0;
+                }
+            }
 
             // Store in conversation history
             this.conversationHistory.push({
@@ -114,10 +147,10 @@ export class TherapistAgent {
             });
             this.conversationHistory.push({
                 role: 'assistant',
-                content: therapistResponse
+                content: fullContent
             });
 
-            // Limit history to last 10 exchanges (for efficiency)
+            // Limit history to last 10 exchanges
             if (this.conversationHistory.length > 20) {
                 this.conversationHistory = this.conversationHistory.slice(-20);
             }
@@ -132,28 +165,37 @@ export class TherapistAgent {
                 emotionalThemes: [emotionalState?.primary].filter(Boolean)
             });
 
-            logger.info('[TherapistAgent] Response generated', {
-                sessionId: this.sessionId,
-                tokensUsed: response.usage?.output_tokens,
-                similarMoments: similarMoments.length
-            });
-
-            return {
-                response: therapistResponse,
+            // Yield final metadata
+            yield {
+                type: 'complete',
+                totalContent: fullContent,
                 context: {
                     somaticMarkers,
                     emotionalState,
                     autonomicState,
+                    objectContext,
+                    physicalHarmContext,
                     similarMoments: similarMoments.length,
                     relevantThemes: therapeuticThemes.slice(0, 3).map(t => t.theme_name)
                 },
                 usage: {
-                    inputTokens: response.usage?.input_tokens,
-                    outputTokens: response.usage?.output_tokens
+                    inputTokens,
+                    outputTokens
                 }
             };
+
+            logger.info('[TherapistAgent] Response stream complete', {
+                sessionId: this.sessionId,
+                tokensUsed: outputTokens,
+                similarMoments: similarMoments.length
+            });
+
         } catch (error) {
-            logger.error('[TherapistAgent] Failed to generate response:', error);
+            logger.error('[TherapistAgent] Stream failed:', error);
+            yield {
+                type: 'error',
+                error: error.message
+            };
             throw error;
         }
     }
@@ -161,11 +203,12 @@ export class TherapistAgent {
     /**
      * BUILD SYSTEM PROMPT
      * Tells Claude to act as a somatic-aware therapist
+     * INCLUDES: Patient history + somatic signatures + environmental context + safety awareness
      */
     buildSystemPrompt(options) {
-        const { memoryInsights, therapeuticThemes, model } = options;
+        const { memoryInsights, therapeuticThemes, objectContext = {}, physicalHarmContext = {}, model } = options;
 
-        return `You are Lyra, a deeply compassionate and clinically trained somatic-aware psychotherapist.
+        let prompt = `You are Lyra, a deeply compassionate and clinically trained somatic-aware psychotherapist.
 
 YOUR CLINICAL APPROACH:
 - You understand that the body is the gateway to the unconscious
@@ -173,6 +216,7 @@ YOUR CLINICAL APPROACH:
 - You recognize protective patterns: defended states, dissociation, etc.
 - You create safety first, then gently invite awareness
 - You honor the wisdom in symptoms, not pathologize them
+- You are aware of the patient's environment and physical safety
 
 YOUR KNOWLEDGE OF THIS PATIENT:
 ${therapeuticThemes.length > 0 ? `
@@ -188,7 +232,35 @@ ${memoryInsights.somaticSignatures?.map(sig => `- When experiencing "${sig.emoti
 ${memoryInsights.recentBreakthroughs?.length > 0 ? `
 Recent breakthroughs:
 ${memoryInsights.recentBreakthroughs.slice(0, 3).join('\n')}
+` : ''}`;
+
+        // Add environmental context (objects, weapons, threats)
+        if (objectContext && Object.keys(objectContext).length > 0) {
+            prompt += `
+
+ENVIRONMENTAL CONTEXT (Real-time):
+${objectContext.detected_objects?.length > 0 ? `
+Objects present in environment:
+${objectContext.detected_objects.map(obj => `- ${obj.name} (confidence: ${obj.confidence})`).join('\n')}
 ` : ''}
+
+Threat assessment: ${objectContext.threat_level || 'low'}
+Immediate safety: ${objectContext.safe ? 'YES' : 'ASSESS CAREFULLY'}`;
+        }
+
+        // Add physical harm context (injuries, bruises, signs of trauma)
+        if (physicalHarmContext && Object.keys(physicalHarmContext).length > 0) {
+            prompt += `
+
+PHYSICAL HARM ASSESSMENT (Medical context):
+Signs observed:
+${physicalHarmContext.indicators?.map(ind => `- ${ind.type}: ${ind.location} (severity: ${ind.severity})`).join('\n') || 'None'}
+
+History of physical trauma: ${physicalHarmContext.has_prior_harm ? 'YES - Be trauma-informed' : 'Not indicated'}
+Recent harm timeline: ${physicalHarmContext.recency || 'Unknown'}`;
+        }
+
+        prompt += `
 
 YOUR COMMUNICATION STYLE:
 - Speak naturally, like a skilled therapist (not robotic)
@@ -197,6 +269,7 @@ YOUR COMMUNICATION STYLE:
 - Offer gentle reflection, not interpretation
 - Create space for their own wisdom to emerge
 - Use trauma-informed language (they're safe, they're in control)
+- If environmental hazards are present, subtly ensure their safety without alarming them
 
 WHEN RESPONDING:
 1. Acknowledge what they've said
@@ -205,13 +278,17 @@ WHEN RESPONDING:
 4. Ask curious questions rather than make statements
 5. Validate their experience
 6. Offer next steps or inquiry
+7. If safety concerns detected, gently address them
 
 REMEMBER: You're not just responding to words. You're responding to a body in a room, carrying history, wisdom, and protection.`;
+
+        return prompt;
     }
 
     /**
      * BUILD USER MESSAGE
-     * Provides current clinical data for Claude to consider
+     * Provides FULL clinical data for Claude to consider
+     * INCLUDES: Somatic + Congruence + Temporal + Memory + Environment + Safety
      */
     buildUserMessage(data) {
         const {
@@ -223,19 +300,21 @@ REMEMBER: You're not just responding to words. You're responding to a body in a 
             autonomicState,
             recommendations,
             baselineDeviation,
-            similarMoments
+            similarMoments,
+            objectContext = {},
+            physicalHarmContext = {}
         } = data;
 
-        let message = `${transcript}\n\n`;
+        let message = `PATIENT SAYS:\n"${transcript}"\n\n`;
 
-        message += `CLINICAL OBSERVATIONS:\n`;
+        message += `CLINICAL OBSERVATIONS RIGHT NOW:\n`;
 
         // Somatic state
-        if (somaticMarkers) {
-            message += `\nBody Language:\n`;
-            Object.entries(somaticMarkers).forEach(([marker, data]) => {
-                if (data.score > 0) {
-                    message += `- ${marker} (${Math.round(data.score * 100)}%): ${data.indicators.join(', ')}\n`;
+        if (somaticMarkers && Object.keys(somaticMarkers).length > 0) {
+            message += `\nBody Language (Real-time):\n`;
+            Object.entries(somaticMarkers).forEach(([marker, markerData]) => {
+                if (markerData.score > 0) {
+                    message += `- ${marker} (${Math.round(markerData.score * 100)}%): ${markerData.indicators.join(', ')}\n`;
                 }
             });
         }
@@ -260,7 +339,7 @@ REMEMBER: You're not just responding to words. You're responding to a body in a 
 
         // Congruence
         if (congruenceAnalysis?.incongruencePatterns) {
-            message += `\nCongruence Analysis:\n`;
+            message += `\nCongruence Analysis (Face/Voice/Words alignment):\n`;
             congruenceAnalysis.incongruencePatterns.forEach(pattern => {
                 message += `- ${pattern.name}: ${pattern.description}\n`;
             });
@@ -275,12 +354,33 @@ REMEMBER: You're not just responding to words. You're responding to a body in a 
             }
         }
 
+        // Environmental context (objects present)
+        if (objectContext && Object.keys(objectContext).length > 0) {
+            message += `\nEnvironmental Context:\n`;
+            if (objectContext.detected_objects?.length > 0) {
+                message += `Objects in view: ${objectContext.detected_objects.map(o => o.name).join(', ')}\n`;
+            }
+            message += `Threat level: ${objectContext.threat_level || 'low'}\n`;
+        }
+
+        // Physical harm indicators
+        if (physicalHarmContext && Object.keys(physicalHarmContext).length > 0) {
+            message += `\nPhysical Observation:\n`;
+            if (physicalHarmContext.indicators?.length > 0) {
+                message += `Marks/injuries: ${physicalHarmContext.indicators.map(i => `${i.type} on ${i.location}`).join(', ')}\n`;
+            }
+            if (physicalHarmContext.has_prior_harm) {
+                message += `Patient has history of physical harm - approach with extra care\n`;
+            }
+        }
+
         // Similar moments from history
         if (similarMoments && similarMoments.length > 0) {
-            message += `\nPattern Connection (from past):\n`;
+            message += `\nPattern Recognition (from patient's past):\n`;
             similarMoments.slice(0, 2).forEach((moment, i) => {
-                message += `${i + 1}. "${moment.transcript.substring(0, 100)}..."\n`;
-                message += `   Similarity: ${Math.round(moment.similarity * 100)}%\n`;
+                message += `${i + 1}. Similar moment ${Math.round(moment.similarity * 100)}% match:\n`;
+                message += `   "${moment.transcript.substring(0, 100)}..."\n`;
+                message += `   Context: ${moment.context || 'therapy moment'}\n`;
             });
         }
 
