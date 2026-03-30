@@ -7,12 +7,14 @@ import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
 import { getUserEmotion, getActiveSession } from '../src/services/cache/redisService.js';
+import { getRedisClient } from '../lib/shared/redis.js';
 import { updateObjectTracker, buildObjectContext, clearObjectTracker } from '../lib/shared/objectTracker.js';
 import { buildPhysicalHarmContext } from '../lib/shared/physicalHarmTracker.js';
 import { buildColorContext } from '../lib/shared/colorAnalyzer.js';
 import { buildVoiceBaselineContext } from '../lib/shared/voiceBaselineEngine.js';
 
 const router = express.Router();
+const redis = await getRedisClient();
 
 // ─── ADAPTİF FRAME THROTTLE ──────────────────────────────────
 // Kullanıcı başına son analiz zamanını tutar — MIN_INTERVAL_MS içinde gelen
@@ -280,12 +282,36 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
         if (userId && result.yuz_var) {
             const sid = sessionId || activeSessionId;
 
-            // 1. Nesne takibi — GPT'nin tespit ettiği nesneleri frame'ler arası izle
+            // 1. NESNE TAKIBI — GPT'nin tespit ettiği nesneleri frame'ler arası izle
             const nesneGuncelleme = updateObjectTracker(userId, result.ortam?.nesneler || [], result.timestamp);
             const nesneContext = buildObjectContext(userId);
             if (nesneContext) result.nesne_context = nesneContext;
             if (nesneGuncelleme.persistentThreats?.length > 0) {
                 result.persistent_threats = nesneGuncelleme.persistentThreats;
+            }
+
+            // ── REDIS SET: object_tracker:${userId}:current ──
+            // Chat endpoint'i bu veriye erişebilsin
+            try {
+                const objectTrackerData = {
+                    threat_level: nesneGuncelleme.threatLevel || 'low',
+                    objects: result.ortam?.nesneler || [],
+                    persistent_threats: nesneGuncelleme.persistentThreats || [],
+                    safe: (nesneGuncelleme.threatLevel || 'low') === 'low',
+                    timestamp: result.timestamp,
+                    el_nesnesi: result.ortam?.el_nesnesi || null,
+                    zarar_sinyali: result.ortam?.zarar_sinyali || false
+                };
+
+                await redis.setex(
+                    `object_tracker:${userId}:current`,
+                    60, // 60 saniye taze kalma süresi
+                    JSON.stringify(objectTrackerData)
+                );
+
+                console.log(`[REDIS] object_tracker:${userId}:current → SET (${nesneGuncelleme.threatLevel || 'low'} threat, ${objectTrackerData.objects.length} objects)`);
+            } catch (redisErr) {
+                console.warn(`[REDIS] ObjectTracker SET hatası:`, redisErr.message);
             }
 
             // 2. Landmark'tan gelen renk ve nefes verileri — client gönderdi mi?
@@ -302,11 +328,69 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
                 else if (pattern === 'shallow') result.nefes_context = '[NEFES YÜZEYSEL]: Gergin nefes — vücudun sinyalini dinle.';
             }
 
-            // 3. Fiziksel zarar — seanslar arası karşılaştırma (async, arka planda)
+            // 3. FİZİKSEL ZARAR — seanslar arası karşılaştırma
             if (result.fiziksel_zarar && sid) {
                 buildPhysicalHarmContext(userId, sid, result.fiziksel_zarar, result.ortam)
                     .then(ctx => { if (ctx) console.log(`[FİZİKSEL ZARAR] ${userId}: ${ctx.slice(0, 80)}`); })
                     .catch(() => {});
+
+                // ── REDIS SET: physical_harm:${userId}:current ──
+                // Chat endpoint'i hasta bedenindeki izleri görebilsin
+                try {
+                    const physicalHarmData = {
+                        indicators: [],
+                        has_prior_harm: false,
+                        recency: null,
+                        max_severity: 'none',
+                        timestamp: result.timestamp
+                    };
+
+                    // GPT-4o Vision'dan gelen fiziksel zarar verilerini işle
+                    const harm = result.fiziksel_zarar;
+                    if (harm) {
+                        const severities = { morluk: 0, yara_kesi: 0, sislik: 0, kan_izi: 0 };
+                        const severityOrder = ['none', 'minor', 'moderate', 'severe'];
+
+                        if (harm.morluk) {
+                            physicalHarmData.indicators.push({ type: 'bruise', location: harm.bolge || 'unknown', severity: 'moderate' });
+                            severities.morluk = 2;
+                        }
+                        if (harm.yara_kesi) {
+                            physicalHarmData.indicators.push({ type: 'cut', location: harm.bolge || 'unknown', severity: 'moderate' });
+                            severities.yara_kesi = 2;
+                        }
+                        if (harm.sislik) {
+                            physicalHarmData.indicators.push({ type: 'swelling', location: harm.bolge || 'unknown', severity: 'mild' });
+                            severities.sislik = 1;
+                        }
+                        if (harm.kan_izi) {
+                            physicalHarmData.indicators.push({ type: 'bleeding', location: harm.bolge || 'unknown', severity: 'severe' });
+                            severities.kan_izi = 3;
+                        }
+
+                        // Maksimum severity belirle
+                        const maxSev = Math.max(...Object.values(severities));
+                        physicalHarmData.max_severity = severityOrder[Math.min(maxSev, 3)];
+
+                        // Skordan prior harm çıkarsama
+                        if (harm.fiziksel_zarar_skor && harm.fiziksel_zarar_skor > 0) {
+                            physicalHarmData.has_prior_harm = true;
+                            physicalHarmData.recency = harm.zarar_bolge ? 'recent' : 'unknown';
+                        }
+                    }
+
+                    await redis.setex(
+                        `physical_harm:${userId}:current`,
+                        60, // 60 saniye taze kalma süresi
+                        JSON.stringify(physicalHarmData)
+                    );
+
+                    if (physicalHarmData.indicators.length > 0) {
+                        console.log(`[REDIS] physical_harm:${userId}:current → SET (${physicalHarmData.indicators.length} indicators, severity: ${physicalHarmData.max_severity})`);
+                    }
+                } catch (redisErr) {
+                    console.warn(`[REDIS] PhysicalHarm SET hatası:`, redisErr.message);
+                }
             }
 
             // Gaze ve nefes log
