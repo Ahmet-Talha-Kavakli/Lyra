@@ -4,6 +4,7 @@
   "description": "",
   "main": "config.js",
   "scripts": {
+    "build": "cd frontend && npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "node server.js",
