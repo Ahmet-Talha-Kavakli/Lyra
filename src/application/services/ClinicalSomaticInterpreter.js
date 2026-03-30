@@ -456,87 +456,173 @@ export class ClinicalSomaticInterpreter {
     /**
      * 8. GENERATE REAL-TIME THERAPIST GUIDANCE
      */
+    /**
+     * FIXED: Array-based aggregator instead of string overwrite
+     * Multiple emotional states can coexist (e.g., shame + safety)
+     * Each state's guidance is collected, not erased
+     */
     generateTherapistGuidance(fusedState) {
         const guidance = {
-            immediate_action: '',
-            tone_of_voice: '',
-            body_language: '',
+            immediate_actions: [], // ARRAY - aggregates all actions
+            tone_of_voice: {
+                primary: [],
+                avoid: []
+            },
+            body_language: {
+                recommended: [],
+                avoid: []
+            },
             words_to_use: [],
             words_to_avoid: [],
-            next_step: ''
+            next_steps: [],
+            clinical_priority: 'normal',
+            state_combination: [] // Track which states triggered guidance
         };
 
+        // ═══════════════════════════════════════════════════════════════
+        // SHAME STATE (Utanç)
+        // ═══════════════════════════════════════════════════════════════
         if (fusedState.somaticMarkers.shame?.score > 0.6) {
-            guidance.immediate_action = 'Normalize and validate shame';
-            guidance.tone_of_voice = 'Warm, non-judgmental, gentle';
-            guidance.body_language = 'Open posture, soft eye contact, slight smile';
-            guidance.words_to_use = [
+            guidance.state_combination.push({
+                state: 'shame',
+                score: fusedState.somaticMarkers.shame.score
+            });
+
+            guidance.immediate_actions.push('Normalize and validate shame');
+            guidance.tone_of_voice.primary.push('Warm', 'non-judgmental', 'gentle');
+            guidance.body_language.recommended.push('Open posture', 'soft eye contact', 'slight smile');
+            guidance.words_to_use.push(
                 'I notice you seem to be feeling some shame',
                 'That\'s so human',
                 'You\'re not alone in this',
                 'Let\'s be curious together'
-            ];
-            guidance.words_to_avoid = [
+            );
+            guidance.words_to_avoid.push(
                 'Don\'t be so hard on yourself',
                 'You should feel better',
                 'Get over it'
-            ];
-            guidance.next_step = 'Build self-compassion through somatic awareness';
+            );
+            guidance.next_steps.push('Build self-compassion through somatic awareness');
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // FEAR STATE (Korku)
+        // ═══════════════════════════════════════════════════════════════
         if (fusedState.somaticMarkers.fear?.score > 0.7) {
-            guidance.immediate_action = 'Activate social safety, slow pace';
-            guidance.tone_of_voice = 'Calm, steady, reassuring';
-            guidance.body_language = 'Still, present, grounded';
-            guidance.words_to_use = [
+            guidance.state_combination.push({
+                state: 'fear',
+                score: fusedState.somaticMarkers.fear.score
+            });
+            guidance.clinical_priority = 'high'; // Fear escalates priority
+
+            guidance.immediate_actions.push('Activate social safety, slow pace');
+            guidance.tone_of_voice.primary.push('Calm', 'steady', 'reassuring');
+            guidance.body_language.recommended.push('Still', 'present', 'grounded');
+            guidance.words_to_use.push(
                 'You\'re safe right now, in this room',
                 'Let\'s slow down',
                 'I\'m here with you',
                 'What would help you feel safer?'
-            ];
-            guidance.words_to_avoid = [
+            );
+            guidance.words_to_avoid.push(
                 'Don\'t be scared',
                 'There\'s nothing to fear',
                 'You\'re overreacting'
-            ];
-            guidance.next_step = 'Ground in present, build resources';
+            );
+            guidance.next_steps.push('Ground in present, build resources');
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // DISSOCIATION STATE (Ayrıştırma/Kopma)
+        // ═══════════════════════════════════════════════════════════════
         if (fusedState.somaticMarkers.dissociation?.score > 0.6) {
-            guidance.immediate_action = 'Gently orient to present without forcing';
-            guidance.tone_of_voice = 'Soft, simple, repetitive';
-            guidance.body_language = 'Warm, open, non-threatening';
-            guidance.words_to_use = [
+            guidance.state_combination.push({
+                state: 'dissociation',
+                score: fusedState.somaticMarkers.dissociation.score
+            });
+            guidance.clinical_priority = 'high'; // Dissociation needs careful handling
+
+            guidance.immediate_actions.push('Gently orient to present without forcing');
+            guidance.tone_of_voice.primary.push('Soft', 'simple', 'repetitive');
+            guidance.body_language.recommended.push('Warm', 'open', 'non-threatening');
+            guidance.words_to_use.push(
                 'You\'re here with me now',
                 'Notice the chair supporting you',
                 'What do you hear right now?',
                 'Take your time coming back'
-            ];
-            guidance.words_to_avoid = [
+            );
+            guidance.words_to_avoid.push(
                 'Come back to me',
                 'Wake up',
                 'Pay attention'
-            ];
-            guidance.next_step = 'Build tolerance for presence gradually';
+            );
+            guidance.next_steps.push('Build tolerance for presence gradually');
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // SAFETY STATE (Güvendelik)
+        // Can coexist with other states: "Safe enough to explore shame"
+        // ═══════════════════════════════════════════════════════════════
         if (fusedState.somaticMarkers.safety?.score > 0.8) {
-            guidance.immediate_action = 'Leverage this window for deeper work';
-            guidance.tone_of_voice = 'Engaged, curious, empowering';
-            guidance.body_language = 'Open, forward, present';
-            guidance.words_to_use = [
+            guidance.state_combination.push({
+                state: 'safety',
+                score: fusedState.somaticMarkers.safety.score
+            });
+            guidance.clinical_priority = 'optimal'; // Safety = therapeutic window open
+
+            guidance.immediate_actions.push('Leverage this window for deeper work');
+            guidance.tone_of_voice.primary.push('Engaged', 'curious', 'empowering');
+            guidance.body_language.recommended.push('Open', 'forward', 'present');
+            guidance.words_to_use.push(
                 'This feels like a good moment to explore...',
                 'I\'m noticing you seem more settled',
                 'What are you noticing in your body?',
                 'Let\'s go a little deeper'
-            ];
-            guidance.words_to_avoid = [
+            );
+            guidance.words_to_avoid.push(
                 'Stay surface level',
                 'Don\'t go there',
                 'That\'s too much'
-            ];
-            guidance.next_step = 'Explore vulnerable material, build new neural patterns';
+            );
+            guidance.next_steps.push('Explore vulnerable material, build new neural patterns');
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // COMPLEX STATE COMBINATIONS (Multiple emotions coexist)
+        // ═══════════════════════════════════════════════════════════════
+        if (guidance.state_combination.length > 1) {
+            // Handle complex emotional states
+            const hasShame = guidance.state_combination.some(s => s.state === 'shame');
+            const hasSafety = guidance.state_combination.some(s => s.state === 'safety');
+            const hasFear = guidance.state_combination.some(s => s.state === 'fear');
+            const hasDissociation = guidance.state_combination.some(s => s.state === 'dissociation');
+
+            // Shame + Safety = Golden therapeutic window
+            if (hasShame && hasSafety) {
+                guidance.immediate_actions.push('Use safety window to gently explore shame origins');
+                guidance.next_steps.push('Deep shame work is safe - proceed with compassion');
+            }
+
+            // Fear + Dissociation = Severe trauma response, DO NOT PUSH
+            if (hasFear && hasDissociation) {
+                guidance.immediate_actions = ['CRITICAL: Do not push deeper work'];
+                guidance.clinical_priority = 'crisis';
+                guidance.next_steps = ['Stabilize nervous system before any exploration'];
+                guidance.body_language.recommended = ['Still', 'calm', 'non-threatening'];
+            }
+
+            // Shame + Fear = Shame about fear (complex emotional tangle)
+            if (hasShame && hasFear) {
+                guidance.immediate_actions.push('Separate shame from fear - they are different');
+                guidance.next_steps.push('Name and differentiate: "The fear is valid. The shame is not yours to carry"');
+            }
+        }
+
+        // Remove duplicates from arrays
+        guidance.words_to_use = [...new Set(guidance.words_to_use)];
+        guidance.words_to_avoid = [...new Set(guidance.words_to_avoid)];
+        guidance.immediate_actions = [...new Set(guidance.immediate_actions)];
+        guidance.next_steps = [...new Set(guidance.next_steps)];
 
         return guidance;
     }
