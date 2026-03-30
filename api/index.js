@@ -26,6 +26,7 @@ import { chatLimiter, apiGeneralLimiter, publicLimiter } from '../middleware/rat
 import { auditContextMiddleware } from '../lib/infrastructure/auditLogger.js';
 import { securityHeadersMiddleware } from '../lib/infrastructure/securityHeaders.js';
 import { cspHeadersMiddleware, cspViolationHandler } from '../lib/infrastructure/cspHeaders.js';
+import { scalingMiddleware, scalingMonitor, getScalingRecommendations } from '../lib/infrastructure/scalingConfig.js';
 
 // ROUTES
 import authRouter from '../routes/auth.js';
@@ -73,6 +74,7 @@ app.use(cors({
 }));
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────
+app.use(scalingMiddleware); // Track performance metrics FIRST
 app.use(securityHeadersMiddleware);
 app.use(cspHeadersMiddleware); // Content Security Policy
 app.use(auditContextMiddleware);
@@ -86,7 +88,9 @@ app.get('/health', async (_req, res) => {
         status: 'healthy',
         timestamp: new Date().toISOString(),
         env: config.NODE_ENV,
-        version: '1.0.0'
+        version: '1.0.0',
+        scaling: scalingMonitor.getMetrics(),
+        recommendations: getScalingRecommendations()
     });
 });
 

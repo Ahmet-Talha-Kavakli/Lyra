@@ -8,7 +8,18 @@
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30,
-        "memory": 3008
+        "memory": 3008,
+        "includeFiles": [
+          "lib/**",
+          "middleware/**",
+          "routes/**",
+          "src/**"
+        ],
+        "excludeFiles": [
+          "frontend/**",
+          "node_modules/.cache/**",
+          "*.test.js"
+        ]
       }
     }
   ],
@@ -17,6 +28,12 @@
       "src": "/api/(.*)",
       "dest": "api/index.js"
     }
+  ],
+  "regions": [
+    "iad1",
+    "sfo1",
+    "lhr1",
+    "sin1"
   ],
   "env": {
     "NODE_ENV": "production",
@@ -27,7 +44,8 @@
     "REDIS_URL": "@redis_url",
     "REDIS_PASSWORD": "@redis_password",
     "JWT_SECRET": "@jwt_secret",
-    "FRONTEND_URL": "@frontend_url"
+    "FRONTEND_URL": "@frontend_url",
+    "SENTRY_DSN": "@sentry_dsn"
   }
 }
 
