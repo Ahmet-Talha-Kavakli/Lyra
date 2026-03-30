@@ -34,7 +34,8 @@
     "rss-parser": "^3.13.0",
     "zod": "^3.22.4",
     "xss": "^1.0.14",
-    "dompurify": "^3.0.6"
+    "dompurify": "^3.0.6",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "vitest": "^4.1.2",
