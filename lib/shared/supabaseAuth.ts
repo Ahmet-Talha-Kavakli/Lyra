@@ -173,9 +173,7 @@ export async function createAuthenticatedSupabaseClient(
       db: {
         schema: 'public' // Explicit schema = faster
       },
-      realtime: {
-        enabled: false // Serverless doesn't need realtime
-      }
+      realtime: {} as any
     });
 
     // Verify token is valid by calling getUser
