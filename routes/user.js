@@ -1,6 +1,6 @@
 // routes/user.js
 import express from 'express';
-import { databasePool } from '../lib/infrastructure/databasePool.js';
+import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
 import { updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';
@@ -13,15 +13,17 @@ router.post('/v1/consent-accept', authMiddleware, async (req, res) => {
     if (!requireOwnership(userId, req, res)) return;
 
     try {
-        await databasePool.query(
-            `INSERT INTO user_consents (user_id, consent_version, ip_address, user_agent, accepted_at)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (user_id, consent_version) DO UPDATE SET
-             ip_address = EXCLUDED.ip_address,
-             user_agent = EXCLUDED.user_agent,
-             accepted_at = EXCLUDED.accepted_at`,
-            [userId, consentVersion, req.ip, (req.headers['user-agent'] || '').substring(0, 500), new Date().toISOString()]
-        );
+        const { error } = await supabase
+            .from('user_consents')
+            .upsert({
+                user_id: userId,
+                consent_version: consentVersion,
+                ip_address: req.ip,
+                user_agent: (req.headers['user-agent'] || '').substring(0, 500),
+                accepted_at: new Date().toISOString()
+            }, { onConflict: 'user_id,consent_version' });
+
+        if (error) throw error;
         console.log(`[CONSENT] Kullanıcı onayı kaydedildi: ${userId} v${consentVersion}`);
         res.json({ ok: true });
     } catch (error) {
@@ -34,11 +36,14 @@ router.get('/v1/consent-status', authMiddleware, async (req, res) => {
     if (!requireOwnership(userId, req, res)) return;
 
     try {
-        const data = await databasePool.queryOne(
-            `SELECT accepted_at, consent_version FROM user_consents
-             WHERE user_id = $1 AND consent_version = $2`,
-            [userId, '1.0']
-        );
+        const { data, error } = await supabase
+            .from('user_consents')
+            .select('accepted_at, consent_version')
+            .eq('user_id', userId)
+            .eq('consent_version', '1.0')
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
         res.json({ hasConsent: !!data, acceptedAt: data?.accepted_at || null });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -65,14 +70,24 @@ router.delete('/v1/delete-my-data', authMiddleware, async (req, res) => {
 
     for (const table of tables) {
         try {
-            await databasePool.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+            const { error } = await supabase
+                .from(table)
+                .delete()
+                .eq('user_id', userId);
+
+            if (error) throw error;
             deleted.push(table);
         } catch (error) {
             errors.push(`${table}: ${error.message}`);
         }
     }
     try {
-        await databasePool.query('DELETE FROM user_profiles WHERE user_id = $1', [userId]);
+        const { error } = await supabase
+            .from('user_profiles')
+            .delete()
+            .eq('user_id', userId);
+
+        if (error) throw error;
     } catch (e) {
         // Ignore errors for user_profiles
     }
@@ -90,7 +105,12 @@ router.get('/v1/export-my-data', authMiddleware, async (req, res) => {
     try {
         const exportData = {};
         for (const table of ['psychological_profiles', 'session_records', 'progress_metrics']) {
-            const data = await databasePool.queryAll(`SELECT * FROM ${table} WHERE user_id = $1`, [userId]);
+            const { data, error } = await supabase
+                .from(table)
+                .select('*')
+                .eq('user_id', userId);
+
+            if (error) throw error;
             exportData[table] = data || [];
         }
 
@@ -120,21 +140,33 @@ router.get('/v1/my-progress', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
-        const [sessions, profile, metrics] = await Promise.all([
-            databasePool.queryAll(
-                `SELECT session_id, created_at, dominant_emotion, topics, emotional_end_score, crisis_flag, session_quality, techniques_used, breakthrough_moment
-                 FROM session_records WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
-                [userId]
-            ),
-            databasePool.queryOne(
-                `SELECT session_count, attachment_style, strengths, life_schemas FROM psychological_profiles WHERE user_id = $1`,
-                [userId]
-            ),
-            databasePool.queryAll(
-                `SELECT * FROM weekly_metrics WHERE user_id = $1 ORDER BY week_start DESC LIMIT 4`,
-                [userId]
-            ),
+        const [sessionsResult, profileResult, metricsResult] = await Promise.all([
+            supabase
+                .from('session_records')
+                .select('session_id, created_at, dominant_emotion, topics, emotional_end_score, crisis_flag, session_quality, techniques_used, breakthrough_moment')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(20),
+            supabase
+                .from('psychological_profiles')
+                .select('session_count, attachment_style, strengths, life_schemas')
+                .eq('user_id', userId)
+                .single(),
+            supabase
+                .from('weekly_metrics')
+                .select('*')
+                .eq('user_id', userId)
+                .order('week_start', { ascending: false })
+                .limit(4),
         ]);
+
+        if (sessionsResult.error) throw sessionsResult.error;
+        if (profileResult.error && profileResult.error.code !== 'PGRST116') throw profileResult.error;
+        if (metricsResult.error) throw metricsResult.error;
+
+        const sessions = sessionsResult.data || [];
+        const profile = profileResult.data;
+        const metrics = metricsResult.data || [];
 
         // Özet istatistikler
         const totalSessions = (profile?.session_count) || sessions.length;
@@ -184,7 +216,12 @@ router.get('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
-        const data = await databasePool.queryAll('SELECT * FROM emergency_contacts WHERE user_id = $1', [userId]);
+        const { data, error } = await supabase
+            .from('emergency_contacts')
+            .select('*')
+            .eq('user_id', userId);
+
+        if (error) throw error;
         res.json({ contacts: data || [] });
     } catch (e) {
         res.status(500).json({ error: 'Acil kişiler alınamadı' });
@@ -196,15 +233,17 @@ router.post('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     if (!requireOwnership(userId, req, res)) return;
     if (!name || !phone) return res.status(400).json({ error: 'name ve phone zorunlu' });
     try {
-        await databasePool.query(
-            `INSERT INTO emergency_contacts (user_id, name, phone, relation, updated_at)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (user_id, phone) DO UPDATE SET
-             name = EXCLUDED.name,
-             relation = EXCLUDED.relation,
-             updated_at = EXCLUDED.updated_at`,
-            [userId, name.substring(0, 100), phone.substring(0, 20), (relation || '').substring(0, 50), new Date().toISOString()]
-        );
+        const { error } = await supabase
+            .from('emergency_contacts')
+            .upsert({
+                user_id: userId,
+                name: name.substring(0, 100),
+                phone: phone.substring(0, 20),
+                relation: (relation || '').substring(0, 50),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,phone' });
+
+        if (error) throw error;
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: 'Acil kişi kaydedilemedi' });
@@ -222,22 +261,27 @@ router.post('/v1/session-feedback', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'rating 1-5 arası olmalı' });
     }
     try {
-        await databasePool.query(
-            `INSERT INTO session_feedback (user_id, session_id, rating, note, created_at)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (user_id, session_id) DO UPDATE SET
-             rating = EXCLUDED.rating,
-             note = EXCLUDED.note,
-             created_at = EXCLUDED.created_at`,
-            [userId, sessionId, rating, (note || '').substring(0, 500), new Date().toISOString()]
-        );
+        const { error } = await supabase
+            .from('session_feedback')
+            .upsert({
+                user_id: userId,
+                session_id: sessionId,
+                rating,
+                note: (note || '').substring(0, 500),
+                created_at: new Date().toISOString()
+            }, { onConflict: 'user_id,session_id' });
+
+        if (error) throw error;
 
         // Teknik etkinliği güncelle — kullanıcı memnuniyeti iyiyse
         if (rating >= 4) {
-            const sr = await databasePool.queryOne(
-                'SELECT techniques_used FROM session_records WHERE session_id = $1',
-                [sessionId]
-            );
+            const { data: sr, error: srError } = await supabase
+                .from('session_records')
+                .select('techniques_used')
+                .eq('session_id', sessionId)
+                .single();
+
+            if (srError && srError.code !== 'PGRST116') throw srError;
             if (sr?.techniques_used?.length) {
                 for (const tid of sr.techniques_used) {
                     await updateTechniqueEffectiveness(userId, tid, true);

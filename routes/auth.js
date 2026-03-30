@@ -1,7 +1,6 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { supabase } from '../lib/shared/supabase.js';
-import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { validateUserRegistration, validateEmail } from '../lib/shared/validators.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/infrastructure/tokenManager.js';
 import { logger } from '../lib/infrastructure/logger.js';
@@ -80,12 +79,23 @@ router.post('/v1/signup', authRateLimit, validateUserRegistration, async (req, r
 
         // Initialize psychological profile
         try {
-            await databasePool.query(
-                `INSERT INTO psychological_profiles
-                 (user_id, session_count, attachment_style, triggers, life_schemas, unconscious_patterns, defense_mechanisms, strengths)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [userId, 0, null, JSON.stringify([]), JSON.stringify([]), JSON.stringify([]), JSON.stringify([]), JSON.stringify([])]
-            );
+            const { error: profileError } = await supabase
+                .from('psychological_profiles')
+                .insert({
+                    user_id: userId,
+                    session_count: 0,
+                    attachment_style: null,
+                    triggers: [],
+                    life_schemas: [],
+                    unconscious_patterns: [],
+                    defense_mechanisms: [],
+                    strengths: []
+                });
+
+            if (profileError) {
+                logger.error('[/v1/signup] Profile creation failed', { userId, error: profileError.message });
+                // Don't fail the signup, profile can be created later
+            }
         } catch (profileErr) {
             logger.error('[/v1/signup] Profile creation failed', { userId, error: profileErr.message });
             // Don't fail the signup, profile can be created later

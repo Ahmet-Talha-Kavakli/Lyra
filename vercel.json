@@ -2,11 +2,14 @@
   "version": 2,
   "env": {
     "VITE_API_URL": "@vite_api_url",
-    "VITE_WS_URL": "@vite_ws_url"
+    "VITE_WS_URL": "@vite_ws_url",
+    "UPSTASH_REDIS_REST_URL": "@upstash_redis_rest_url",
+    "UPSTASH_REDIS_REST_TOKEN": "@upstash_redis_rest_token",
+    "QSTASH_TOKEN": "@qstash_token"
   },
   "builds": [
     {
-      "src": "api/**/*.js",
+      "src": "api/**/*.{js,ts}",
       "use": "@vercel/node"
     },
     {
@@ -25,6 +28,24 @@
     {
       "src": "^/.*",
       "dest": "/frontend/dist/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/autonomousSourceDiscovery",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/assessKnowledgeQuality",
+      "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/cron/detectKnowledgeGaps",
+      "schedule": "0 2 * * 5"
+    },
+    {
+      "path": "/api/cron/verifySourceCredibility",
+      "schedule": "0 4 1 * *"
     }
   ]
 }
