@@ -1,6 +1,6 @@
 // routes/admin.js
 import express from 'express';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { requireAdmin } from '../lib/shared/helpers.js';
 
 const router = express.Router();
@@ -251,17 +251,16 @@ router.get('/v1/cron-checkin', async (req, res) => {
         const kontrol = (krizKayitlari || []).filter(k => k.kriz_log?.tarih);
         console.log(`[CRON] ${kontrol.length} kriz kaydı kontrol edildi.`);
 
-        const { data: users } = await supabase.from('user_profile').select('user_id');
+        const users = await databasePool.queryAll('SELECT user_id FROM user_profile');
         let patternUpdated = 0;
 
         for (const user of users || []) {
             const userId = user.user_id;
-            const { data: emotions } = await supabase
-                .from('emotion_logs')
-                .select('konu, duygu, yogunluk')
-                .eq('user_id', userId)
-                .order('timestamp', { ascending: false })
-                .limit(10);
+            const emotions = await databasePool.queryAll(
+                `SELECT konu, duygu, yogunluk FROM emotion_logs
+                 WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 10`,
+                [userId]
+            );
 
             if (!emotions || emotions.length < 2) continue;
 
@@ -294,9 +293,10 @@ router.get('/v1/cron-checkin', async (req, res) => {
                 updated_at: new Date().toISOString()
             };
 
-            await supabase.from('user_profile')
-                .update({ pattern_memory: updatedPattern })
-                .eq('user_id', userId);
+            await databasePool.query(
+                `UPDATE user_profile SET pattern_memory = $1 WHERE user_id = $2`,
+                [JSON.stringify(updatedPattern), userId]
+            );
 
             patternUpdated++;
         }

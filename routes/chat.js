@@ -14,7 +14,7 @@
 
 import express from 'express';
 import { logger } from '../lib/infrastructure/logger.js';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { rateLimit } from 'express-rate-limit';
 import { validateRequest, chatCompletionSchema } from '../lib/infrastructure/validationSchemas.js';
 import { getRedisClient } from '../lib/shared/redis.js';
@@ -63,17 +63,15 @@ async function queueProfileSynthesis(userId, sessionId, intakeSummary) {
  */
 async function isFirstSession(userId) {
     try {
-        // Check Supabase user_profile table
-        const { data, error } = await supabase
-            .from('user_profile')
-            .select('session_count, is_first_session')
-            .eq('user_id', userId)
-            .single();
+        const result = await databasePool.queryOne(
+            'SELECT session_count, is_first_session FROM user_profile WHERE user_id = $1',
+            [userId]
+        );
 
-        if (error || !data) return true; // Assume first if no record exists
+        if (!result) return true; // Assume first if no record exists
 
         // First session if count is 0 or flag is true
-        return data.session_count === 0 || data.is_first_session === true;
+        return result.session_count === 0 || result.is_first_session === true;
     } catch (err) {
         logger.warn('[CHAT] First session check failed:', err.message);
         return true; // Default to first session
@@ -85,22 +83,19 @@ async function isFirstSession(userId) {
  */
 async function incrementSessionCount(userId) {
     try {
-        const { data } = await supabase
-            .from('user_profile')
-            .select('session_count')
-            .eq('user_id', userId)
-            .single();
+        const result = await databasePool.queryOne(
+            'SELECT session_count FROM user_profile WHERE user_id = $1',
+            [userId]
+        );
 
-        const newCount = (data?.session_count || 0) + 1;
+        const newCount = (result?.session_count || 0) + 1;
 
-        await supabase
-            .from('user_profile')
-            .update({
-                session_count: newCount,
-                is_first_session: false,
-                last_session_date: new Date().toISOString()
-            })
-            .eq('user_id', userId);
+        await databasePool.query(
+            `UPDATE user_profile
+             SET session_count = $1, is_first_session = false, last_session_date = $2
+             WHERE user_id = $3`,
+            [newCount, new Date().toISOString(), userId]
+        );
 
         logger.info('[CHAT] Session count incremented', { userId, newCount });
     } catch (err) {

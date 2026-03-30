@@ -3,7 +3,6 @@
 // Her block try/catch ile wrapped, graceful degradation
 
 import { logger } from '../../lib/infrastructure/logger.js';
-import { supabase } from '../../lib/supabase.js';
 import { getUserEmotion, getSessionTranscript, getActiveSession } from '../../src/services/cache/redisService.js';
 
 // Import all assessment modules

@@ -1,6 +1,6 @@
 // routes/knowledge.js
 import express from 'express';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership, requireAdmin } from '../lib/shared/helpers.js';
@@ -189,13 +189,10 @@ router.post('/v1/hypothesis', authMiddleware, async (req, res) => {
 
         if (sessionId) {
             const { default: crypto } = await import('crypto');
-            supabase.from('emotion_logs')
-                .update({
-                    hypothesis_data: hypothesis,
-                    hypothesis_id: crypto.randomUUID()
-                })
-                .eq('session_id', sessionId)
-                .then(() => {});
+            databasePool.query(
+                `UPDATE emotion_logs SET hypothesis_data = $1, hypothesis_id = $2 WHERE session_id = $3`,
+                [JSON.stringify(hypothesis), crypto.randomUUID(), sessionId]
+            ).catch(() => {});
         }
 
         console.log(`[HYPOTHESIS] Konu: ${currentTopic} | Tahmin: ${hypothesis.predicted_emotion} (${Math.round(hypothesis.confidence*100)}%) | Risk: ${hypothesis.risk_score} | Müdahale: ${hypothesis.suggested_intervention}`);
@@ -217,33 +214,29 @@ router.post('/v1/hypothesis-accuracy', authMiddleware, async (req, res) => {
 
         const was_correct = predicted_emotion.toLowerCase() === actual_emotion.toLowerCase();
 
-        const { error } = await supabase.from('hypothesis_accuracy').insert([{
-            user_id: userId,
-            predicted_emotion,
-            actual_emotion,
-            confidence: confidence || 0.5,
-            was_correct,
-            created_at: new Date().toISOString()
-        }]);
+        try {
+            await databasePool.query(
+                `INSERT INTO hypothesis_accuracy (user_id, predicted_emotion, actual_emotion, confidence, was_correct, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [userId, predicted_emotion, actual_emotion, confidence || 0.5, was_correct, new Date().toISOString()]
+            );
 
-        if (error) {
-            console.error('[HYPOTHESIS ACCURACY] Supabase hata:', error.message);
-            return res.json({ error: error.message });
-        }
+            const recentAccuracy = await databasePool.queryAll(
+                `SELECT was_correct FROM hypothesis_accuracy WHERE user_id = $1
+                 ORDER BY created_at DESC LIMIT 10`,
+                [userId]
+            );
 
-        const { data: recentAccuracy } = await supabase
-            .from('hypothesis_accuracy')
-            .select('was_correct')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-        const accuracy = recentAccuracy
-            ? (recentAccuracy.filter(a => a.was_correct).length / recentAccuracy.length * 100).toFixed(1)
+            const accuracy = recentAccuracy
+                ? (recentAccuracy.filter(a => a.was_correct).length / recentAccuracy.length * 100).toFixed(1)
             : 0;
 
-        console.log(`[HYPOTHESIS ACCURACY] ${predicted_emotion} vs ${actual_emotion}: ${was_correct ? '✓' : '✗'} | Genel: ${accuracy}%`);
-        res.json({ success: true, was_correct, accuracy });
+            console.log(`[HYPOTHESIS ACCURACY] ${predicted_emotion} vs ${actual_emotion}: ${was_correct ? '✓' : '✗'} | Genel: ${accuracy}%`);
+            res.json({ success: true, was_correct, accuracy });
+        } catch (err) {
+            console.error('[HYPOTHESIS ACCURACY] Hata:', err.message);
+            res.json({ error: err.message });
+        }
     } catch (err) {
         console.error('[HYPOTHESIS ACCURACY] Hata:', err.message);
         res.json({ error: err.message });
@@ -269,21 +262,12 @@ router.post('/v1/save-insight', authMiddleware, async (req, res) => {
 
                 const embedding = embeddingResp.data[0].embedding;
 
-                const { error } = await supabase.from('knowledge_bank').insert([{
-                    user_id: userId,
-                    content_type: insight.type || 'insight',
-                    title: insight.title,
-                    content: insight.content,
-                    embedding: embedding,
-                    relevance_score: insight.relevance_score || 0.7,
-                    tags: insight.tags || [],
-                    emotion_context: insight.emotion_context || 'neutral',
-                    created_at: new Date().toISOString()
-                }]);
-
-                if (!error) {
-                    savedCount++;
-                }
+                await databasePool.query(
+                    `INSERT INTO knowledge_bank (user_id, content_type, title, content, embedding, relevance_score, tags, emotion_context, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                    [userId, insight.type || 'insight', insight.title, insight.content, JSON.stringify(embedding), insight.relevance_score || 0.7, JSON.stringify(insight.tags || []), insight.emotion_context || 'neutral', new Date().toISOString()]
+                );
+                savedCount++;
             } catch (e) {
                 console.warn(`[RAG] Insight kayıt hatası: ${e.message}`);
             }
@@ -315,30 +299,41 @@ router.get('/v1/retrieve-knowledge', authMiddleware, async (req, res) => {
 
         const queryEmbedding = queryEmbeddingResp.data[0].embedding;
 
-        const { data: results } = await supabase.rpc('match_knowledge_bank', {
-            query_embedding: queryEmbedding,
-            match_threshold: 0.7,
-            match_count: queryLimit,
-            p_user_id: userId
-        }).then(d => ({ data: d || [], error: null }))
-          .catch(() => {
-              return supabase.from('knowledge_bank')
-                  .select('*')
-                  .eq('user_id', userId)
-                  .like('content', `%${query}%`)
-                  .limit(queryLimit)
-                  .then(d => ({ data: d.data || [], error: null }));
-          });
+        let results = [];
+        try {
+            results = await databasePool.queryAll(
+                `SELECT * FROM knowledge_bank WHERE user_id = $1 AND content ILIKE $2 LIMIT $3`,
+                [userId, `%${query}%`, queryLimit]
+            );
+        } catch (e) {
+            results = [];
+        }
 
-        const insights = (results || []).map(item => ({
-            id: item.id,
-            title: item.title,
-            content: item.content,
-            type: item.content_type,
-            relevance: item.similarity || item.relevance_score || 0.7,
-            emotion: item.emotion_context,
-            source_session: item.created_at
-        }));
+        const insights = (results || []).map(item => {
+            let relevance = 0.7;
+            try {
+                if (item.embedding && Array.isArray(queryEmbedding)) {
+                    const emb = typeof item.embedding === 'string' ? JSON.parse(item.embedding) : item.embedding;
+                    let dotProduct = 0;
+                    let norm1 = 0, norm2 = 0;
+                    for (let i = 0; i < emb.length; i++) {
+                        dotProduct += emb[i] * queryEmbedding[i];
+                        norm1 += emb[i] * emb[i];
+                        norm2 += queryEmbedding[i] * queryEmbedding[i];
+                    }
+                    relevance = dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+                }
+            } catch (e) {}
+            return {
+                id: item.id,
+                title: item.title,
+                content: item.content,
+                type: item.content_type,
+                relevance,
+                emotion: item.emotion_context,
+                source_session: item.created_at
+            };
+        });
 
         console.log(`[RAG] ${insights.length} insight döndürüldü (query: "${query}")`);
         res.json({ insights, query });
@@ -354,7 +349,7 @@ router.post('/v1/seed-knowledge', async (req, res) => {
     try {
         console.log('[SEED] Başlangıç kaynakları yükleniyor...');
 
-        const { data: existing } = await supabase.from('knowledge_sources').select('id');
+        const existing = await databasePool.queryAll('SELECT id FROM knowledge_sources');
         if (existing && existing.length > 0) {
             console.log(`[SEED] ${existing.length} mevcut kaynak bulundu, yeni yüklemeye hazırlanıyor...`);
         }
@@ -379,14 +374,12 @@ router.post('/v1/seed-knowledge', async (req, res) => {
                     console.warn(`[SEED] Embedding hatası: ${embErr.message}`);
                 }
 
-                const { error } = await supabase.from('knowledge_sources').insert([{
-                    ...source,
-                    embedding,
-                    is_active: true,
-                    created_at: new Date().toISOString()
-                }]);
-
-                if (!error) seededCount++;
+                await databasePool.query(
+                    `INSERT INTO knowledge_sources (source_type, title, author, url, summary, content, category, subcategory, tags, credibility_score, relevance_score, embedding, is_active, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                    [source.source_type, source.title, source.author, source.url, source.summary, source.content, source.category, source.subcategory, JSON.stringify(source.tags), source.credibility_score, source.relevance_score, embedding ? JSON.stringify(embedding) : null, true, new Date().toISOString()]
+                );
+                seededCount++;
             } catch (e) {
                 console.warn(`[SEED] Kaynak kayıt hatası: ${e.message}`);
             }
@@ -411,12 +404,11 @@ router.get('/v1/retrieve-knowledge-advanced', authMiddleware, async (req, res) =
 
         if (userId && insights.length > 0) {
             insights.forEach(insight => {
-                supabase.from('knowledge_usage_logs').insert([{
-                    user_id: userId,
-                    knowledge_id: insight.id,
-                    used_context: `Arama: "${query}"`,
-                    used_at: new Date().toISOString()
-                }]).catch(() => {});
+                databasePool.query(
+                    `INSERT INTO knowledge_usage_logs (user_id, knowledge_id, used_context, used_at)
+                     VALUES ($1, $2, $3, $4)`,
+                    [userId, insight.id, `Arama: "${query}"`, new Date().toISOString()]
+                ).catch(() => {});
             });
         }
 

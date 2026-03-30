@@ -38,6 +38,10 @@ import analysisRouter from '../routes/analysis.js';
 import therapyRouter from '../routes/therapy.js';
 import characterRouter from '../routes/character.js';
 import adminRouter from '../routes/admin.js';
+import streamRouter from '../routes/stream.js';
+
+// QUEUE & WEBHOOKS
+import { handleQStashWebhook } from '../lib/infrastructure/queueManager.js';
 
 const app = express();
 
@@ -114,6 +118,10 @@ app.get('/', (_req, res) => {
 // CSP Violation Reporter
 app.post('/csp-violation', cspViolationHandler);
 
+// ─── WEBHOOKS (QStash) ─────────────────────────────────────────────────────
+// Background job callback endpoint
+app.post('/api/webhooks/qstash', handleQStashWebhook);
+
 app.use('/auth', authRouter);
 app.use('/', userRouter);
 app.use('/', sessionRouter);
@@ -123,6 +131,7 @@ app.use('/', analysisRouter);
 app.use('/', therapyRouter);
 app.use('/', characterRouter);
 app.use('/admin', adminRouter);
+app.use('/stream', streamRouter);
 
 // ─── 404 HANDLER ──────────────────────────────────────────────────────────
 app.use((_req, res) => {

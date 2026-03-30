@@ -24,10 +24,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor': ['react', 'react-dom'],
-          'ui': ['lucide-react']
+          'vendor': ['react', 'react-dom', 'three'],
+          'ui': ['lucide-react'],
+          'r3f': ['@react-three/fiber', '@react-three/drei']
         }
       }
     }
+  },
+  optimizeDeps: {
+    include: ['three', '@react-three/fiber', '@react-three/drei']
   }
 })

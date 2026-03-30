@@ -19,13 +19,14 @@
     "@sentry/node": "^10.46.0",
     "@sentry/tracing": "^7.120.4",
     "@supabase/supabase-js": "^2.99.2",
+    "@upstash/qstash": "^2.10.1",
     "axios": "^1.13.6",
-    "bull": "^4.16.5",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dompurify": "^3.0.6",
     "dotenv": "^17.3.1",
+    "dotenv-safe": "^9.1.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
@@ -34,14 +35,15 @@
     "node-cron": "^4.2.1",
     "openai": "^6.27.0",
     "piscina": "^5.1.4",
+    "pg": "^8.11.3",
     "rate-limit-redis": "^4.3.1",
     "redis": "^5.11.0",
     "rss-parser": "^3.13.0",
-    "ws": "^8.14.2",
     "xss": "^1.0.14",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@vercel/edge": "^1.2.2",
     "concurrently": "^8.2.2",
     "vitest": "^4.1.2"
   }

@@ -2,7 +2,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
@@ -260,20 +260,12 @@ router.post('/v1/analyze-emotion', emotionRateLimit, authMiddleware, async (req,
 
             const sid = sessionId || activeSessionId;
             if (sid) {
-                supabase.from('emotion_logs').insert({
-                    user_id: userId,
-                    session_id: sid,
-                    duygu: result.duygu,
-                    yogunluk: result.yogunluk,
-                    enerji: result.enerji,
-                    jestler: result.jestler || null,
-                    trend: guncel.trend,
-                    guven: result.guven,
-                    mediapipe_landmarks: landmarks || null,
-                    yuz_soluklugu: result.yuz_soluklugu || false,
-                    advanced_facial: null
-                }).then(({ error }) => {
-                    if (error) console.error('[EMOTION LOG] Insert hatası:', error.message);
+                databasePool.query(
+                    `INSERT INTO emotion_logs (user_id, session_id, duygu, yogunluk, enerji, jestler, trend, guven, mediapipe_landmarks, yuz_soluklugu, advanced_facial)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    [userId, sid, result.duygu, result.yogunluk, result.enerji, result.jestler ? JSON.stringify(result.jestler) : null, guncel.trend, result.guven, landmarks ? JSON.stringify(landmarks) : null, result.yuz_soluklugu || false, null]
+                ).catch((error) => {
+                    console.error('[EMOTION LOG] Insert hatası:', error.message);
                 });
             }
         }
@@ -471,24 +463,22 @@ router.post('/v1/analyze-hume-voice', upload.single('audio'), humeRateLimit, aut
         };
 
         if (userId) {
-            supabase.from('emotion_logs')
-                .select('id')
-                .eq('user_id', userId)
-                .order('timestamp', { ascending: false })
-                .limit(1)
-                .single()
-                .then(({ data: row, error: selectErr }) => {
-                    if (selectErr) { console.warn('[HUME] Son emotion_log bulunamadı:', selectErr.message); return; }
+            (async () => {
+                try {
+                    const row = await databasePool.queryOne(
+                        `SELECT id FROM emotion_logs WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 1`,
+                        [userId]
+                    );
                     if (row?.id) {
-                        supabase.from('emotion_logs')
-                            .update({ hume_scores: humeScores })
-                            .eq('id', row.id)
-                            .then(({ error: updateErr }) => {
-                                if (updateErr) console.error('[HUME SAVE] Hata:', updateErr.message);
-                            });
+                        await databasePool.query(
+                            `UPDATE emotion_logs SET hume_scores = $1 WHERE id = $2`,
+                            [JSON.stringify(humeScores), row.id]
+                        );
                     }
-                })
-                .catch(err => console.error('[HUME] Query error:', err.message));
+                } catch (err) {
+                    console.error('[HUME] Query error:', err.message);
+                }
+            })();
         }
 
         console.log(`[HUME] ${humeScores.dominant} | valence:${humeScores.valence} | arousal:${humeScores.arousal}`);
@@ -551,7 +541,7 @@ async function analyzeHumanBehavior(userId, transcript, emotions) {
             biases.push({ type: 'mind-reading', indicator: 'Diğerlerinin düşüncelerini biliyor sanıyor', pattern: 'Kanıt olmadan varsayımlarda bulunuyor', suggestion: 'Bunu nasıl biliyorsun? Gerçeği kontrol et.' });
         }
 
-        const { data: profile } = await supabase.from('user_profile').select('pattern_memory').eq('user_id', userId).single();
+        const profile = await databasePool.queryOne('SELECT pattern_memory FROM user_profile WHERE user_id = $1', [userId]);
 
         let valueConflict = null;
         if (profile?.pattern_memory?.values) {
@@ -584,11 +574,11 @@ router.post('/v1/analyze-human-behavior', authMiddleware, async (req, res) => {
         const analysis = await analyzeHumanBehavior(userId, transcript, emotions);
 
         if (analysis) {
-            supabase.from('behavior_analysis').insert([{
-                user_id: userId,
-                analysis_data: analysis,
-                created_at: new Date().toISOString()
-            }]).catch(() => {});
+            databasePool.query(
+                `INSERT INTO behavior_analysis (user_id, analysis_data, created_at)
+                 VALUES ($1, $2, $3)`,
+                [userId, JSON.stringify(analysis), new Date().toISOString()]
+            ).catch(() => {});
         }
 
         res.json({ success: true, analysis });
@@ -603,26 +593,26 @@ router.get('/v1/analytics/source-effectiveness/:userId', authMiddleware, async (
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
 
-        const { data: usageLogs } = await supabase
-            .from('knowledge_usage_logs')
-            .select('knowledge_id, was_helpful, used_context, used_at')
-            .eq('user_id', userId)
-            .order('used_at', { ascending: false })
-            .limit(100);
+        const usageLogs = await databasePool.queryAll(
+            `SELECT knowledge_id, was_helpful, used_context, used_at FROM knowledge_usage_logs
+             WHERE user_id = $1 ORDER BY used_at DESC LIMIT 100`,
+            [userId]
+        );
 
         if (!usageLogs || usageLogs.length === 0) {
             return res.json({ message: 'Henüz kaynak kullanım verisi yok', data: {} });
         }
 
         const knowledgeIds = [...new Set(usageLogs.map(l => l.knowledge_id))];
-        const { data: sources } = await supabase
-            .from('knowledge_sources')
-            .select('id, title, category, source_type')
-            .in('id', knowledgeIds);
+        const placeholders = knowledgeIds.map((_, i) => `$${i + 1}`).join(',');
+        const sources = await databasePool.queryAll(
+            `SELECT id, title, category, source_type FROM knowledge_sources WHERE id IN (${placeholders})`,
+            knowledgeIds
+        );
 
         const sourceStats = {};
         usageLogs.forEach(log => {
-            const source = sources?.find(s => s.id === log.knowledge_id);
+            const source = sources.find(s => s.id === log.knowledge_id);
             if (!source) return;
             const key = source.id;
             if (!sourceStats[key]) {
@@ -714,13 +704,11 @@ router.post('/v1/analytics/rate-recommendation', authMiddleware, async (req, res
             return res.status(400).json({ error: 'userId ve knowledgeId gerekli' });
         }
 
-        await supabase.from('knowledge_usage_logs').insert([{
-            user_id: userId,
-            knowledge_id: knowledgeId,
-            was_helpful: wasHelpful === true,
-            used_context: context || 'Rating provided',
-            used_at: new Date().toISOString()
-        }]);
+        await databasePool.query(
+            `INSERT INTO knowledge_usage_logs (user_id, knowledge_id, was_helpful, used_context, used_at)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [userId, knowledgeId, wasHelpful === true, context || 'Rating provided', new Date().toISOString()]
+        );
 
         res.json({ success: true, message: 'Feedback kaydedildi' });
     } catch (err) {

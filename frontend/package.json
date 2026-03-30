@@ -4,8 +4,8 @@
   "description": "Lyra - AI Therapy Assistant Frontend",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "bash ../scripts/setup-draco.sh && vite",
+    "build": "bash ../scripts/setup-draco.sh && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
@@ -13,6 +13,8 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@react-three/drei": "^9.88.0",
+    "@react-three/fiber": "^8.15.0",
     "@sentry/react": "^10.46.0",
     "@sentry/tracing": "^7.120.4",
     "axios": "^1.6.0",
@@ -21,6 +23,7 @@
     "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "three": "^r156",
     "zustand": "^4.4.1"
   },
   "devDependencies": {

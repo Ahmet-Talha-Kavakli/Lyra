@@ -1,7 +1,7 @@
 // routes/session.js
 import express from 'express';
 import crypto from 'crypto';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { openai } from '../lib/shared/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership, logError } from '../lib/shared/helpers.js';
@@ -48,20 +48,21 @@ router.post('/v1/session-prep', authMiddleware, async (req, res) => {
         const hazirlikOzeti = ozet.choices[0].message.content?.trim() || '';
         const hedef = soru2 || soru1 || '';
 
-        await supabase.from('session_preparation').insert({
-            user_id: userId,
-            session_id: sessionId || null,
-            soru1_cevap: soru1 || null,
-            soru2_cevap: soru2 || null,
-            soru3_cevap: soru3 || null,
-            hazirlik_ozeti: hazirlikOzeti
-        });
+        await databasePool.query(
+            `INSERT INTO session_preparation (user_id, session_id, soru1_cevap, soru2_cevap, soru3_cevap, hazirlik_ozeti)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [userId, sessionId || null, soru1 || null, soru2 || null, soru3 || null, hazirlikOzeti]
+        );
 
         // pattern_memory'ye de kaydet
-        const { data } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
-        const pm = data?.pattern_memory || {};
+        const memRow = await databasePool.queryOne('SELECT pattern_memory FROM memories WHERE user_id = $1', [userId]);
+        const pm = memRow?.pattern_memory || {};
         pm.seans_oncesi_hazirlik = { son_hazirlik_tarihi: new Date().toISOString(), hazirlik_notu: hazirlikOzeti, hedef };
-        await supabase.from('memories').upsert({ user_id: userId, pattern_memory: pm, updated_at: new Date().toISOString() });
+        await databasePool.query(
+            `INSERT INTO memories (user_id, pattern_memory, updated_at) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id) DO UPDATE SET pattern_memory = EXCLUDED.pattern_memory, updated_at = EXCLUDED.updated_at`,
+            [userId, JSON.stringify(pm), new Date().toISOString()]
+        );
 
         res.json({ success: true, hazirlik_ozeti: hazirlikOzeti });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -71,7 +72,10 @@ router.get('/v1/session-prep', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.query;
         if (!requireOwnership(userId, req, res)) return;
-        const { data } = await supabase.from('session_preparation').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single();
+        const data = await databasePool.queryOne(
+            `SELECT * FROM session_preparation WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [userId]
+        );
         res.json(data || {});
     } catch { res.json({}); }
 });
@@ -133,7 +137,7 @@ router.get('/v1/memory', authMiddleware, async (req, res) => {
     // Hafıza okuma — şifreli ise çöz
     let memory = '';
     try {
-        const { data } = await supabase.from('memories').select('content').eq('user_id', userId).single();
+        const data = await databasePool.queryOne('SELECT content FROM memories WHERE user_id = $1', [userId]);
         const raw = data?.content || '';
         // decryptField is in server.js — importing inline
         if (raw && String(raw).startsWith('ENC:')) {
@@ -162,7 +166,7 @@ router.get('/v1/memory', authMiddleware, async (req, res) => {
     // İlk seans tespiti — pattern_memory'den toplam_seans oku
     let ilkSeans = false;
     try {
-        const { data } = await supabase.from('memories').select('pattern_memory').eq('user_id', userId).single();
+        const data = await databasePool.queryOne('SELECT pattern_memory FROM memories WHERE user_id = $1', [userId]);
         const toplamSeans = data?.pattern_memory?.toplam_seans || 0;
         ilkSeans = toplamSeans === 0;
     } catch { ilkSeans = true; } // hata olursa yeni kullanıcı say
@@ -220,11 +224,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             let emotionOzeti = '';
             try {
                 if (sessionId) {
-                    const { data: logs } = await supabase
-                        .from('emotion_logs')
-                        .select('duygu, yogunluk, trend, guven')
-                        .eq('session_id', sessionId)
-                        .order('timestamp', { ascending: true });
+                    const logs = await databasePool.queryAll(
+                        `SELECT duygu, yogunluk, trend, guven FROM emotion_logs
+                         WHERE session_id = $1 ORDER BY timestamp ASC`,
+                        [sessionId]
+                    );
 
                     if (logs && logs.length > 0) {
                         const sayac = {};
@@ -242,11 +246,11 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             let seansKarsilastirma = '';
             try {
                 if (sessionId) {
-                    const { data: allLogs } = await supabase
-                        .from('emotion_logs')
-                        .select('duygu, yogunluk, guven, timestamp')
-                        .eq('session_id', activeSessionId)
-                        .order('timestamp', { ascending: true });
+                    const allLogs = await databasePool.queryAll(
+                        `SELECT duygu, yogunluk, guven, timestamp FROM emotion_logs
+                         WHERE session_id = $1 ORDER BY timestamp ASC`,
+                        [sessionId]
+                    );
 
                     if (allLogs && allLogs.length >= 4) {
                         const ilkCeyrek = allLogs.slice(0, Math.floor(allLogs.length / 4));
@@ -268,11 +272,10 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             // #7 — GÜVEN İNŞA SKORU
             let guvenSkoru = '';
             try {
-                const { data: patternData } = await supabase
-                    .from('user_profiles')
-                    .select('pattern_memory')
-                    .eq('user_id', userId)
-                    .single();
+                const patternData = await databasePool.queryOne(
+                    `SELECT pattern_memory FROM user_profiles WHERE user_id = $1`,
+                    [userId]
+                );
 
                 const pattern = patternData?.pattern_memory || {};
                 const seansCount = (pattern.toplam_seans || 0) + 1;
@@ -281,16 +284,18 @@ router.post('/v1/vapi-webhook', async (req, res) => {
                 guvenSkoru = `\nGüven inşa skoru: ${guvenSkor}/100 (${seansCount}. seans).`;
 
                 // Skoru pattern_memory'ye kaydet
-                await supabase.from('user_profiles').upsert({
-                    user_id: userId,
-                    pattern_memory: {
-                        ...pattern,
-                        toplam_seans: seansCount,
-                        pozitif_seans: pozitifSeans,
-                        guven_skoru: guvenSkor,
-                        son_guncelleme: new Date().toISOString()
-                    }
-                }, { onConflict: 'user_id' });
+                const updatedPattern = {
+                    ...pattern,
+                    toplam_seans: seansCount,
+                    pozitif_seans: pozitifSeans,
+                    guven_skoru: guvenSkor,
+                    son_guncelleme: new Date().toISOString()
+                };
+                await databasePool.query(
+                    `INSERT INTO user_profiles (user_id, pattern_memory) VALUES ($1, $2)
+                     ON CONFLICT (user_id) DO UPDATE SET pattern_memory = EXCLUDED.pattern_memory`,
+                    [userId, JSON.stringify(updatedPattern)]
+                );
             } catch (e) { console.error('[GÜVEN SKORU] Hata:', e.message); }
 
             const summary = summaryResponse.choices[0].message.content + emotionOzeti + seansKarsilastirma + guvenSkoru;
@@ -298,7 +303,7 @@ router.post('/v1/vapi-webhook', async (req, res) => {
             // saveMemory inline (from server.js)
             if (userId) {
                 try {
-                    const { data: existing } = await supabase.from('memories').select('session_history').eq('user_id', userId).single();
+                    const existing = await databasePool.queryOne('SELECT session_history FROM memories WHERE user_id = $1', [userId]);
                     const eskiGecmis = existing?.session_history || [];
                     const yeniSeans = {
                         tarih: new Date().toISOString(),
@@ -321,12 +326,13 @@ router.post('/v1/vapi-webhook', async (req, res) => {
                         }
                     } catch { /* keep plain */ }
 
-                    await supabase.from('memories').upsert({
-                        user_id: userId,
-                        content: encContent,
-                        session_history: guncelGecmis,
-                        updated_at: new Date().toISOString()
-                    });
+                    await databasePool.query(
+                        `INSERT INTO memories (user_id, content, session_history, updated_at)
+                         VALUES ($1, $2, $3, $4)
+                         ON CONFLICT (user_id) DO UPDATE SET
+                         content = EXCLUDED.content, session_history = EXCLUDED.session_history, updated_at = EXCLUDED.updated_at`,
+                        [userId, encContent, JSON.stringify(guncelGecmis), new Date().toISOString()]
+                    );
                 } catch (e) {
                     console.error('[MEMORY] Kaydetme hatası:', e.message);
                     await logError('/save-memory', e.message, userId);
@@ -373,7 +379,7 @@ router.post('/v1/vapi-webhook', async (req, res) => {
                 sessionAnalysis: _reflectionAnalysis,
                 profile: _reflectionProfile,
                 openai,
-                supabase,
+                databasePool,
                 durationSeconds: message.durationSeconds ?? message.call?.durationSeconds ?? null,
                 updateTechniqueEffectiveness,
             });
@@ -436,7 +442,7 @@ router.post('/v1/save-local-memory', authMiddleware, async (req, res) => {
 
         // saveMemory inline
         try {
-            const { data: existing } = await supabase.from('memories').select('session_history').eq('user_id', userId).single();
+            const existing = await databasePool.queryOne('SELECT session_history FROM memories WHERE user_id = $1', [userId]);
             const eskiGecmis = existing?.session_history || [];
             const yeniSeans = {
                 tarih: new Date().toISOString(),
@@ -458,12 +464,13 @@ router.post('/v1/save-local-memory', authMiddleware, async (req, res) => {
                 }
             } catch { /* keep plain */ }
 
-            await supabase.from('memories').upsert({
-                user_id: userId,
-                content: encContent,
-                session_history: guncelGecmis,
-                updated_at: new Date().toISOString()
-            });
+            await databasePool.query(
+                `INSERT INTO memories (user_id, content, session_history, updated_at)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (user_id) DO UPDATE SET
+                 content = EXCLUDED.content, session_history = EXCLUDED.session_history, updated_at = EXCLUDED.updated_at`,
+                [userId, encContent, JSON.stringify(guncelGecmis), new Date().toISOString()]
+            );
         } catch (e) {
             console.error('[MEMORY] Kaydetme hatası:', e.message);
             await logError('/save-memory', e.message, userId);
@@ -488,13 +495,10 @@ router.post('/v1/end-session', authMiddleware, async (req, res) => {
         if (!requireOwnership(userId, req, res)) return;
 
         // Get latest emotion analysis
-        const { data: lastEmotion } = await supabase
-            .from('emotion_logs')
-            .select('duygu')
-            .eq('user_id', userId)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .single();
+        const lastEmotion = await databasePool.queryOne(
+            `SELECT duygu FROM emotion_logs WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 1`,
+            [userId]
+        );
 
         const lastDuygu = lastEmotion?.duygu || 'sakin';
 
@@ -562,14 +566,12 @@ router.get('/v1/session-history/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
-        const { data, error } = await supabase
-            .from('session_records')
-            .select('session_id, created_at, topics, homework, emotional_start_score, emotional_end_score, dominant_emotion, breakthrough_moment')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(20);
+        const data = await databasePool.queryAll(
+            `SELECT session_id, created_at, topics, homework, emotional_start_score, emotional_end_score, dominant_emotion, breakthrough_moment
+             FROM session_records WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
+            [userId]
+        );
 
-        if (error) return res.status(500).json({ error: error.message });
         res.json({ sessions: data || [] });
     } catch (e) {
         res.status(500).json({ error: e.message });

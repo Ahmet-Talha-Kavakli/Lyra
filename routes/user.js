@@ -1,6 +1,6 @@
 // routes/user.js
 import express from 'express';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
 import { updateTechniqueEffectiveness } from '../progress/sessionAnalyzer.js';
@@ -12,30 +12,37 @@ router.post('/v1/consent-accept', authMiddleware, async (req, res) => {
     const { userId, consentVersion = '1.0' } = req.body;
     if (!requireOwnership(userId, req, res)) return;
 
-    const { error } = await supabase.from('user_consents').upsert({
-        user_id: userId,
-        consent_version: consentVersion,
-        ip_address: req.ip,
-        user_agent: (req.headers['user-agent'] || '').substring(0, 500),
-        accepted_at: new Date().toISOString()
-    }, { onConflict: 'user_id,consent_version' });
-
-    if (error) return res.status(500).json({ error: error.message });
-    console.log(`[CONSENT] Kullanıcı onayı kaydedildi: ${userId} v${consentVersion}`);
-    res.json({ ok: true });
+    try {
+        await databasePool.query(
+            `INSERT INTO user_consents (user_id, consent_version, ip_address, user_agent, accepted_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id, consent_version) DO UPDATE SET
+             ip_address = EXCLUDED.ip_address,
+             user_agent = EXCLUDED.user_agent,
+             accepted_at = EXCLUDED.accepted_at`,
+            [userId, consentVersion, req.ip, (req.headers['user-agent'] || '').substring(0, 500), new Date().toISOString()]
+        );
+        console.log(`[CONSENT] Kullanıcı onayı kaydedildi: ${userId} v${consentVersion}`);
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 router.get('/v1/consent-status', authMiddleware, async (req, res) => {
     const userId = req.query.userId || req.userId;
     if (!requireOwnership(userId, req, res)) return;
 
-    const { data } = await supabase.from('user_consents')
-        .select('accepted_at, consent_version')
-        .eq('user_id', userId)
-        .eq('consent_version', '1.0')
-        .single();
-
-    res.json({ hasConsent: !!data, acceptedAt: data?.accepted_at || null });
+    try {
+        const data = await databasePool.queryOne(
+            `SELECT accepted_at, consent_version FROM user_consents
+             WHERE user_id = $1 AND consent_version = $2`,
+            [userId, '1.0']
+        );
+        res.json({ hasConsent: !!data, acceptedAt: data?.accepted_at || null });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ─── VERİ SİLME (KVKK Madde 11/e) ──────────────────────────
@@ -57,11 +64,18 @@ router.delete('/v1/delete-my-data', authMiddleware, async (req, res) => {
     const deleted = [], errors = [];
 
     for (const table of tables) {
-        const { error } = await supabase.from(table).delete().eq('user_id', userId);
-        if (error) errors.push(`${table}: ${error.message}`);
-        else deleted.push(table);
+        try {
+            await databasePool.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+            deleted.push(table);
+        } catch (error) {
+            errors.push(`${table}: ${error.message}`);
+        }
     }
-    await supabase.from('user_profiles').delete().eq('user_id', userId).catch(() => {});
+    try {
+        await databasePool.query('DELETE FROM user_profiles WHERE user_id = $1', [userId]);
+    } catch (e) {
+        // Ignore errors for user_profiles
+    }
 
     console.log(`[DATA DELETE] userId: ${userId} — ${deleted.length} tablo temizlendi`);
     if (errors.length > 0) return res.status(207).json({ partialSuccess: true, deleted, errors });
@@ -73,20 +87,24 @@ router.get('/v1/export-my-data', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
 
-    const exportData = {};
-    for (const table of ['psychological_profiles', 'session_records', 'progress_metrics']) {
-        const { data } = await supabase.from(table).select('*').eq('user_id', userId);
-        exportData[table] = data || [];
-    }
+    try {
+        const exportData = {};
+        for (const table of ['psychological_profiles', 'session_records', 'progress_metrics']) {
+            const data = await databasePool.queryAll(`SELECT * FROM ${table} WHERE user_id = $1`, [userId]);
+            exportData[table] = data || [];
+        }
 
-    res.setHeader('Content-Disposition', 'attachment; filename="lyra-data-export.json"');
-    res.setHeader('Content-Type', 'application/json');
-    res.json({
-        export_date: new Date().toISOString(),
-        user_id: userId,
-        data: exportData,
-        note: 'Bu dosya KVKK Madde 11/ç kapsamında kişisel veri dışa aktarımıdır.'
-    });
+        res.setHeader('Content-Disposition', 'attachment; filename="lyra-data-export.json"');
+        res.setHeader('Content-Type', 'application/json');
+        res.json({
+            export_date: new Date().toISOString(),
+            user_id: userId,
+            data: exportData,
+            note: 'Bu dosya KVKK Madde 11/ç kapsamında kişisel veri dışa aktarımıdır.'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ─── CONFIG (Frontend için Supabase bilgileri) ──────────────
@@ -102,22 +120,24 @@ router.get('/v1/my-progress', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
-        const [sessionsResp, profileResp, metricsResp] = await Promise.all([
-            supabase.from('session_records')
-                .select('session_id, created_at, dominant_emotion, topics, emotional_end_score, crisis_flag, session_quality, techniques_used, breakthrough_moment')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(20),
-            supabase.from('profiles').select('session_count, attachment_style, strengths, life_schemas').eq('user_id', userId).single(),
-            supabase.from('weekly_metrics').select('*').eq('user_id', userId).order('week_start', { ascending: false }).limit(4),
+        const [sessions, profile, metrics] = await Promise.all([
+            databasePool.queryAll(
+                `SELECT session_id, created_at, dominant_emotion, topics, emotional_end_score, crisis_flag, session_quality, techniques_used, breakthrough_moment
+                 FROM session_records WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
+                [userId]
+            ),
+            databasePool.queryOne(
+                `SELECT session_count, attachment_style, strengths, life_schemas FROM psychological_profiles WHERE user_id = $1`,
+                [userId]
+            ),
+            databasePool.queryAll(
+                `SELECT * FROM weekly_metrics WHERE user_id = $1 ORDER BY week_start DESC LIMIT 4`,
+                [userId]
+            ),
         ]);
 
-        const sessions = sessionsResp.data || [];
-        const profile = profileResp.data || {};
-        const metrics = metricsResp.data || [];
-
         // Özet istatistikler
-        const totalSessions = profile.session_count || sessions.length;
+        const totalSessions = (profile?.session_count) || sessions.length;
         const avgQuality = sessions.length
             ? Math.round(sessions.reduce((s, r) => s + (r.session_quality || 0), 0) / sessions.filter(r => r.session_quality).length) || null
             : null;
@@ -145,7 +165,7 @@ router.get('/v1/my-progress', authMiddleware, async (req, res) => {
             topTopics,
             emotionalArc,
             weeklyMetrics: metrics,
-            strengths: (profile.strengths || []).slice(0, 3),
+            strengths: (profile?.strengths || []).slice(0, 3),
             recentSessions: sessions.slice(0, 5).map(s => ({
                 date: s.created_at,
                 topics: s.topics,
@@ -164,7 +184,7 @@ router.get('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     const { userId } = req.query;
     if (!requireOwnership(userId, req, res)) return;
     try {
-        const { data } = await supabase.from('emergency_contacts').select('*').eq('user_id', userId);
+        const data = await databasePool.queryAll('SELECT * FROM emergency_contacts WHERE user_id = $1', [userId]);
         res.json({ contacts: data || [] });
     } catch (e) {
         res.status(500).json({ error: 'Acil kişiler alınamadı' });
@@ -176,14 +196,15 @@ router.post('/v1/emergency-contacts', authMiddleware, async (req, res) => {
     if (!requireOwnership(userId, req, res)) return;
     if (!name || !phone) return res.status(400).json({ error: 'name ve phone zorunlu' });
     try {
-        const { error } = await supabase.from('emergency_contacts').upsert({
-            user_id: userId,
-            name: name.substring(0, 100),
-            phone: phone.substring(0, 20),
-            relation: (relation || '').substring(0, 50),
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,phone' });
-        if (error) throw error;
+        await databasePool.query(
+            `INSERT INTO emergency_contacts (user_id, name, phone, relation, updated_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id, phone) DO UPDATE SET
+             name = EXCLUDED.name,
+             relation = EXCLUDED.relation,
+             updated_at = EXCLUDED.updated_at`,
+            [userId, name.substring(0, 100), phone.substring(0, 20), (relation || '').substring(0, 50), new Date().toISOString()]
+        );
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: 'Acil kişi kaydedilemedi' });
@@ -201,19 +222,22 @@ router.post('/v1/session-feedback', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'rating 1-5 arası olmalı' });
     }
     try {
-        const { error } = await supabase.from('session_feedback').upsert({
-            user_id: userId,
-            session_id: sessionId,
-            rating,
-            note: (note || '').substring(0, 500),
-            created_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,session_id' });
-        if (error) throw error;
+        await databasePool.query(
+            `INSERT INTO session_feedback (user_id, session_id, rating, note, created_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id, session_id) DO UPDATE SET
+             rating = EXCLUDED.rating,
+             note = EXCLUDED.note,
+             created_at = EXCLUDED.created_at`,
+            [userId, sessionId, rating, (note || '').substring(0, 500), new Date().toISOString()]
+        );
 
         // Teknik etkinliği güncelle — kullanıcı memnuniyeti iyiyse
         if (rating >= 4) {
-            const { data: sr } = await supabase.from('session_records')
-                .select('techniques_used').eq('session_id', sessionId).single();
+            const sr = await databasePool.queryOne(
+                'SELECT techniques_used FROM session_records WHERE session_id = $1',
+                [sessionId]
+            );
             if (sr?.techniques_used?.length) {
                 for (const tid of sr.techniques_used) {
                     await updateTechniqueEffectiveness(userId, tid, true);

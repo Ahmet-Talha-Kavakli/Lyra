@@ -1,6 +1,5 @@
 // routes/character.js
 import express from 'express';
-import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
 

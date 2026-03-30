@@ -1,6 +1,6 @@
 // routes/therapy.js
 import express from 'express';
-import { supabase } from '../lib/shared/supabase.js';
+import { databasePool } from '../lib/infrastructure/databasePool.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireOwnership } from '../lib/shared/helpers.js';
 
@@ -15,22 +15,19 @@ router.post('/v1/record-thought', authMiddleware, async (req, res) => {
             return res.json({ error: 'automatic_thought gerekli' });
         }
 
-        const { data, error } = await supabase.from('thought_records').insert([{
-            user_id: userId,
-            automatic_thought: automatic_thought,
-            evidence_for: evidence_for || '',
-            evidence_against: evidence_against || '',
-            realistic_response: realistic_response || '',
-            recorded_at: new Date().toISOString()
-        }]);
+        try {
+            const result = await databasePool.query(
+                `INSERT INTO thought_records (user_id, automatic_thought, evidence_for, evidence_against, realistic_response, recorded_at)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [userId, automatic_thought, evidence_for || '', evidence_against || '', realistic_response || '', new Date().toISOString()]
+            );
 
-        if (error) {
-            console.error('[CBT] Supabase hata:', error.message);
+            console.log(`[#17 CBT] Düşünce kaydedildi: "${automatic_thought.substring(0,50)}..."`);
+            res.json({ success: true, record: result.rows[0] || {} });
+        } catch (error) {
+            console.error('[CBT] Database hata:', error.message);
             return res.json({ error: error.message });
         }
-
-        console.log(`[#17 CBT] Düşünce kaydedildi: "${automatic_thought.substring(0,50)}..."`);
-        res.json({ success: true, record: data?.[0] || {} });
     } catch (err) {
         console.error('[#17 CBT] Hata:', err.message);
         res.json({ error: err.message });
@@ -71,23 +68,24 @@ router.post('/v1/discover-values', authMiddleware, async (req, res) => {
             return res.json({ error: 'selectedValues gerekli' });
         }
 
-        const { data, error } = await supabase.from('user_values').insert([{
-            user_id: userId,
-            values: selectedValues,
-            discovered_at: new Date().toISOString()
-        }]);
+        try {
+            await databasePool.query(
+                `INSERT INTO user_values (user_id, values, discovered_at)
+                 VALUES ($1, $2, $3)`,
+                [userId, JSON.stringify(selectedValues), new Date().toISOString()]
+            );
 
-        if (error) {
-            console.error('[#18 VALUES] Supabase hata:', error.message);
+            await databasePool.query(
+                `UPDATE user_profile SET values_discovered = true WHERE user_id = $1`,
+                [userId]
+            );
+
+            console.log(`[#18 VALUES] ${selectedValues.length} değer kaydedildi: ${selectedValues.slice(0,3).join(', ')}`);
+            res.json({ success: true, values_saved: selectedValues.length });
+        } catch (error) {
+            console.error('[#18 VALUES] Database hata:', error.message);
             return res.json({ error: error.message });
         }
-
-        await supabase.from('user_profile')
-            .update({ values_discovered: true })
-            .eq('user_id', userId);
-
-        console.log(`[#18 VALUES] ${selectedValues.length} değer kaydedildi: ${selectedValues.slice(0,3).join(', ')}`);
-        res.json({ success: true, values_saved: selectedValues.length });
     } catch (err) {
         console.error('[#18 VALUES] Hata:', err.message);
         res.json({ error: err.message });
@@ -99,15 +97,12 @@ router.get('/v1/user-values/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
-        const { data, error } = await supabase
-            .from('user_values')
-            .select('*')
-            .eq('user_id', userId)
-            .order('discovered_at', { ascending: false })
-            .limit(1)
-            .single();
+        const data = await databasePool.queryOne(
+            `SELECT * FROM user_values WHERE user_id = $1 ORDER BY discovered_at DESC LIMIT 1`,
+            [userId]
+        );
 
-        if (error) {
+        if (!data) {
             return res.json({ values: [] });
         }
 
@@ -135,20 +130,19 @@ router.post('/v1/assign-homework', authMiddleware, async (req, res) => {
             completed: false
         };
 
-        const { data, error } = await supabase.from('homework_tasks').insert([{
-            user_id: userId,
-            session_id: sessionId,
-            task: homeworkTask,
-            assigned_at: new Date().toISOString()
-        }]);
+        try {
+            await databasePool.query(
+                `INSERT INTO homework_tasks (user_id, session_id, task, assigned_at)
+                 VALUES ($1, $2, $3, $4)`,
+                [userId, sessionId, JSON.stringify(homeworkTask), new Date().toISOString()]
+            );
 
-        if (error) {
-            console.error('[#19 HW] Supabase hata:', error.message);
+            console.log(`[#19 HW] Görev atandı: "${homeworkTask.title}"`);
+            res.json({ success: true, homework: homeworkTask });
+        } catch (error) {
+            console.error('[#19 HW] Database hata:', error.message);
             return res.json({ error: error.message });
         }
-
-        console.log(`[#19 HW] Görev atandı: "${homeworkTask.title}"`);
-        res.json({ success: true, homework: homeworkTask });
     } catch (err) {
         console.error('[#19 HW] Hata:', err.message);
         res.json({ error: err.message });
@@ -160,17 +154,11 @@ router.get('/v1/homework/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         if (!requireOwnership(userId, req, res)) return;
-        const { data, error } = await supabase
-            .from('homework_tasks')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('completed', false)
-            .order('assigned_at', { ascending: false })
-            .limit(5);
-
-        if (error) {
-            return res.json({ tasks: [] });
-        }
+        const data = await databasePool.queryAll(
+            `SELECT * FROM homework_tasks WHERE user_id = $1 AND completed = false
+             ORDER BY assigned_at DESC LIMIT 5`,
+            [userId]
+        );
 
         console.log(`[#19 HW] ${data?.length || 0} görev döndürüldü`);
         res.json({ tasks: data || [] });
@@ -183,13 +171,14 @@ router.get('/v1/homework/:userId', authMiddleware, async (req, res) => {
 router.post('/v1/complete-homework/:taskId', authMiddleware, async (req, res) => {
     try {
         const { taskId } = req.params;
-        const { error } = await supabase.from('homework_tasks')
-            .update({ completed: true, completed_at: new Date().toISOString() })
-            .eq('id', taskId)
-            .eq('user_id', req.userId);
+        const result = await databasePool.query(
+            `UPDATE homework_tasks SET completed = true, completed_at = $1
+             WHERE id = $2 AND user_id = $3`,
+            [new Date().toISOString(), taskId, req.userId]
+        );
 
-        if (error) {
-            return res.json({ error: error.message });
+        if (result.rowCount === 0) {
+            return res.json({ error: 'Görev bulunamadı' });
         }
 
         console.log(`[#19 HW] Görev tamamlandı: ${taskId}`);
@@ -214,18 +203,18 @@ router.post('/v1/log-crisis', authMiddleware, async (req, res) => {
             followup_due: new Date(Date.now() + 24*60*60*1000).toISOString()
         };
 
-        const { error } = await supabase.from('crisis_logs').insert([{
-            user_id: userId,
-            crisis_data: crisis_record
-        }]);
+        try {
+            await databasePool.query(
+                `INSERT INTO crisis_logs (user_id, crisis_data) VALUES ($1, $2)`,
+                [userId, JSON.stringify(crisis_record)]
+            );
 
-        if (error) {
-            console.error('[#20 CRISIS] Supabase hata:', error.message);
+            console.log(`[#20 CRISIS] Kriz kaydedildi (${severity}): ${description?.substring(0,40)}`);
+            res.json({ success: true, followup_due: crisis_record.followup_due });
+        } catch (error) {
+            console.error('[#20 CRISIS] Database hata:', error.message);
             return res.json({ error: error.message });
         }
-
-        console.log(`[#20 CRISIS] Kriz kaydedildi (${severity}): ${description?.substring(0,40)}`);
-        res.json({ success: true, followup_due: crisis_record.followup_due });
     } catch (err) {
         console.error('[#20 CRISIS] Hata:', err.message);
         res.json({ error: err.message });
@@ -239,14 +228,15 @@ router.get('/v1/crisis-followups-due/:userId', authMiddleware, async (req, res) 
         if (!requireOwnership(userId, req, res)) return;
         const now = new Date().toISOString();
 
-        const { data, error } = await supabase.from('crisis_logs')
-            .select('*')
-            .eq('user_id', userId)
-            .lte('crisis_data->followup_due', now)
-            .eq('crisis_data->followup_done', false)
-            .order('crisis_data->detected_at', { ascending: false });
+        const data = await databasePool.queryAll(
+            `SELECT * FROM crisis_logs WHERE user_id = $1
+             AND (crisis_data->>'followup_due')::timestamp <= $2
+             AND (crisis_data->>'followup_done')::boolean IS NOT TRUE
+             ORDER BY (crisis_data->>'detected_at')::timestamp DESC`,
+            [userId, now]
+        );
 
-        if (error) {
+        if (!data) {
             return res.json({ followups: [] });
         }
 
@@ -263,18 +253,19 @@ router.post('/v1/complete-crisis-followup/:crisisId', authMiddleware, async (req
         const { crisisId } = req.params;
         const { followupResponse } = req.body;
 
-        const { data: crisisData, error: fetchErr } = await supabase
-            .from('crisis_logs').select('*').eq('id', crisisId).eq('user_id', req.userId).single();
+        const crisisData = await databasePool.queryOne(
+            `SELECT * FROM crisis_logs WHERE id = $1 AND user_id = $2`,
+            [crisisId, req.userId]
+        );
 
-        if (fetchErr || !crisisData) return res.json({ error: 'Kriz kaydı bulunamadı' });
+        if (!crisisData) return res.json({ error: 'Kriz kaydı bulunamadı' });
 
         const updatedCrisis = { ...crisisData.crisis_data, followup_done: true, followup_response: followupResponse || '' };
 
-        const { error } = await supabase.from('crisis_logs')
-            .update({ crisis_data: updatedCrisis })
-            .eq('id', crisisId);
-
-        if (error) return res.json({ error: error.message });
+        await databasePool.query(
+            `UPDATE crisis_logs SET crisis_data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedCrisis), crisisId]
+        );
 
         console.log(`[#20 CRISIS] Takip tamamlandı: ${crisisId}`);
         res.json({ success: true });
