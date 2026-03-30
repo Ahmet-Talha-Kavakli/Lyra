@@ -16,6 +16,8 @@
   "type": "module",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@sentry/node": "^10.46.0",
+    "@sentry/tracing": "^7.120.4",
     "@supabase/supabase-js": "^2.99.2",
     "axios": "^1.13.6",
     "bull": "^4.16.5",

@@ -4,6 +4,7 @@ import { supabase } from '../lib/shared/supabase.js';
 import { validateUserRegistration, validateEmail } from '../lib/shared/validators.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken, revokeToken } from '../lib/infrastructure/tokenManager.js';
 import { logger } from '../lib/infrastructure/logger.js';
+import { setUserContext, clearUserContext } from '../lib/infrastructure/errorMonitoring.js';
 
 const router = express.Router();
 
@@ -101,6 +102,9 @@ router.post('/v1/signup', authRateLimit, validateUserRegistration, async (req, r
         res.cookie('lyra_access_token', accessToken, ACCESS_TOKEN_COOKIE_OPTIONS);
         res.cookie('lyra_refresh_token', refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
+        // Set user context in error monitoring
+        setUserContext(userId, email);
+
         logger.info('[/v1/signup] User registered', { userId, email });
         res.status(201).json({
             success: true,
@@ -143,6 +147,9 @@ router.post('/v1/login', authRateLimit, validateEmail, async (req, res) => {
         res.cookie('lyra_access_token', accessToken, ACCESS_TOKEN_COOKIE_OPTIONS);
         res.cookie('lyra_refresh_token', refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
+        // Set user context in error monitoring
+        setUserContext(userId, data.user.email);
+
         logger.info('[/v1/login] User logged in', { userId, email });
         res.json({
             success: true,
@@ -170,6 +177,9 @@ router.post('/v1/logout', async (req, res) => {
 
         res.clearCookie('lyra_access_token', COOKIE_OPTIONS);
         res.clearCookie('lyra_refresh_token', COOKIE_OPTIONS);
+
+        // Clear user context in error monitoring
+        clearUserContext();
 
         const userId = req.userId || 'unknown';
         logger.info('[/v1/logout] User logged out', { userId });

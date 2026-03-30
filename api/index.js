@@ -3,7 +3,12 @@
  * Exports Express app for Vercel deployment
  *
  * NOTE: WebSocket routes handled separately via /api/ws
+ * IMPORTANT: Sentry must initialize FIRST (before other code)
  */
+
+// ─── SENTRY INITIALIZATION (MUST BE FIRST) ────────────────────────────────
+import { initializeSentry, sentryErrorMiddleware, setUserContext, clearUserContext } from '../lib/infrastructure/errorMonitoring.js';
+initializeSentry();
 
 import express from 'express';
 import cors from 'cors';
@@ -20,6 +25,7 @@ import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth.js';
 import { chatLimiter, apiGeneralLimiter, publicLimiter } from '../middleware/rateLimiters.js';
 import { auditContextMiddleware } from '../lib/infrastructure/auditLogger.js';
 import { securityHeadersMiddleware } from '../lib/infrastructure/securityHeaders.js';
+import { cspHeadersMiddleware, cspViolationHandler } from '../lib/infrastructure/cspHeaders.js';
 
 // ROUTES
 import authRouter from '../routes/auth.js';
@@ -68,6 +74,7 @@ app.use(cors({
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────
 app.use(securityHeadersMiddleware);
+app.use(cspHeadersMiddleware); // Content Security Policy
 app.use(auditContextMiddleware);
 app.use(compression());
 app.use(cookieParser());
@@ -100,6 +107,9 @@ app.get('/', (_req, res) => {
 });
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────
+// CSP Violation Reporter
+app.post('/csp-violation', cspViolationHandler);
+
 app.use('/auth', authRouter);
 app.use('/', userRouter);
 app.use('/', sessionRouter);
@@ -115,16 +125,21 @@ app.use((_req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// ─── ERROR HANDLER ────────────────────────────────────────────────────────
+// ─── SENTRY ERROR HANDLER (must be after all other middleware/routes) ─────
+app.use(sentryErrorMiddleware);
+
+// ─── ERROR HANDLER (Express default) ──────────────────────────────────────
 app.use((err, req, res, next) => {
     logger.error('[API Error]', {
         message: err.message,
         path: req.path,
-        method: req.method
+        method: req.method,
+        sentryEventId: err.sentryEventId
     });
 
     res.status(err.status || 500).json({
-        error: config.IS_PROD ? 'Internal server error' : err.message
+        error: config.IS_PROD ? 'Internal server error' : err.message,
+        requestId: err.sentryEventId // Include for debugging
     });
 });
 
