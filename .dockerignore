@@ -1,18 +1,63 @@
-node_modules
-npm-debug.log
+# Git
 .git
 .gitignore
-README.md
+
+# Environment
 .env
-.env.*
-.DS_Store
+.env.local
+.env.test
+.env.*.local
+
+# Dependencies (will be installed in Docker)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Test files (not needed in production)
+test
+tests
+*.test.js
+*.spec.js
+vitest.config.js
+.vitest
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Documentation (optional, safe to exclude)
+README.md
+CONTRIBUTING.md
+docs
+
+# Logs
 logs
 *.log
-.claude
-.git/
-.vscode/
-.idea/
-dist/
-build/
-coverage/
-.next/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache
+dist
+build
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Backup files
+*.backup
+*.backup2
+.server-stopped
+.server.log
+.server.pid
+
+# Temporary
+tmp
+temp
+.tmp

@@ -1,44 +1,50 @@
-# Multi-stage Dockerfile for Lyra AI Therapist
-# Stage 1: Builder (dependencies + optimization)
-# Stage 2: Runtime (minimal production image)
+# Multi-stage Docker build for Lyra
+# Stage 1: Builder
+FROM node:22-alpine AS builder
 
-# ─── STAGE 1: BUILDER ─────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
-
-WORKDIR /app
+WORKDIR /build
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (dev + prod)
-RUN npm ci --ignore-scripts
+# Install dependencies (without dev dependencies)
+RUN npm ci --only=production
 
-# ─── STAGE 2: RUNTIME ────────────────────────────────────────────────────
-FROM node:20-alpine
+# Copy source code
+COPY . .
 
-# Production environment
-ENV NODE_ENV=production
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Stage 2: Runtime
+FROM node:22-alpine
 
+# Set working directory
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Copy only necessary files from builder
-COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+# Copy node_modules and app from builder
+COPY --from=builder --chown=nodejs:nodejs /build/node_modules ./node_modules
 COPY --chown=nodejs:nodejs . .
 
-# Set user
-USER nodejs
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
 
-# Expose port
-EXPOSE 3000
+# Set environment
+ENV NODE_ENV=production
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+    CMD node -e "require('http').get('http://localhost:3001/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+# Switch to non-root user
+USER nodejs
+
+# Expose port
+EXPOSE 3001
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
 
 # Start application
 CMD ["node", "server.js"]

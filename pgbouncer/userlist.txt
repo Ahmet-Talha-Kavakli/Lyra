@@ -1,0 +1,6 @@
+# PgBouncer userlist for authentication
+# Format: "username" "password"
+# Passwords should be MD5 hashed
+
+"postgres" "md5PASSWORD_HASH"
+"lyra_app" "md5PASSWORD_HASH"

@@ -11,6 +11,7 @@ import { openai } from '../lib/shared/openai.js';
 import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimit } from 'express-rate-limit';
+import { validateRequest, chatCompletionSchema } from '../lib/infrastructure/validationSchemas.js';
 import {
     getUserEmotion, setUserEmotion,
     getSessionTranscript, setSessionTranscript
@@ -52,13 +53,10 @@ const chatRateLimit = rateLimit({
  * 5. Stream response via SSE
  * 6. Queue background analysis jobs with psychology insights
  */
-router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
+router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompletionSchema), async (req, res) => {
     try {
-        const { messages, model, call } = req.body;
-
-        if (!messages || messages.length === 0) {
-            return res.status(400).json({ error: 'No messages provided' });
-        }
+        // ✅ Request already validated by middleware
+        const { messages, model, call } = req.validated;
 
         // Get userId from call metadata or request
         const userId = call?.metadata?.userId || call?.assistantOverrides?.variableValues?.userId;

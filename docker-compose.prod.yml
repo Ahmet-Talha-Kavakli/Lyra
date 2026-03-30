@@ -1,0 +1,165 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: lyra_postgres
+    environment:
+      POSTGRES_DB: lyra
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyra_network
+
+  # PgBouncer Connection Pool
+  pgbouncer:
+    image: pgbouncer:latest
+    container_name: lyra_pgbouncer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_DB_CONNECTIONS: 100
+      PGBOUNCER_DEFAULT_POOL_SIZE: 25
+      DATABASES: "lyra=host=postgres port=5432 dbname=lyra user=postgres password=${DB_PASSWORD}"
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt
+    networks:
+      - lyra_network
+    restart: unless-stopped
+
+  # Redis for Queue & Cache
+  redis:
+    image: redis:7-alpine
+    container_name: lyra_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lyra_network
+    restart: unless-stopped
+
+  # Node.js Application Server
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lyra_app
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@pgbouncer:6432/lyra
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: lyra
+      DB_POOL_SIZE: 20
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    networks:
+      - lyra_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Job Worker Process
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lyra_worker
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@pgbouncer:6432/lyra
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: lyra
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: node src/adapters/workers/jobProcessor.js
+    networks:
+      - lyra_network
+    restart: unless-stopped
+
+  # Prometheus Monitoring (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lyra_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - lyra_network
+    restart: unless-stopped
+
+  # Grafana Dashboards (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lyra_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - lyra_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  lyra_network:
+    driver: bridge
