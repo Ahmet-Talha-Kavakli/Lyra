@@ -15,7 +15,7 @@
  */
 
 import { logger } from '../../../lib/infrastructure/logger.js';
-import { supabase } from '../../../lib/shared/supabase.js';
+import { getAdminSupabaseClient } from '../../../lib/shared/supabaseAdmin.ts';
 import OpenAI from 'openai';
 
 export class EpisodicMemoryService {
@@ -23,6 +23,9 @@ export class EpisodicMemoryService {
         this.userId = options.userId;
         this.sessionId = options.sessionId;
         this.embeddingModel = options.embeddingModel || 'text-embedding-3-small';
+
+        // Supabase client for database operations
+        this.supabase = getAdminSupabaseClient();
 
         // OpenAI client for embeddings
         this.openai = new OpenAI({
@@ -56,7 +59,7 @@ export class EpisodicMemoryService {
             }
 
             // Store in database
-            const { data: fragment, error } = await supabase
+            const { data: fragment, error } = await this.supabase
                 .from('memory_fragments')
                 .insert({
                     session_id: this.sessionId,
@@ -104,7 +107,7 @@ export class EpisodicMemoryService {
             }
 
             // Vector similarity search
-            const { data: similar, error } = await supabase.rpc('match_memory_fragments', {
+            const { data: similar, error } = await this.supabase.rpc('match_memory_fragments', {
                 query_embedding: embedding,
                 match_threshold: 0.7,
                 match_count: limit,
@@ -406,6 +409,90 @@ export class EpisodicMemoryService {
         }
 
         return recommendations;
+    }
+
+    /**
+     * FIND RELEVANT KNOWLEDGE SOURCES
+     * Uses vector similarity search to find relevant therapy resources
+     * from the knowledge base (populated by autonomous cron job)
+     *
+     * Process:
+     * 1. Generate embedding from transcript
+     * 2. Search knowledge_sources for similar embeddings
+     * 3. Filter by credibility_score (>= 0.7)
+     * 4. Return top 3 most relevant sources
+     *
+     * Used in: TherapistAgent system prompt to provide evidence-based references
+     */
+    async findRelevantKnowledgeSources(transcript, limit = 3) {
+        try {
+            // 1. Generate embedding for the transcript
+            const embedding = await this.generateEmbedding(transcript);
+
+            if (!embedding) {
+                logger.warn('[EpisodicMemory] Could not generate embedding for knowledge search');
+                return [];
+            }
+
+            // 2. Vector similarity search against knowledge_sources
+            // Uses pgvector distance to find semantically similar sources
+            const { data: sources, error } = await this.supabase.rpc('match_knowledge_sources', {
+                query_embedding: embedding,
+                match_threshold: 0.6,  // Lower threshold to catch relevant sources
+                match_count: limit * 2  // Get more, then filter by credibility
+            });
+
+            if (error) {
+                logger.warn('[EpisodicMemory] Knowledge search failed (fallback to high-credibility)', {
+                    error: error.message
+                });
+
+                // Fallback: Get high-credibility sources without vector search
+                const { data: fallbackSources, error: fallbackError } = await supabase
+                    .from('knowledge_sources')
+                    .select('id, title, url, summary, category, credibility_score, source_type')
+                    .eq('is_active', true)
+                    .gte('credibility_score', 0.8)
+                    .order('credibility_score', { ascending: false })
+                    .limit(limit);
+
+                if (fallbackError) {
+                    logger.error('[EpisodicMemory] Fallback knowledge search also failed:', fallbackError);
+                    return [];
+                }
+
+                logger.info('[EpisodicMemory] Used fallback sources', { count: fallbackSources?.length || 0 });
+                return fallbackSources || [];
+            }
+
+            // 3. Filter by credibility score and format results
+            const relevantSources = (sources || [])
+                .filter((source) => source.credibility_score >= 0.7)
+                .slice(0, limit)
+                .map((source) => ({
+                    id: source.id,
+                    title: source.title,
+                    url: source.url,
+                    summary: source.summary,
+                    category: source.category,
+                    credibility_score: source.credibility_score,
+                    source_type: source.source_type
+                }));
+
+            logger.info('[EpisodicMemory] Found relevant knowledge sources', {
+                requested: limit,
+                found: relevantSources.length,
+                avgCredibility: relevantSources.length > 0
+                    ? (relevantSources.reduce((sum, s) => sum + s.credibility_score, 0) / relevantSources.length).toFixed(2)
+                    : 0
+            });
+
+            return relevantSources;
+
+        } catch (error) {
+            logger.error('[EpisodicMemory] findRelevantKnowledgeSources failed:', error);
+            return [];
+        }
     }
 }
 

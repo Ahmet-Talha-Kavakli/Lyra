@@ -3,7 +3,7 @@
  * Scheduled by: vercel.json crons
  *
  * Runs daily at 02:00 UTC
- * Discovers new knowledge sources via GPT-4 analysis
+ * Discovers new knowledge sources via OpenAI analysis
  *
  * Vercel automatically sends X-Vercel-Cron header on scheduled invocations
  */
@@ -13,11 +13,7 @@ import { getAdminSupabaseClient } from '../../lib/shared/supabaseAdmin';
 import { logger } from '../../lib/infrastructure/logger';
 import { verifyCronSecret } from '../../lib/infrastructure/authMiddleware';
 import { acquireLock, releaseLock } from '../../lib/shared/upstashRedis';
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-});
+import { autonomousSourceDiscovery } from '../../lib/infrastructure/cronJobs.js';
 
 export default async function handler(
   req: VercelRequest,
@@ -55,93 +51,15 @@ export default async function handler(
     }
 
     try {
-      // ==========================================
-      // MAIN LOGIC: Discover knowledge sources
-      // ==========================================
+      // Call the cronJobs.js function
+      await autonomousSourceDiscovery();
 
-      // 1. Fetch current knowledge base statistics
-      const { data: stats, error: statsError } = await supabase
-        .from('knowledge_sources')
-        .select('id, topic, credibility_score')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (statsError) throw statsError;
-
-      // 2. Analyze gaps and recommend new sources
-      const prompt = `
-You are a knowledge curator for an AI therapy assistant.
-Analyze the following knowledge base topics and recommend 5 new topics that would improve therapeutic value.
-
-Current topics (${stats?.length || 0}):
-${stats?.map((s: any) => `- ${s.topic} (credibility: ${s.credibility_score})`).join('\n')}
-
-Recommend new topics that:
-1. Fill therapeutic knowledge gaps
-2. Are evidence-based and credible
-3. Complement existing topics
-4. Improve therapy outcomes
-
-Format response as JSON array:
-[
-  { "topic": "...", "description": "...", "priority": "high|medium|low" }
-]
-`;
-
-      const message = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      });
-
-      const responseText =
-        message.content[0].type === 'text' ? message.content[0].text : '';
-
-      let recommendations: any[] = [];
-      try {
-        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          recommendations = JSON.parse(jsonMatch[0]);
-        }
-      } catch (parseError) {
-        logger.warn('[Cron] Failed to parse GPT response', {
-          error: parseError
-        });
-      }
-
-      // 3. Insert recommended sources into knowledge_sources table
-      if (recommendations.length > 0) {
-        const { error: insertError } = await supabase
-          .from('knowledge_sources')
-          .insert(
-            recommendations.map((rec: any) => ({
-              topic: rec.topic,
-              description: rec.description,
-              source_type: 'auto-discovered',
-              credibility_score: 0.5, // Start low, increase as evidence accumulates
-              is_active: false, // Requires manual review before activation
-              created_at: new Date().toISOString()
-            }))
-          );
-
-        if (insertError) throw insertError;
-
-        logger.info('[Cron] autonomousSourceDiscovery complete', {
-          discovered: recommendations.length
-        });
-      }
-
-      // 4. Release lock
+      // Release lock
       await releaseLock(lockKey, lockId);
 
       return res.status(200).json({
         success: true,
-        sourcesDiscovered: recommendations.length,
+        message: 'autonomousSourceDiscovery completed',
         timestamp: new Date().toISOString()
       });
 

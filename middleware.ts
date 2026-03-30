@@ -1,19 +1,21 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
 /**
  * ⚡ PRODUCTION EDGE MIDDLEWARE (100K Concurrent Users)
  *
- * EXECUTION STRATEGY:
- * 1. Skip static assets immediately (0 latency)
- * 2. Extract & validate JWT at Edge (no database round-trip)
+ * SECURITY-FIRST ARCHITECTURE:
+ * 1. JWT signature verification FIRST (jose library, SUPABASE_JWT_SECRET)
+ * 2. Skip static assets immediately (0 latency)
  * 3. Rate limit by IP + route (DDoS/brute-force protection)
  * 4. Check JWT denylist (instant logout)
- * 5. Request deduplication (prevent duplicate API calls)
+ * 5. Request deduplication via Idempotency-Key (prevent duplicate API calls)
  * 6. Enforce cache-control headers (prevent cache poisoning)
  *
- * LATENCY TARGET: <5ms per request
+ * CRITICAL: ALL Redis operations protected by signature verification
+ * LATENCY TARGET: <10ms per request (jose adds ~2-3ms, acceptable)
  */
 
 const redis = new Redis({
@@ -27,8 +29,6 @@ const redis = new Redis({
  * - Per-IP = one attacker ≠ all users blocked
  * - Route-specific = AI endpoints get more leeway than auth
  */
-
-// **Auth endpoints: AGGRESSIVE** (5 req/min = blocks brute-force + bots)
 const authLimiter = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(5, '60 s'),
@@ -36,7 +36,6 @@ const authLimiter = new Ratelimit({
   prefix: 'lyra:ratelimit:auth',
 });
 
-// **AI chat: MODERATE** (30 req/min = allows streaming + retries)
 const chatLimiter = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(30, '60 s'),
@@ -44,7 +43,6 @@ const chatLimiter = new Ratelimit({
   prefix: 'lyra:ratelimit:chat',
 });
 
-// **General API: PERMISSIVE** (200 req/min = normal usage)
 const apiLimiter = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(200, '60 s'),
@@ -65,49 +63,58 @@ function getClientIp(req: NextRequest): string {
 }
 
 /**
- * ✅ SECURE JWT VERIFICATION WITH SIGNATURE CHECK
- * Prevents forged token DDoS attacks on Redis cache
+ * ✅ SECURE JWT VERIFICATION using jose library
  *
- * Fast extraction (payload only, no DB call)
- * Returns userId for deduplication
+ * CRITICAL SECURITY: Validates HMAC-SHA256 signature using SUPABASE_JWT_SECRET
+ * Prevents forged token attacks that could:
+ * - Poison Redis deduplication cache
+ * - Cause DoS by flooding with fake user IDs
+ * - Bypass rate limiting via fake tokens
+ *
+ * Edge Runtime compatible (jose works in Vercel Edge)
+ * Cryptographically secure (no atob() vulnerability)
  */
-function extractJwtPayload(token: string): { sub: string; exp: number } | null {
+async function verifyAndExtractJwt(
+  token: string
+): Promise<{ sub: string; exp: number } | null> {
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    const secret = process.env.SUPABASE_JWT_SECRET;
+    if (!secret) {
+      console.error('[JWT] SUPABASE_JWT_SECRET not configured');
+      return null;
+    }
 
-    const payload = JSON.parse(atob(parts[1]));
+    // Convert secret to Uint8Array (jose requirement)
+    const secretBytes = new TextEncoder().encode(secret);
 
-    // Verify token has valid structure
-    if (!payload.sub || !payload.exp) return null;
+    // Verify signature using jose (HMAC-SHA256 validation)
+    const verified = await jwtVerify(token, secretBytes, {
+      algorithms: ['HS256'],
+      issuer: 'https://supabase.co',
+    });
 
-    // Check expiration IMMEDIATELY (prevent replay attacks)
+    const payload = verified.payload as any;
+
+    // Extract claims
+    const sub = payload.sub;
+    const exp = payload.exp;
+
+    // Validate claims exist
+    if (!sub || !exp) {
+      return null;
+    }
+
+    // Check expiration
     const nowSeconds = Math.floor(Date.now() / 1000);
-    if (payload.exp < nowSeconds) return null;
+    if (exp < nowSeconds) {
+      return null;
+    }
 
-    return { sub: payload.sub, exp: payload.exp };
-  } catch {
+    return { sub, exp };
+  } catch (error) {
+    // JWT verification failed = invalid token
+    // Don't leak error details to client
     return null;
-  }
-}
-
-/**
- * Verify JWT signature to prevent forged token Redis poisoning
- * Uses SUPABASE_JWT_SECRET for HMAC-SHA256 validation
- */
-function verifyJwtSignatureUnsafe(token: string): boolean {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return false;
-
-    // For now, just verify signature part exists and is non-empty
-    // Full HMAC verification requires jose library
-    // This prevents obviously malformed tokens from hitting Redis
-    const [, , signature] = parts;
-
-    return signature.length > 0 && /^[A-Za-z0-9_-]+$/.test(signature);
-  } catch {
-    return false;
   }
 }
 
@@ -227,14 +234,16 @@ export async function middleware(req: NextRequest) {
     // Continue to rate limiting check below
   } else if (token) {
     // ============================================================================
-    // 3. VERIFY JWT AT EDGE (All authenticated requests)
+    // 3. VERIFY JWT SIGNATURE AT EDGE (CRITICAL SECURITY)
     // ============================================================================
+    // jose validates HMAC-SHA256 signature using SUPABASE_JWT_SECRET
+    // Prevents forged token Redis poisoning / DDoS attacks
+    // This MUST happen before ANY Redis operations
 
-    // Fast payload extraction (for deduplication)
-    const payload = extractJwtPayload(token);
-    if (!payload || payload.exp < Math.floor(Date.now() / 1000)) {
+    const payload = await verifyAndExtractJwt(token);
+    if (!payload) {
       return NextResponse.json(
-        { error: 'Token expired' },
+        { error: 'Invalid token' },
         { status: 401 }
       );
     }
@@ -243,6 +252,7 @@ export async function middleware(req: NextRequest) {
 
     // ============================================================================
     // 4. CHECK JWT DENYLIST (Instant logout)
+    // Only after signature verification passes
     // ============================================================================
     if (await isTokenDenylisted(token)) {
       return NextResponse.json(
@@ -253,8 +263,8 @@ export async function middleware(req: NextRequest) {
 
     // ============================================================================
     // 5. REQUEST DEDUPLICATION (Prevent duplicate API calls)
+    // Safe to use Redis now that JWT is cryptographically verified
     // ============================================================================
-    // Use Idempotency-Key header OR method:path:userId
     const idempotencyKey = getIdempotencyKey(req, userId);
     if (await isDuplicateRequest(userId, idempotencyKey, pathname)) {
       return NextResponse.json(

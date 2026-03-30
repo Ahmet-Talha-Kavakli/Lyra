@@ -13,7 +13,7 @@ export const config = {
 };
 
 import { createClient } from '@supabase/supabase-js';
-import { validateEmail } from '../../lib/infrastructure/validationSchemas';
+import { loginSchema, validateData } from '../../lib/infrastructure/validationSchemas';
 
 /**
  * Simple logger for Edge (no winston)
@@ -52,9 +52,10 @@ export default async function handler(request: Request): Promise<Response> {
     }
 
     // Validate input
-    const validation = validateEmail(body);
+    const validation = validateData(loginSchema, body);
     if (!validation.success) {
-      return new Response(JSON.stringify({ error: 'Validation failed' }), {
+      logEdge('warn', 'Login validation failed', { errors: validation.errors });
+      return new Response(JSON.stringify({ error: 'Invalid email or password' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });

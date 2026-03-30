@@ -43,46 +43,28 @@ export default async function handler(
       // 1. Fetch all knowledge sources
       const { data: sources, error: sourcesError } = await supabase
         .from('knowledge_sources')
-        .select('id, topic, credibility_score');
+        .select('id, credibility_score, usage_count, helpful_feedback_count');
 
       if (sourcesError) throw sourcesError;
 
       let updated = 0;
 
-      // 2. For each source, calculate quality score
+      // 2. For each source, calculate relevance score
       for (const source of sources || []) {
-        // Get usage frequency (how many times referenced in last 30 days)
-        const { count: usageCount, error: usageError } = await supabase
-          .from('knowledge_usage_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('knowledge_source_id', source.id)
-          .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-
-        if (usageError) continue;
-
-        // Get feedback accuracy (how often therapist marked it as helpful)
-        const { data: feedback, error: feedbackError } = await supabase
-          .from('knowledge_feedback')
-          .select('helpful')
-          .eq('knowledge_source_id', source.id)
-          .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
-
-        if (feedbackError) continue;
-
-        // Calculate credibility score
-        const usageScore = Math.min((usageCount || 0) / 100, 1); // Normalize to 0-1
-        const helpfulRatio = feedback?.length
-          ? feedback.filter((f: any) => f.helpful).length / feedback.length
+        // Calculate relevance based on usage and feedback
+        const usageScore = Math.min((source.usage_count || 0) / 100, 1);
+        const helpfulRatio = source.helpful_feedback_count && source.usage_count
+          ? Math.min(source.helpful_feedback_count / source.usage_count, 1)
           : 0.5;
 
         const newScore = (source.credibility_score * 0.5 + (usageScore * 0.3 + helpfulRatio * 0.2) * 0.5);
 
-        // 3. Update source credibility score
+        // 3. Update source relevance score
         const { error: updateError } = await supabase
           .from('knowledge_sources')
           .update({
-            credibility_score: Math.round(newScore * 100) / 100,
-            last_quality_check: new Date().toISOString()
+            relevance_score: Math.round(newScore * 100) / 100,
+            last_updated: new Date().toISOString()
           })
           .eq('id', source.id);
 
@@ -94,7 +76,6 @@ export default async function handler(
       await releaseLock(lockKey, lockId);
 
       logger.info('[Cron] assessKnowledgeQuality complete', { updated });
-    const supabase = getAdminSupabaseClient();
 
       return res.status(200).json({
         success: true,

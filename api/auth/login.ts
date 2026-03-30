@@ -5,7 +5,7 @@
  */
 
 import { logger } from '../../lib/infrastructure/logger';
-import { validateEmail } from '../../lib/infrastructure/validationSchemas';
+import { loginSchema, validateData } from '../../lib/infrastructure/validationSchemas';
 import { Redis } from '@upstash/redis';
 
 export const config = {
@@ -25,9 +25,10 @@ export default async function handler(req: Request) {
   try {
     const body = await req.json();
 
-    const validation = validateEmail(body);
+    const validation = validateData(loginSchema, body);
     if (!validation.success) {
-      return new Response(JSON.stringify({ error: 'Validation failed' }), { status: 400 });
+      logger.warn('[Auth] Login validation failed', { errors: validation.errors });
+      return new Response(JSON.stringify({ error: 'Invalid email or password' }), { status: 400 });
     }
 
     const { email, password } = validation.data;

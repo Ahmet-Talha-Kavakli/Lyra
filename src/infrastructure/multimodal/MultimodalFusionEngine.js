@@ -2,15 +2,61 @@
  * Multimodal Fusion Engine - Layer 3
  * Fuses FACS + Prosody + Temporal data into coherent somatic state
  * Based on Damasio's Somatic Markers, Porges' Polyvagal Theory, van der Kolk
+ *
+ * NOW INTEGRATED WITH:
+ * - RealtimeSyncOrchestrator (real-time stream coordination)
+ * - SemanticAnalyzer (GPT-based semantic understanding)
+ * - ConfidenceScorer (Bayesian confidence estimation)
+ * - BiometricManager (wearable sensor integration)
  */
 
 import { logger } from '../logging/logger.js';
+import RealtimeSyncOrchestrator from './RealtimeSyncOrchestrator.js';
+import { SemanticAnalyzer } from '../../application/services/SemanticAnalyzer.js';
+import { ConfidenceScorer } from '../../application/services/ConfidenceScorer.js';
+import BiometricManager from '../biometrics/BiometricManager.js';
 
 export class MultimodalFusionEngine {
-    constructor() {
+    constructor(options = {}) {
+        this.userId = options.userId;
+        this.sessionId = options.sessionId;
+
         this.temporalBuffer = []; // Last 2 minutes
         this.somaticStateHistory = [];
         this.baselineState = null;
+
+        // INTEGRATION: Real-time synchronization orchestrator
+        this.orchestrator = new RealtimeSyncOrchestrator({
+            sessionId: this.sessionId,
+            userId: this.userId,
+            onFusedState: (state) => this.handleFusedState(state)
+        });
+
+        // INTEGRATION: Semantic analyzer (GPT-based NLP)
+        this.semantic = new SemanticAnalyzer({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        // INTEGRATION: Bayesian confidence scorer
+        this.confidence = new ConfidenceScorer({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        // INTEGRATION: Biometric manager (wearables)
+        this.biometrics = new BiometricManager({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        logger.info('[MultimodalFusionEngine] Initialized with all integrations', {
+            userId: this.userId,
+            hasOrchestrator: !!this.orchestrator,
+            hasSemantic: !!this.semantic,
+            hasConfidence: !!this.confidence,
+            hasBiometrics: !!this.biometrics
+        });
     }
 
     /**

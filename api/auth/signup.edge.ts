@@ -8,7 +8,7 @@ export const config = {
 };
 
 import { createClient } from '@supabase/supabase-js';
-import { validateUserRegistration } from '../../lib/infrastructure/validationSchemas';
+import { registerSchema, validateData } from '../../lib/infrastructure/validationSchemas';
 
 function logEdge(level: 'info' | 'warn' | 'error', msg: string, data?: any) {
   const timestamp = new Date().toISOString();
@@ -41,15 +41,18 @@ export default async function handler(request: Request): Promise<Response> {
       });
     }
 
-    const validation = validateUserRegistration(body);
+    const validation = validateData(registerSchema, body);
     if (!validation.success) {
+      logEdge('warn', 'Signup validation failed', { errors: validation.errors });
       return new Response(JSON.stringify({ error: 'Validation failed' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    const { email, password, firstName, lastName } = validation.data;
+    const { email, password, name } = validation.data;
+    const [firstName, ...lastNameParts] = name.split(' ');
+    const lastName = lastNameParts.join(' ') || '';
 
     const supabase = createClient(
       process.env.SUPABASE_URL || '',

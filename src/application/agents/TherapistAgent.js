@@ -22,8 +22,13 @@
 import OpenAI from 'openai';
 import { logger } from '../../../lib/infrastructure/logger.js';
 import { EpisodicMemoryService } from '../services/EpisodicMemoryService.js';
-import { supabase } from '../../../lib/shared/supabase.js';
+import { RelationalDynamicsTracker } from '../services/RelationalDynamicsTracker.js';
+import { TemporalMappingEngine } from '../services/TemporalMappingEngine.js';
+import { DefensivePatternAnalyzer } from '../services/DefensivePatternAnalyzer.js';
+import { getAdminSupabaseClient } from '../../../lib/shared/supabaseAdmin.js';
 import { Redis } from '@upstash/redis';
+
+const supabase = getAdminSupabaseClient();
 
 const redis = Redis.fromEnv();
 
@@ -42,6 +47,24 @@ export class TherapistAgent {
 
         // Memory service
         this.memory = new EpisodicMemoryService({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        // Relational dynamics tracker (for therapy relationship work)
+        this.relational = new RelationalDynamicsTracker({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        // Temporal mapping engine (for past-present connections)
+        this.temporal = new TemporalMappingEngine({
+            userId: this.userId,
+            sessionId: this.sessionId
+        });
+
+        // Defensive pattern analyzer (for understanding protection mechanisms)
+        this.defensive = new DefensivePatternAnalyzer({
             userId: this.userId,
             sessionId: this.sessionId
         });
@@ -167,10 +190,45 @@ export class TherapistAgent {
             const therapeuticThemes = await this.memory.getTherapeuticThemes();
             const memoryInsights = await this.memory.generateMemoryInsights();
 
+            // Get relevant knowledge sources (evidence-based therapy resources)
+            const relevantSources = await this.memory.findRelevantKnowledgeSources(transcript, 3);
+
+            // RELATIONAL WORK: Analyze therapy relationship dynamics
+            const relationalPattern = await this.relational.analyzeRelationalPattern(
+                transcript,
+                this.conversationHistory
+            );
+            const metaInterventions = await this.relational.generateMetaCommunicationIntervention(
+                relationalPattern,
+                { userMessage: transcript }
+            );
+
+            // TEMPORAL WORK: Connect past to present
+            const temporalMap = await this.temporal.mapPastToPresent(
+                transcript,
+                memoryInsights
+            );
+            const temporalIntervention = this.temporal.generateTemporalIntervention(temporalMap);
+
+            // DEFENSIVE WORK: Analyze protective mechanisms
+            const defensivePatterns = this.defensive.analyzeDefensivePatterns(
+                transcript,
+                somaticTelemetry?.somaticMarkers,
+                clinicalData.emotionalState
+            );
+            const defensiveIntervention = this.defensive.generateDefensivePatternIntervention(defensivePatterns);
+
             // Build system prompt with all context including environmental & safety data & patient profile
             const systemPrompt = this.buildSystemPrompt({
                 memoryInsights,
                 therapeuticThemes,
+                relevantSources,
+                relationalPattern,
+                metaInterventions,
+                temporalMap,
+                temporalIntervention,
+                defensivePatterns,
+                defensiveIntervention,
                 objectContext,
                 physicalHarmContext,
                 patientProfile: this.patientProfile,
@@ -250,6 +308,15 @@ export class TherapistAgent {
                 emotionalThemes: [emotionalState?.primary].filter(Boolean)
             });
 
+            // Store relational dynamics data (for tracking therapy relationship patterns)
+            if (relationalPattern) {
+                await this.relational.storeRelationalData({
+                    pattern: relationalPattern,
+                    interventions: metaInterventions,
+                    transcript: transcript
+                });
+            }
+
             // Yield final metadata
             yield {
                 type: 'complete',
@@ -290,7 +357,7 @@ export class TherapistAgent {
      * INCLUDES: Patient history + somatic signatures + environmental context + safety awareness + INTAKE PROFILE
      */
     buildSystemPrompt(options) {
-        const { memoryInsights, therapeuticThemes, objectContext = {}, physicalHarmContext = {}, patientProfile = null, model } = options;
+        const { memoryInsights, therapeuticThemes, relevantSources = [], relationalPattern = {}, metaInterventions = [], temporalMap = {}, temporalIntervention = null, defensivePatterns = {}, defensiveIntervention = null, objectContext = {}, physicalHarmContext = {}, patientProfile = null, model } = options;
 
         let prompt = `You are Lyra, a deeply compassionate and clinically trained somatic-aware psychotherapist.
 
@@ -375,6 +442,91 @@ ${physicalHarmContext.indicators?.map(ind => `- ${ind.type}: ${ind.location} (se
 
 History of physical trauma: ${physicalHarmContext.has_prior_harm ? 'YES - Be trauma-informed' : 'Not indicated'}
 Recent harm timeline: ${physicalHarmContext.recency || 'Unknown'}`;
+        }
+
+        // Add relevant knowledge sources (evidence-based therapy resources)
+        if (relevantSources && relevantSources.length > 0) {
+            prompt += `
+
+EVIDENCE-BASED RESOURCES (You can reference these if relevant):
+${relevantSources.map(src => `
+- "${src.title}"
+  Category: ${src.category}
+  Credibility: ${(src.credibility_score * 100).toFixed(0)}%
+  ${src.summary ? `Summary: ${src.summary.substring(0, 150)}...` : ''}
+  Source: ${src.source_type === 'autonomous_agent' ? 'AI-discovered' : 'curated'}
+`).join('')}
+
+Use these resources ONLY if they genuinely relate to what the patient is saying.
+Do NOT force them into the conversation. Your empathy comes first, resources second.`;
+        }
+
+        // Add relational dynamics awareness (therapeutic relationship work)
+        if (relationalPattern && Object.keys(relationalPattern).length > 0) {
+            prompt += `
+
+THERAPEUTIC RELATIONSHIP DYNAMICS (The relationship itself is the work):
+Current relational pattern:
+- Reciprocity: ${relationalPattern.reciprocity?.level || 'unknown'} (Are they asking questions back?)
+- Vulnerability: ${relationalPattern.vulnerability?.level || 'unknown'} (Sharing emotions or just facts?)
+- Trust progression: ${relationalPattern.trustProgression?.trend || 'unknown'} (Opening up or withdrawing?)
+- Defensiveness: ${relationalPattern.defensiveness?.level || 'unknown'} (Resisting exploration?)
+- Dependency: ${relationalPattern.dependency?.level || 'unknown'} (Looking to you for answers?)
+${relationalPattern.detectedTransference && relationalPattern.detectedTransference.length > 0 ? `- Transference: ${relationalPattern.detectedTransference.map(t => t.type).join(', ')}` : ''}
+
+IMPORTANT - META-COMMUNICATION OPPORTUNITIES:
+These are moments to bring the relationship itself into the work. Use these IF appropriate:
+${metaInterventions && metaInterventions.length > 0 ? metaInterventions.map(int => `
+- "${int.message.substring(0, 100)}..."
+  (Purpose: ${int.purpose})
+`).join('') : 'None at this moment'}
+
+Remember: The way they relate to you mirrors how they relate to others.
+The changes that happen in THIS relationship often generalize to their other relationships.
+This is where real transformation happens.`;
+        }
+
+        // Add temporal mapping (past-present connections)
+        if (temporalIntervention) {
+            prompt += `
+
+PAST-PRESENT TIMELINE (The old echoes in the new):
+Their current reaction seems to echo an earlier time when:
+${temporalMap.originalEvent ? `- Original event: ${temporalMap.originalEvent.description}` : ''}
+${temporalMap.survivalStrategy ? `- Survival strategy developed: ${temporalMap.survivalStrategy.description}` : ''}
+
+Current trigger: ${temporalMap.presentTrigger && temporalMap.presentTrigger[0]?.trigger || 'similar situation'}
+
+THE REPROCESSING OPPORTUNITY:
+${temporalIntervention.message ? temporalIntervention.message.substring(0, 300) : 'Help them see: They had no choice then. They have choices now.'}
+
+Reprocessing windows available:
+${temporalIntervention.reprocessingWindows && temporalIntervention.reprocessingWindows.length > 0 ?
+  temporalIntervention.reprocessingWindows.slice(0, 2).map(w => `- ${w.type}: ${w.opportunity}`).join('\n')
+  : 'Watch for moments when they show insight and are emotionally accessible.'}
+
+IMPORTANT: The work is not to repeat the past, but to create NEW neural pathways in THIS moment with YOU.`;
+        }
+
+        // Add defensive pattern awareness
+        if (defensiveIntervention) {
+            prompt += `
+
+DEFENSIVE PATTERNS (Their genius survival strategies):
+Primary defense: ${defensivePatterns.primaryDefense?.type || 'unknown'}
+- What it does: ${defensivePatterns.primaryDefense?.description || 'Protects against threat'}
+- What it protects from: ${defensivePatterns.defensiveFunction?.underlyingFears?.[0] || 'deep fear'}
+- Cost now: ${defensivePatterns.primaryDefense?.cost || 'Limiting their life'}
+
+THE COMPASSIONATE REFRAME:
+${defensiveIntervention.message ? defensiveIntervention.message.substring(0, 400) : ''}
+
+Transformation path:
+${defensiveIntervention.transformationPath ? `From: ${defensiveIntervention.transformationPath.defense}\nTo: ${defensiveIntervention.transformationPath.transformation}\nHow: ${defensiveIntervention.transformationPath.relational}` : ''}
+
+REMEMBER: This defense is not the enemy. It is the protection they needed.
+The work is to help them realize the threat has passed AND practice new ways of being safe.
+That happens in relationship. In THIS relationship, starting now.`;
         }
 
         prompt += `

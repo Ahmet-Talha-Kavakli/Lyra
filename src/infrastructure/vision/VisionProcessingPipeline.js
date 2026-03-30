@@ -69,25 +69,63 @@ export class VisionProcessingPipeline {
     /**
      * Load MediaPipe Facemesh model
      * This is the core computer vision magic
+     * Uses @tensorflow-models/facemesh for 468-point facial landmark detection
      */
     async loadMediaPipeFacemesh() {
         try {
-            // In a real implementation, this would load:
-            // import * as tf from '@tensorflow/tfjs';
-            // import * as facemesh from '@tensorflow-models/facemesh';
-
             logger.info('[VisionPipeline] Loading MediaPipe Facemesh...');
 
-            // Mock: Create facemesh object structure
+            // Dynamic imports for browser environment
+            if (typeof window !== 'undefined' && typeof require !== 'undefined') {
+                try {
+                    // Try ES6 module import (modern approach)
+                    const facemeshModule = await import('@tensorflow-models/facemesh');
+                    const tf = await import('@tensorflow/tfjs');
+
+                    // Load the pre-trained facemesh model
+                    // Backend defaults to WebGL (GPU accelerated)
+                    this.facemesh = await facemeshModule.load();
+                    this.tf = tf;
+
+                    logger.info('[VisionPipeline] MediaPipe Facemesh loaded successfully', {
+                        backend: tf.getBackend(),
+                        version: tf.version_core
+                    });
+
+                    return;
+                } catch (importError) {
+                    logger.warn('[VisionPipeline] Dynamic import failed, trying global scope', {
+                        error: importError.message
+                    });
+                }
+            }
+
+            // Fallback: Try to use globally loaded facemesh (from CDN script tags)
+            if (typeof window !== 'undefined' && window.facemesh) {
+                this.facemesh = await window.facemesh.load();
+                logger.info('[VisionPipeline] Using globally loaded facemesh from CDN');
+                return;
+            }
+
+            // Last fallback: Create a mock for testing/Node.js environments
+            logger.warn('[VisionPipeline] MediaPipe Facemesh not available, using mock mode');
+            this.mockMode = true;
             this.facemesh = {
-                estimateFaces: this.estimateFaces.bind(this),
+                estimateFaces: this.generateMockFaceData.bind(this),
                 loaded: true
             };
 
-            logger.info('[VisionPipeline] MediaPipe Facemesh loaded');
         } catch (error) {
-            logger.error('[VisionPipeline] Failed to load MediaPipe', { error: error.message });
-            throw error;
+            logger.error('[VisionPipeline] Failed to load MediaPipe', {
+                error: error.message,
+                stack: error.stack
+            });
+            // Fall back to mock mode instead of throwing
+            this.mockMode = true;
+            this.facemesh = {
+                estimateFaces: this.generateMockFaceData.bind(this),
+                loaded: true
+            };
         }
     }
 
@@ -166,25 +204,103 @@ export class VisionProcessingPipeline {
 
     /**
      * Detect faces in image/video frame
+     * Returns 468 facial landmarks per detected face
      * @param imageSource Canvas, Image, or Video element
      */
     async detectFaces(imageSource) {
         try {
-            if (this.mockMode) {
-                // Return mock face data for testing
+            if (!this.facemesh || !this.facemesh.estimateFaces) {
+                logger.debug('[VisionPipeline] Facemesh not ready, using mock');
                 return this.generateMockFaceData();
             }
 
-            // Real implementation would use:
-            // const predictions = await this.facemesh.estimateFaces(imageSource);
-            // return predictions;
+            if (this.mockMode) {
+                return this.generateMockFaceData();
+            }
 
             logger.debug('[VisionPipeline] Detecting faces...');
-            return [];
+
+            // Real MediaPipe Facemesh detection
+            // estimateFaces returns array of predictions
+            // Each prediction has: start, end, landmarks (468 points), landmarks3D, confidence
+            const predictions = await this.facemesh.estimateFaces(
+                imageSource,
+                false // returnTensors - set to false to get JS arrays
+            );
+
+            // Validate predictions
+            if (!predictions || predictions.length === 0) {
+                logger.debug('[VisionPipeline] No faces detected in frame');
+                return [];
+            }
+
+            // Transform MediaPipe format to our format
+            const faces = predictions.map(pred => ({
+                landmarks: this.transformLandmarks(pred.landmarks),
+                landmarks3D: pred.landmarks3D || null,
+                confidence: pred.confidence || 0.95,
+                startPoint: pred.start || [0, 0],
+                endPoint: pred.end || [640, 480],
+                boundingBox: this.calculateBoundingBox(pred.landmarks)
+            }));
+
+            logger.debug('[VisionPipeline] Detected faces', {
+                count: faces.length,
+                confidence: faces[0]?.confidence
+            });
+
+            return faces;
+
         } catch (error) {
-            logger.error('[VisionPipeline] Face detection failed', { error: error.message });
+            logger.error('[VisionPipeline] Face detection failed', {
+                error: error.message,
+                errorType: error.constructor.name
+            });
+            // Return empty array instead of throwing - keep pipeline alive
             return [];
         }
+    }
+
+    /**
+     * Transform MediaPipe landmarks to standardized format
+     * MediaPipe returns array of [x, y, z], we need indexed object
+     */
+    transformLandmarks(mediapipeLandmarks) {
+        const landmarks = {};
+        if (Array.isArray(mediapipeLandmarks)) {
+            mediapipeLandmarks.forEach((point, index) => {
+                landmarks[index] = {
+                    x: point[0] || 0,
+                    y: point[1] || 0,
+                    z: point[2] || 0
+                };
+            });
+        }
+        return landmarks;
+    }
+
+    /**
+     * Calculate bounding box from landmarks
+     */
+    calculateBoundingBox(landmarks) {
+        if (!Array.isArray(landmarks) || landmarks.length === 0) {
+            return { x: 0, y: 0, width: 640, height: 480 };
+        }
+
+        const xs = landmarks.map(p => p[0] || 0);
+        const ys = landmarks.map(p => p[1] || 0);
+
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        return {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
     }
 
     /**

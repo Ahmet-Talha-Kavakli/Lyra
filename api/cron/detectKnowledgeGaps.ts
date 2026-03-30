@@ -49,15 +49,15 @@ export default async function handler(
 
       if (messagesError) throw messagesError;
 
-      // 2. Extract topics mentioned but not in knowledge base
+      // 2. Extract categories in knowledge base
       const { data: existingSources, error: sourcesError } = await supabase
         .from('knowledge_sources')
-        .select('topic');
+        .select('category');
 
       if (sourcesError) throw sourcesError;
 
-      const existingTopics = new Set(
-        (existingSources || []).map((s: any) => s.topic.toLowerCase())
+      const existingCategories = new Set(
+        (existingSources || []).map((s: any) => s.category?.toLowerCase()).filter(Boolean)
       );
 
       const gaps: Map<string, number> = new Map();
@@ -90,28 +90,21 @@ export default async function handler(
 
       // 3. Filter to only gaps (not already in knowledge base)
       const newGaps = Array.from(gaps.entries())
-        .filter(([topic]) => !existingTopics.has(topic.toLowerCase()))
+        .filter(([topic]) => !existingCategories.has(topic.toLowerCase()))
         .sort((a, b) => b[1] - a[1]) // Sort by frequency
         .slice(0, 10); // Top 10 gaps
 
-      // 4. Create knowledge gap report
+      // 4. Log gap detection results
       if (newGaps.length > 0) {
-        const { error: reportError } = await supabase
-          .from('knowledge_gap_reports')
-          .insert({
-            report_date: new Date().toISOString(),
-            gaps: newGaps.map(([topic, count]) => ({ topic, mentions: count })),
-            total_low_confidence_messages: problemMessages?.length || 0,
-            recommendation: 'Review prioritized gaps and consider adding to knowledge base'
-          });
-
-        if (reportError) logger.warn('[Cron] Failed to save gap report', { error: reportError.message });
+        logger.info('[Cron] Knowledge gaps detected', {
+          gapsFound: newGaps.length,
+          topGaps: newGaps.slice(0, 5).map(([topic, count]) => ({ topic, mentions: count }))
+        });
       }
 
       await releaseLock(lockKey, lockId);
 
       logger.info('[Cron] detectKnowledgeGaps complete', { gapsFound: newGaps.length });
-    const supabase = getAdminSupabaseClient();
 
       return res.status(200).json({
         success: true,

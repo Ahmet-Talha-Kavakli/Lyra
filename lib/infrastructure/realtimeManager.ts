@@ -17,6 +17,9 @@
 import { getAdminSupabaseClient } from '../shared/supabaseAdmin';
 import { logger } from './logger';
 
+// Get admin client for realtime operations (broadcasting)
+const supabase = getAdminSupabaseClient();
+
 /**
  * Publish a realtime event
  * Clients subscribed to this table will receive updates

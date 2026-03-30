@@ -19,29 +19,29 @@ interface SupabaseAuthResult {
 }
 
 /**
- * CRITICAL: Supabase Connection Pooling Config
+ * CRITICAL: Supabase Configuration (PostgREST REST API)
  *
- * For 100K concurrent users on Vercel:
- * - Use PgBouncer (Transaction mode) in Supabase Dashboard
- * - Connect string MUST point to pooler endpoint, NOT direct DB
+ * IMPORTANT: supabase-js is a REST/GraphQL client, NOT a TCP database driver
+ * - It uses HTTPS/443 (PostgREST API)
+ * - NO direct TCP connection (port 5432 or 6543)
+ * - Supabase backend handles connection pooling automatically
+ * - PgBouncer (port 6543) is for direct TCP connections ONLY (not applicable here)
  *
- * Example:
- * Direct DB (BROKEN for serverless): db.your-project.supabase.co
- * Pooler (CORRECT): db.your-project.supabase.co:6543
+ * supabase-js communication flow:
+ * Client → HTTPS/443 (Supabase Edge) → PgBouncer (internal) → PostgreSQL
  *
  * Set in Vercel env:
- * SUPABASE_URL=https://your-project.supabase.co
- * SUPABASE_POOLER_URL=https://your-project.supabase.co:6543 (if needed)
+ * SUPABASE_URL=https://your-project.supabase.co (HTTPS REST endpoint)
+ * SUPABASE_ANON_KEY=eyJ... (public key for client auth)
+ * SUPABASE_SERVICE_KEY=eyJ... (service key for admin operations)
  */
-const POOLER_ENABLED = process.env.SUPABASE_POOLER_URL ? true : false;
-const SUPABASE_URL = POOLER_ENABLED
-  ? process.env.SUPABASE_POOLER_URL
-  : process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL;
 
 /**
- * Custom fetch for Supabase queries
- * - 10 second timeout (Vercel Edge limit)
- * - Abort on timeout to prevent hanging connections
+ * Custom fetch with timeout for Supabase REST API calls
+ * - 10 second timeout (Vercel Edge limit for function execution)
+ * - Prevents hanging connections from blocking serverless containers
+ * - Applies to HTTPS PostgREST API calls only (not TCP pooling)
  */
 function customFetch(url: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();

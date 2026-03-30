@@ -8,8 +8,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { logger } from '../../lib/infrastructure/logger';
-import { validateUserRegistration } from '../../lib/infrastructure/validationSchemas';
-import { config } from '../../lib/infrastructure/config';
+import { registerSchema, validateData } from '../../lib/infrastructure/validationSchemas';
 
 // Rate limiting state moved to @upstash/redis (see lib/shared/upstashRedis.ts)
 import { rateLimit } from '../../lib/shared/rateLimitRedis';
@@ -35,15 +34,18 @@ export default async function handler(
     }
 
     // Validate request body
-    const validation = validateUserRegistration(req.body);
+    const validation = validateData(registerSchema, req.body);
     if (!validation.success) {
+      logger.warn('[Auth] Signup validation failed', { errors: validation.errors });
       return res.status(400).json({
         error: 'Validation failed',
-        details: validation.error.errors
+        details: validation.errors
       });
     }
 
-    const { email, password, firstName, lastName } = validation.data;
+    const { email, password, name } = validation.data;
+    const [firstName, ...lastNameParts] = name.split(' ');
+    const lastName = lastNameParts.join(' ') || '';
 
     // Create Supabase admin client (signup is a system operation, not user-specific)
     const supabase = createClient(
