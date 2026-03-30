@@ -4,7 +4,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { logger } from '../../lib/infrastructure/logger';
 
 export default async function handler(
@@ -21,6 +21,12 @@ export default async function handler(
     if (!refreshToken) {
       return res.status(400).json({ error: 'Refresh token required' });
     }
+
+    // Create anonymous Supabase client for token refresh
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_ANON_KEY || ''
+    );
 
     // Refresh tokens using Supabase Auth
     const { data, error } = await supabase.auth.refreshSession({

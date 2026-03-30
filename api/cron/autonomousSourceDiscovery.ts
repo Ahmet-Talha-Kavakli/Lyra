@@ -9,7 +9,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { getAdminSupabaseClient } from '../../lib/shared/supabaseAdmin';
 import { logger } from '../../lib/infrastructure/logger';
 import { verifyCronSecret } from '../../lib/infrastructure/authMiddleware';
 import { acquireLock, releaseLock } from '../../lib/shared/upstashRedis';
@@ -38,6 +38,9 @@ export default async function handler(
 
   try {
     logger.info('[Cron] autonomousSourceDiscovery starting');
+
+    // Create admin client (cron jobs run in system context, not user context)
+    const supabase = getAdminSupabaseClient();
 
     // Acquire distributed lock (prevent multiple instances running simultaneously)
     const lockKey = 'cron:autonomousSourceDiscovery';

@@ -64,11 +64,27 @@ function customFetch(url: string, options?: RequestInit): Promise<Response> {
 /**
  * Extract JWT token from request (Cookie OR Authorization header)
  * Priority: HttpOnly Cookie > Authorization header
+ *
+ * Supports both:
+ * - Node.js: VercelRequest (req.headers as object)
+ * - Edge: Request (req.headers as Headers object)
  */
-function extractToken(req: VercelRequest): string | null {
+function extractToken(req: any): string | null {
   try {
     // 1. Try HttpOnly Cookie first (secure, not accessible to XSS)
-    if (req.headers.cookie) {
+
+    // Web API Headers (Edge Runtime)
+    if (req.headers instanceof Headers) {
+      const cookies = req.headers.get('cookie');
+      if (cookies) {
+        const tokenCookie = cookies.split(';').find(c => c.trim().startsWith('lyra_access_token='));
+        if (tokenCookie) {
+          return tokenCookie.split('=')[1].trim();
+        }
+      }
+    }
+    // Node.js headers object (Serverless)
+    else if (typeof req.headers === 'object' && req.headers.cookie) {
       const cookies = req.headers.cookie.split(';');
       const tokenCookie = cookies.find(c => c.trim().startsWith('lyra_access_token='));
       if (tokenCookie) {
@@ -77,8 +93,12 @@ function extractToken(req: VercelRequest): string | null {
     }
 
     // 2. Fallback to Authorization header (for mobile/CLI)
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      return req.headers.authorization.slice(7);
+    const authHeader = req.headers instanceof Headers
+      ? req.headers.get('authorization')
+      : req.headers?.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authHeader.slice(7);
     }
 
     return null;

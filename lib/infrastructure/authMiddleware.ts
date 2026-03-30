@@ -4,7 +4,7 @@
  */
 
 import { VercelRequest } from '@vercel/node';
-import { supabase } from '../shared/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 
 /**
@@ -19,7 +19,7 @@ export async function verifyAuth(req: VercelRequest): Promise<{
   try {
     // Extract token from Cookie OR Authorization header
     let token = '';
-    
+
     // 1. Try to get securely from HttpOnly Cookie
     if (req.headers.cookie) {
       const cookies = req.headers.cookie.split(';');
@@ -37,6 +37,12 @@ export async function verifyAuth(req: VercelRequest): Promise<{
     if (!token) {
       return { success: false, error: 'Missing authorization' };
     }
+
+    // Create Supabase client for verification
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_ANON_KEY || ''
+    );
 
     // Verify token with Supabase
     const { data, error } = await supabase.auth.getUser(token);

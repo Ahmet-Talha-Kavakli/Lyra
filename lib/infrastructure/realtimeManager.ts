@@ -14,7 +14,7 @@
  * It uses PostgreSQL LISTEN/NOTIFY under the hood
  */
 
-import { supabase } from '../shared/supabase';
+import { getAdminSupabaseClient } from '../shared/supabaseAdmin';
 import { logger } from './logger';
 
 /**
@@ -37,7 +37,8 @@ export async function publishRealtimeEvent(
       recordId: record.id
     });
 
-    // Optional: publish to custom channel
+    // Optional: publish to custom channel via admin client
+    // const supabase = getAdminSupabaseClient();
     // await supabase.realtime.channel(`public:${table}`).send('broadcast', {
     //   event,
     //   record,

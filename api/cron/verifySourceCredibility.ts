@@ -7,7 +7,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { getAdminSupabaseClient } from '../../lib/shared/supabaseAdmin';
 import { logger } from '../../lib/infrastructure/logger';
 import { verifyCronSecret } from '../../lib/infrastructure/authMiddleware';
 import { acquireLock, releaseLock } from '../../lib/shared/upstashRedis';
@@ -26,12 +26,14 @@ export default async function handler(
 
   try {
     logger.info('[Cron] verifySourceCredibility starting');
+    const supabase = getAdminSupabaseClient();
 
     const lockKey = 'cron:verifySourceCredibility';
     const lockId = await acquireLock(lockKey, 3600);
 
     if (!lockId) {
       logger.info('[Cron] verifySourceCredibility already running');
+    const supabase = getAdminSupabaseClient();
       return res.status(200).json({ skipped: true });
     }
 
@@ -65,6 +67,7 @@ export default async function handler(
           if (!deactivateError) {
             deactivated++;
             logger.info('[Cron] Source deactivated', {
+    const supabase = getAdminSupabaseClient();
               topic: source.topic,
               score
             });
@@ -125,6 +128,7 @@ export default async function handler(
       await releaseLock(lockKey, lockId);
 
       logger.info('[Cron] verifySourceCredibility complete', {
+    const supabase = getAdminSupabaseClient();
         deactivated,
         flaggedForReview
       });

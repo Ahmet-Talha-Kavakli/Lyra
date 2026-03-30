@@ -6,7 +6,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { logger } from '../../lib/infrastructure/logger';
 
 export default async function handler(
@@ -36,6 +36,12 @@ export default async function handler(
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
+
+    // Create Supabase client for token verification
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_ANON_KEY || ''
+    );
 
     // Verify token with Supabase
     const { data, error } = await supabase.auth.getUser(token);

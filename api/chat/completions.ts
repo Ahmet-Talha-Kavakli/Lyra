@@ -1,5 +1,5 @@
 import { logger } from '../../../lib/infrastructure/logger.js';
-import { supabase } from '../../../lib/shared/supabase.js';
+import { createAuthenticatedSupabaseClient } from '../../../lib/shared/supabaseAuth.js';
 import { chatCompletionSchema } from '../../../lib/infrastructure/validationSchemas.js';
 import { ZodError } from 'zod';
 import { Redis } from '@upstash/redis';
@@ -18,23 +18,23 @@ export const config = {
 /**
  * PROFESYONEL MÜDAHALE: Veritabanı Darboğazı Çözümü
  */
-async function isFirstSession(userId: string) {
+async function isFirstSession(userId: string, supabaseClient: any) {
     try {
         const cacheKey = `lyra:user:${userId}:is_first_session`;
         const cached = await redis.get(cacheKey);
-        
+
         if (cached !== null) {
             return cached === true || String(cached) === 'true';
         }
 
-        const { data: result, error } = await supabase
+        const { data: result, error } = await supabaseClient
             .from('user_profile')
             .select('session_count, is_first_session')
             .eq('user_id', userId)
             .single();
 
         if (error && error.code !== 'PGRST116') throw error;
-        
+
         const isFirst = !result ? true : (result.session_count === 0 || result.is_first_session === true);
         await redis.set(cacheKey, isFirst, { ex: 3600 });
         return isFirst;
@@ -44,9 +44,9 @@ async function isFirstSession(userId: string) {
     }
 }
 
-async function incrementSessionCount(userId: string) {
+async function incrementSessionCount(userId: string, supabaseClient: any) {
     try {
-        const { data: result, error: readError } = await supabase
+        const { data: result, error: readError } = await supabaseClient
             .from('user_profile')
             .select('session_count')
             .eq('user_id', userId)
@@ -55,7 +55,7 @@ async function incrementSessionCount(userId: string) {
         if (readError && readError.code !== 'PGRST116') throw readError;
         const newCount = (result?.session_count || 0) + 1;
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseClient
             .from('user_profile')
             .update({
                 session_count: newCount,
@@ -123,16 +123,25 @@ export default async function handler(req: Request) {
             return new Response(JSON.stringify({ error: 'Unauthorized: Missing Authentication Token' }), { status: 401 });
         }
 
-        // Very secure validation directly through Supabase
-        const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
+        // Create authenticated Supabase client (enforces RLS)
+        const supabaseAuthResult = await createAuthenticatedSupabaseClient({
+            headers: req.headers,
+            cookies: {
+                get: (key: string) => {
+                    const match = cookieHeader.match(new RegExp(`${key}=([^;]+)`));
+                    return match ? { value: match[1] } : undefined;
+                }
+            }
+        } as any);
 
-        if (authError || !user) {
-            logger.warn('[AUTH] Invalid or expired access token', authError);
+        if (!supabaseAuthResult.client || !supabaseAuthResult.userId) {
+            logger.warn('[AUTH] Invalid or expired access token');
             return new Response(JSON.stringify({ error: 'Unauthorized: Invalid Token' }), { status: 401 });
         }
 
-        // SECURE SOURCE: The userId is strictly determined by the cryptographic verification.
-        const userId = user.id;
+        // SECURE SOURCE: The userId is strictly determined by token verification
+        const userId = supabaseAuthResult.userId;
+        const supabaseClient = supabaseAuthResult.client;
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // CRITICAL SECURITY: Payload Validation Before Parsing
@@ -210,7 +219,7 @@ export default async function handler(req: Request) {
             physicalHarmContext
         };
 
-        const firstSession = await isFirstSession(userId);
+        const firstSession = await isFirstSession(userId, supabaseClient);
         let agent;
 
         if (firstSession) {
@@ -242,7 +251,7 @@ export default async function handler(req: Request) {
 
                         if (event.type === 'complete') {
                             write(`data: [DONE]\n\n`);
-                            
+
                             if (firstSession && event.isIntakeComplete) {
                                 // Background heavy processing (QStash)
                                 waitUntil(
@@ -252,7 +261,7 @@ export default async function handler(req: Request) {
                                             sessionId,
                                             intakeSummary: agent.getIntakeSummary ? agent.getIntakeSummary() : {}
                                         }).catch((e: any) => logger.error('[CHAT] Failed to queue', e)),
-                                        incrementSessionCount(userId).catch((e: any) => logger.error(e))
+                                        incrementSessionCount(userId, supabaseClient).catch((e: any) => logger.error(e))
                                     ])
                                 );
                             }

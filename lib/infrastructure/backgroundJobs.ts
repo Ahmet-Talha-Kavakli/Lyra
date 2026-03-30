@@ -133,6 +133,23 @@ export async function queueJob(
  * Each route imports the handler it needs
  */
 
+/**
+ * Profile Synthesis Job Handler
+ *
+ * Uses dependency injection (passed at module load time)
+ * Avoids dynamic imports that confuse Vercel bundler
+ *
+ * This prevents:
+ * - Bundler tracing failures
+ * - Runtime module not found errors
+ * - Cold start delays from dynamic imports
+ */
+let profileSynthesisHandler: ((userId: string, sessionId: string, intakeSummary: Record<string, any>) => Promise<any>) | null = null;
+
+export function setProfileSynthesisHandler(handler: (userId: string, sessionId: string, intakeSummary: Record<string, any>) => Promise<any>) {
+  profileSynthesisHandler = handler;
+}
+
 export async function profileSynthesisJob(data: {
   userId: string;
   sessionId: string;
@@ -144,11 +161,12 @@ export async function profileSynthesisJob(data: {
       sessionId: data.sessionId
     });
 
-    // Import dynamically or statically. We do it here statically at the top of the file,
-    // actually let me check if I can just import at the top of the file.
-    const { generateComprehensiveProfile } = await import('../../src/services/queue/profileSynthesisJob.js');
-    
-    const profile = await generateComprehensiveProfile(data.userId, data.sessionId, data.intakeSummary);
+    // Use injected handler (registered at module load time)
+    if (!profileSynthesisHandler) {
+      throw new Error('Profile synthesis handler not registered. Call setProfileSynthesisHandler() at startup.');
+    }
+
+    const profile = await profileSynthesisHandler(data.userId, data.sessionId, data.intakeSummary);
 
     logger.info('[Job] Profile synthesis complete', { userId: data.userId });
     return { success: true, profile };

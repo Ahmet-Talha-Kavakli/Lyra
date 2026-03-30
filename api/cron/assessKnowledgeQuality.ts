@@ -9,7 +9,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { getAdminSupabaseClient } from '../../lib/shared/supabaseAdmin';
 import { logger } from '../../lib/infrastructure/logger';
 import { verifyCronSecret } from '../../lib/infrastructure/authMiddleware';
 import { acquireLock, releaseLock } from '../../lib/shared/upstashRedis';
@@ -28,12 +28,14 @@ export default async function handler(
 
   try {
     logger.info('[Cron] assessKnowledgeQuality starting');
+    const supabase = getAdminSupabaseClient();
 
     const lockKey = 'cron:assessKnowledgeQuality';
     const lockId = await acquireLock(lockKey, 3600);
 
     if (!lockId) {
       logger.info('[Cron] assessKnowledgeQuality already running');
+    const supabase = getAdminSupabaseClient();
       return res.status(200).json({ skipped: true });
     }
 
@@ -92,6 +94,7 @@ export default async function handler(
       await releaseLock(lockKey, lockId);
 
       logger.info('[Cron] assessKnowledgeQuality complete', { updated });
+    const supabase = getAdminSupabaseClient();
 
       return res.status(200).json({
         success: true,

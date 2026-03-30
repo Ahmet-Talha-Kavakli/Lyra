@@ -6,7 +6,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { logger } from '../../lib/infrastructure/logger';
 import { validateUserRegistration } from '../../lib/infrastructure/validationSchemas';
 import { config } from '../../lib/infrastructure/config';
@@ -44,6 +44,12 @@ export default async function handler(
     }
 
     const { email, password, firstName, lastName } = validation.data;
+
+    // Create Supabase admin client (signup is a system operation, not user-specific)
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_KEY || '' // Service key has admin privileges
+    );
 
     // 1. Create auth user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
