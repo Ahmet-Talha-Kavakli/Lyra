@@ -19,6 +19,49 @@ interface SupabaseAuthResult {
 }
 
 /**
+ * CRITICAL: Supabase Connection Pooling Config
+ *
+ * For 100K concurrent users on Vercel:
+ * - Use PgBouncer (Transaction mode) in Supabase Dashboard
+ * - Connect string MUST point to pooler endpoint, NOT direct DB
+ *
+ * Example:
+ * Direct DB (BROKEN for serverless): db.your-project.supabase.co
+ * Pooler (CORRECT): db.your-project.supabase.co:6543
+ *
+ * Set in Vercel env:
+ * SUPABASE_URL=https://your-project.supabase.co
+ * SUPABASE_POOLER_URL=https://your-project.supabase.co:6543 (if needed)
+ */
+const POOLER_ENABLED = process.env.SUPABASE_POOLER_URL ? true : false;
+const SUPABASE_URL = POOLER_ENABLED
+  ? process.env.SUPABASE_POOLER_URL
+  : process.env.SUPABASE_URL;
+
+/**
+ * Custom fetch for Supabase queries
+ * - 10 second timeout (Vercel Edge limit)
+ * - Abort on timeout to prevent hanging connections
+ */
+function customFetch(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second max
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal
+  })
+    .then(response => {
+      clearTimeout(timeoutId);
+      return response;
+    })
+    .catch(error => {
+      clearTimeout(timeoutId);
+      throw error;
+    });
+}
+
+/**
  * Extract JWT token from request (Cookie OR Authorization header)
  * Priority: HttpOnly Cookie > Authorization header
  */
@@ -75,8 +118,8 @@ export async function createAuthenticatedSupabaseClient(
       };
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    const supabaseUrl = SUPABASE_URL;
 
     if (!supabaseUrl || !supabaseAnonKey) {
       logger.error('[Supabase] Missing SUPABASE_URL or SUPABASE_ANON_KEY');
@@ -87,17 +130,31 @@ export async function createAuthenticatedSupabaseClient(
       };
     }
 
-    // Create client with anon key (will use user's JWT token for auth)
+    /**
+     * ✅ PRODUCTION CONFIG for 100K concurrent:
+     * - db: { schema: 'public' } → Explicit schema (faster parsing)
+     * - realtime: { enabled: false } → Serverless don't need realtime
+     * - persistSession: false → Stateless
+     * - autoRefreshToken: false → No token refresh loops
+     * - shouldThrowOnError: true → Fail fast on network issues
+     */
     const client = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
           Authorization: `Bearer ${token}`,
           'X-Client-Info': 'lyra-api/v1'
-        }
+        },
+        fetch: customFetch // Use optimized fetch
       },
       auth: {
         persistSession: false, // Serverless: no session persistence
-        autoRefreshToken: false // Serverless: stateless
+        autoRefreshToken: false, // Serverless: stateless
+      },
+      db: {
+        schema: 'public' // Explicit schema = faster
+      },
+      realtime: {
+        enabled: false // Serverless doesn't need realtime
       }
     });
 

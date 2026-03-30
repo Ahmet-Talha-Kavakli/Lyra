@@ -1,10 +1,10 @@
 /**
  * POST /api/auth/logout
- * Vercel Serverless Handler - Stateless
+ * Revoke JWT token + all user sessions (Denylist)
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from '../../lib/shared/supabase';
+import { TokenDenylist } from '../../lib/infrastructure/tokenDenylist';
 import { logger } from '../../lib/infrastructure/logger';
 import { verifyAuth } from '../../lib/infrastructure/authMiddleware';
 
@@ -24,16 +24,17 @@ export default async function handler(
     }
 
     const userId = auth.userId;
+    const token = extractTokenFromRequest(req);
 
-    // Invalidate session in Supabase Auth
-    const { error } = await supabase.auth.admin.signOut(userId);
-
-    if (error) {
-      logger.error('Logout failed', { userId, error: error.message });
-      // Don't fail the request, just log it
+    // Add token to denylist (TTL = 1 hour)
+    if (token) {
+      await TokenDenylist.revokeToken(token, 3600);
     }
 
-    logger.info('Logout successful', { userId });
+    // Revoke ALL user sessions
+    await TokenDenylist.revokeUserSessions(userId, 86400);
+
+    logger.info('Logout successful - user sessions revoked', { userId });
 
     // CLEAR SECURE HTTP-ONLY COOKIES
     const secureFlag = process.env.NODE_ENV === 'production' ? 'Secure;' : '';
@@ -48,4 +49,17 @@ export default async function handler(
     logger.error('Logout handler error', { error: error.message });
     return res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+function extractTokenFromRequest(req: VercelRequest): string | null {
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const match = cookieHeader.match(/lyra_access_token=([^;]*)/);
+    if (match) return match[1];
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  return null;
 }

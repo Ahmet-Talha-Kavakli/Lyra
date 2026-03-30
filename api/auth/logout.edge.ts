@@ -8,6 +8,12 @@ export const config = {
 };
 
 import { createClient } from '@supabase/supabase-js';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL || '',
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+});
 
 function logEdge(level: 'info' | 'warn' | 'error', msg: string, data?: any) {
   console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, message: msg, ...(data || {}) }));
@@ -87,6 +93,15 @@ export default async function handler(request: Request): Promise<Response> {
     }
 
     logEdge('info', 'Logout successful', { userId });
+
+    // Add token to Redis Denylist (30 days TTL matching refresh token or access token max lifespan)
+    try {
+      await redis.set(`lyra:denylist:${token}`, 'true', { ex: 2592000 });
+      logEdge('info', 'Token successfully added to denylist');
+    } catch (redisError: any) {
+      logEdge('error', 'Redis Denylist Error during logout', { error: redisError.message });
+      // We don't fail the logout process, fail-open concept
+    }
 
     const isProduction = process.env.NODE_ENV === 'production';
     const secure = isProduction ? '; Secure' : '';
