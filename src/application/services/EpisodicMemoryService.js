@@ -16,12 +16,18 @@
 
 import { logger } from '../logging/logger.js';
 import { supabase } from '../../infrastructure/database/supabase.js';
+import OpenAI from 'openai';
 
 export class EpisodicMemoryService {
     constructor(options = {}) {
         this.userId = options.userId;
         this.sessionId = options.sessionId;
         this.embeddingModel = options.embeddingModel || 'text-embedding-3-small';
+
+        // OpenAI client for embeddings
+        this.openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+        });
 
         logger.info('[EpisodicMemory] Initialized');
     }
@@ -299,19 +305,12 @@ export class EpisodicMemoryService {
                 return null;
             }
 
-            // TODO: Call OpenAI embeddings API
-            // For now, return mock embedding
-            const mockEmbedding = new Array(1536).fill(0.1);
-            return mockEmbedding;
+            const response = await this.openai.embeddings.create({
+                model: this.embeddingModel,
+                input: text
+            });
 
-            // Real implementation:
-            // const { OpenAI } = require('openai');
-            // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-            // const response = await openai.embeddings.create({
-            //     model: this.embeddingModel,
-            //     input: text
-            // });
-            // return response.data[0].embedding;
+            return response.data[0].embedding;
         } catch (error) {
             logger.error('[EpisodicMemory] generateEmbedding failed:', error);
             return null;

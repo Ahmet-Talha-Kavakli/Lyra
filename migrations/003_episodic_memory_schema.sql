@@ -20,34 +20,16 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS memory_fragments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    -- Session context
     session_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    -- What was said
     transcript TEXT NOT NULL,
-
-    -- Somatic markers at this moment
     somatic_markers JSONB NOT NULL,
-
-    -- Congruence analysis
     congruence_analysis JSONB,
-
-    -- Temporal patterns
     temporal_patterns JSONB,
-
-    -- Semantic embedding (1536 dimensions for Claude embeddings)
     transcript_embedding vector(1536),
-
-    -- Clinical tags for quick filtering
     topics TEXT[] DEFAULT '{}',
-    emotional_themes TEXT[] DEFAULT '{}',
-
-    -- Indexing
-    FOREIGN KEY (session_id) REFERENCES sessions(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    emotional_themes TEXT[] DEFAULT '{}'
 );
 
 CREATE INDEX idx_memory_user ON memory_fragments(user_id);
@@ -62,25 +44,13 @@ CREATE INDEX idx_memory_embedding ON memory_fragments USING ivfflat (transcript_
 
 CREATE TABLE IF NOT EXISTS memory_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
     user_id TEXT NOT NULL,
-
-    -- Two memory fragments
     memory_fragment_1_id UUID NOT NULL REFERENCES memory_fragments(id) ON DELETE CASCADE,
     memory_fragment_2_id UUID NOT NULL REFERENCES memory_fragments(id) ON DELETE CASCADE,
-
-    -- How similar they are (0-1)
     similarity_score FLOAT NOT NULL,
-
-    -- What's the connection? (e.g., "same trigger", "same emotion", "same family pattern")
     connection_type TEXT,
-
-    -- Clinical insight
     clinical_insight TEXT,
-
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_connections_user ON memory_connections(user_id);
@@ -93,32 +63,17 @@ CREATE INDEX idx_connections_score ON memory_connections(similarity_score DESC);
 
 CREATE TABLE IF NOT EXISTS therapeutic_themes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
     user_id TEXT NOT NULL,
-
-    -- The theme (e.g., "abandonment fear", "perfectionism", "family trauma")
     theme_name TEXT NOT NULL,
-
-    -- How many times has this appeared?
     frequency INT DEFAULT 1,
-
-    -- Which sessions mentioned this?
     session_ids TEXT[] DEFAULT '{}',
-
-    -- Somatic signature (how does body respond?)
     somatic_signature JSONB,
-
-    -- Emotional patterns
     emotional_patterns TEXT[] DEFAULT '{}',
-
-    -- Therapeutic progress
     last_occurrence TIMESTAMP WITH TIME ZONE,
-    intensity_trend FLOAT DEFAULT 0.0, -- -1 (improving) to +1 (worsening)
-
+    intensity_trend FLOAT DEFAULT 0.0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    UNIQUE(user_id, theme_name)
 );
 
 CREATE INDEX idx_themes_user ON therapeutic_themes(user_id);
@@ -132,27 +87,16 @@ CREATE INDEX idx_themes_last ON therapeutic_themes(last_occurrence DESC);
 
 CREATE TABLE IF NOT EXISTS somatic_signatures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
     user_id TEXT NOT NULL,
-
-    -- What emotion/state?
     emotion_or_state TEXT NOT NULL,
-
-    -- How does THIS PATIENT's body show it?
-    typical_action_units JSONB, -- { "AU1": 0.7, "AU4": 0.8, ... }
-    typical_prosody JSONB,      -- { "pitch_normalized": 1.2, ... }
-    typical_movement JSONB,      -- { "head_tilt": "left", ... }
-
-    -- How consistent is this signature? (0-1)
+    typical_action_units JSONB,
+    typical_prosody JSONB,
+    typical_movement JSONB,
     consistency_score FLOAT,
-
-    -- How many observations support this?
     observation_count INT DEFAULT 1,
-
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    UNIQUE(user_id, emotion_or_state)
 );
 
 CREATE INDEX idx_signature_user ON somatic_signatures(user_id);
@@ -165,49 +109,33 @@ CREATE INDEX idx_signature_emotion ON somatic_signatures(emotion_or_state);
 
 CREATE TABLE IF NOT EXISTS session_insights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id),
+    session_id TEXT NOT NULL UNIQUE,
     user_id TEXT NOT NULL,
-
-    -- Main themes discussed
     primary_themes TEXT[] DEFAULT '{}',
-
-    -- Emotional trajectory (0=start, 1=end)
-    emotional_trajectory JSONB, -- [ {time: 0, state: "anxious"}, ... ]
-
-    -- Breakthroughs or shifts
+    emotional_trajectory JSONB,
     breakthroughs TEXT[] DEFAULT '{}',
-
-    -- Somatic patterns observed
     somatic_observations JSONB,
-
-    -- Therapist recommendations for next session
     recommendations TEXT,
-
-    -- Session quality/depth score
     depth_score FLOAT DEFAULT 0.5,
-
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_insights_user ON session_insights(user_id);
 CREATE INDEX idx_insights_depth ON session_insights(depth_score DESC);
 
 -- ════════════════════════════════════════════════════════════
--- Sample trigger for updating therapeutic_themes
+-- Trigger for updating therapeutic_themes
 -- ════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION update_therapeutic_themes()
 RETURNS TRIGGER AS $$
+DECLARE
+    theme_name TEXT;
 BEGIN
-    -- When a new memory fragment is created,
-    -- update or create therapeutic themes based on topics
     IF NEW.topics IS NOT NULL AND array_length(NEW.topics, 1) > 0 THEN
         FOREACH theme_name IN ARRAY NEW.topics LOOP
-            INSERT INTO therapeutic_themes (user_id, theme_name, frequency, session_ids, last_occurrence)
-            VALUES (NEW.user_id, theme_name, 1, ARRAY[NEW.session_id], NEW.created_at)
+            INSERT INTO therapeutic_themes (user_id, theme_name, frequency, session_ids, last_occurrence, created_at, updated_at)
+            VALUES (NEW.user_id, theme_name, 1, ARRAY[NEW.session_id], NEW.created_at, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (user_id, theme_name) DO UPDATE SET
                 frequency = therapeutic_themes.frequency + 1,
                 session_ids = array_append(therapeutic_themes.session_ids, NEW.session_id),

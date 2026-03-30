@@ -15,7 +15,7 @@
  * 6. Therapy Goals - Yolculuğun sonunda kendini nasıl görmek istersin
  */
 
-import { Anthropic } from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { logger } from '../logging/logger.js';
 import { EpisodicMemoryService } from './EpisodicMemoryService.js';
 
@@ -24,12 +24,12 @@ export class IntakeAgent {
         this.userId = options.userId;
         this.sessionId = options.sessionId;
 
-        // Claude integration
-        this.client = new Anthropic({
-            apiKey: process.env.ANTHROPIC_API_KEY
+        // OpenAI integration
+        this.client = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
         });
 
-        this.model = options.model || 'claude-3-5-sonnet-20241022';
+        this.model = options.model || 'gpt-4o-mini';
         this.maxTokens = options.maxTokens || 1024;
 
         // Memory service for storing intake data

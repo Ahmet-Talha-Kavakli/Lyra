@@ -215,7 +215,7 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             agent = new IntakeAgent({
                 userId,
                 sessionId,
-                model: 'claude-3-5-sonnet-20241022'
+                model: 'gpt-4o-mini'
             });
         } else {
             // REGULAR THERAPIST SESSION MODE
@@ -223,7 +223,7 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             agent = new TherapistAgent({
                 userId,
                 sessionId,
-                model: 'claude-3-5-sonnet-20241022'
+                model: 'gpt-4o-mini'
             });
         }
 
@@ -259,7 +259,7 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
                         id: `chatcmpl-${Date.now()}-${tokenCount}`,
                         object: 'text_completion.chunk',
                         created: Date.now(),
-                        model: 'claude-3-5-sonnet-20241022',
+                        model: 'gpt-4o-mini',
                         choices: [{
                             index: 0,
                             delta: { content: event.content },
@@ -276,7 +276,7 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
                         id: `chatcmpl-${Date.now()}-complete`,
                         object: 'text_completion.chunk',
                         created: Date.now(),
-                        model: 'claude-3-5-sonnet-20241022',
+                        model: 'gpt-4o-mini',
                         choices: [{
                             index: 0,
                             delta: {},
