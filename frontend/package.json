@@ -4,8 +4,8 @@
   "description": "Lyra - AI Therapy Assistant Frontend",
   "type": "module",
   "scripts": {
-    "dev": "bash ../scripts/setup-draco.sh && vite",
-    "build": "bash ../scripts/setup-draco.sh && vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",

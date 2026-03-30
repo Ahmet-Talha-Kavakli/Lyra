@@ -82,9 +82,7 @@ export function getAdminSupabaseClient(): SupabaseClient {
     db: {
       schema: 'public'
     },
-    realtime: {
-      enabled: false
-    }
+    realtime: {} as any
   });
 
   return adminClientInstance;

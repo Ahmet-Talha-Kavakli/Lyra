@@ -9,7 +9,8 @@ import { TherapistAgent } from '../../src/application/agents/TherapistAgent.js';
 const redis = Redis.fromEnv();
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
+  maxDuration: 60,
 };
 
 /**
