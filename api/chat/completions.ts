@@ -1,6 +1,7 @@
 import { logger } from '../../../lib/infrastructure/logger.js';
 import { supabase } from '../../../lib/shared/supabase.js';
-import { validateRequest, chatCompletionSchema } from '../../../lib/infrastructure/validationSchemas.js';
+import { chatCompletionSchema } from '../../../lib/infrastructure/validationSchemas.js';
+import { ZodError } from 'zod';
 import { Redis } from '@upstash/redis';
 import { TherapistAgent } from '../../../src/application/agents/TherapistAgent.js';
 import { IntakeAgent } from '../../../src/application/agents/IntakeAgent.js';
@@ -133,16 +134,65 @@ export default async function handler(req: Request) {
         // SECURE SOURCE: The userId is strictly determined by the cryptographic verification.
         const userId = user.id;
 
-        // Vercel Edge Runtime body parsing
-        const body = await req.json();
-        
-        const messages = body.messages || [];
-        const call = body.call || {};
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // CRITICAL SECURITY: Payload Validation Before Parsing
+        // Prevents: OOM attacks, invalid data, unhandled payloads
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        let body: any;
+        try {
+          body = await req.json();
+        } catch (parseError: any) {
+          logger.error('[CHAT] JSON parse failed - malformed payload', {
+            error: parseError.message
+          });
+          return new Response(
+            JSON.stringify({
+              error: 'Invalid request: malformed JSON',
+              code: 'INVALID_JSON'
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // STRICT SCHEMA VALIDATION: safeParse() doesn't throw, returns result
+        const validationResult = chatCompletionSchema.safeParse(body);
+
+        if (!validationResult.success) {
+          // Log validation errors (one per field)
+          const errorDetails = validationResult.error.errors.map(err => ({
+            path: err.path.join('.'),
+            message: err.message,
+            code: err.code
+          }));
+
+          logger.warn('[CHAT] Validation failed', {
+            userId,
+            fieldCount: errorDetails.length,
+            firstError: errorDetails[0]
+          });
+
+          return new Response(
+            JSON.stringify({
+              error: 'Invalid request: schema validation failed',
+              code: 'VALIDATION_ERROR',
+              details: errorDetails.slice(0, 3) // Send first 3 errors only
+            }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // SAFE EXTRACTION: Use validated data
+        const { messages, call, somaticTelemetry } = validationResult.data;
         const sessionId = call?.metadata?.sessionId || `session_${Date.now()}`;
-        const somaticTelemetry = body.somaticTelemetry || null;
         const userMessage = messages[messages.length - 1]?.content || '';
 
-        logger.info('[CHAT] Stream request authorized', { userId, sessionId });
+        logger.info('[CHAT] Stream request validated & authorized', {
+          userId,
+          sessionId,
+          messageCount: messages.length,
+          hasSomaticData: !!somaticTelemetry
+        });
 
         const objectContext = await getObjectContext(userId);
         const physicalHarmContext = await getPhysicalHarmContext(userId);

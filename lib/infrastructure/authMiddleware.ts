@@ -78,10 +78,25 @@ export function verifyAdmin(req: VercelRequest): boolean {
 
 /**
  * Verify Cron Secret (for Vercel Cron jobs)
- * Vercel sets the X-Vercel-Cron header only on scheduled invocations
+ * Strictly verifies the Bearer token matches the CRON_SECRET env variable
  */
-export function verifyCronSecret(req: VercelRequest): boolean {
-  // Check if this is a legitimate Vercel cron call
-  // In production, Vercel signs the request
-  return req.headers['x-vercel-cron'] === 'true';
+export function verifyCronSecret(req: VercelRequest | Request): boolean {
+  const cronSecret = process.env.CRON_SECRET;
+  
+  if (!cronSecret) {
+    logger.error('CRON_SECRET is not configured in Vercel. Cron jobs are vulnerable!');
+    return false;
+  }
+
+  // Support for both Vercel Node (req.headers) and Edge Runtime (req.headers.get)
+  const authHeader = typeof (req as Request).headers?.get === 'function' 
+      ? (req as Request).headers.get('authorization') 
+      : (req as VercelRequest).headers?.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+
+  const token = authHeader.split(' ')[1];
+  return token === cronSecret;
 }
