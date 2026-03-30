@@ -15,6 +15,9 @@
 
 import { logger } from '../logging/logger.js';
 import { clinicalSomaticInterpreter } from '../../application/services/ClinicalSomaticInterpreter.js';
+import { BaselineCalibration } from '../calibration/BaselineCalibration.js';
+import { CongruenceEngine } from '../analysis/CongruenceEngine.js';
+import { TemporalAnalyzer } from '../analysis/TemporalAnalyzer.js';
 
 /**
  * Handle WebSocket connection for AU stream
@@ -31,9 +34,43 @@ export class AUWebSocketHandler {
         // Analysis state
         this.analysisBuffer = [];
         this.lastInterpretation = null;
+        this.lastCongruenceData = null; // Store latest frame for congruence analysis
         this.bufferSize = 30; // Aggregate 30 frames per analysis
 
-        logger.info('[AUWebSocket] Connection established');
+        // ═══════════════════════════════════════════════════════════
+        // NEW: Clinical Analysis Modules
+        // ═══════════════════════════════════════════════════════════
+
+        // 1. BASELINE CALIBRATION (first 60 seconds)
+        this.baselineCalibration = new BaselineCalibration({
+            userId: null, // Will be set on init
+            sessionId: null,
+            calibrationDuration: 60000, // 60 seconds
+            frameThreshold: 100
+        });
+
+        // 2. CONGRUENCE ANALYSIS (facial + vocal + verbal)
+        this.congruenceEngine = new CongruenceEngine({
+            userId: null,
+            sessionId: null,
+            congruenceThreshold: 0.7,
+            incongruenceThreshold: 0.5
+        });
+
+        // 3. TEMPORAL ANALYSIS (micro vs macro expressions)
+        this.temporalAnalyzer = new TemporalAnalyzer({
+            userId: null,
+            sessionId: null,
+            microExpressionWindow: 15,
+            genuineExpressionWindow: 120,
+            maxHistorySize: 300
+        });
+
+        // Calibration state
+        this.isCalibrating = false;
+        this.calibrationComplete = false;
+
+        logger.info('[AUWebSocket] Connection established with analysis modules');
     }
 
     /**
@@ -71,48 +108,109 @@ export class AUWebSocketHandler {
         this.sessionId = data.sessionId;
         this.userId = data.userId;
 
+        // ═══════════════════════════════════════════════════════════
+        // INITIALIZE ANALYSIS MODULES WITH SESSION DATA
+        // ═══════════════════════════════════════════════════════════
+
+        this.baselineCalibration.userId = this.userId;
+        this.baselineCalibration.sessionId = this.sessionId;
+
+        this.congruenceEngine.userId = this.userId;
+        this.congruenceEngine.sessionId = this.sessionId;
+
+        this.temporalAnalyzer.userId = this.userId;
+        this.temporalAnalyzer.sessionId = this.sessionId;
+
         logger.info('[AUWebSocket] Session initialized', {
             sessionId: this.sessionId,
             userId: this.userId
         });
 
-        // Send confirmation
+        // START BASELINE CALIBRATION
+        this.isCalibrating = true;
+        this.baselineCalibration.startCalibration().then(() => {
+            this.isCalibrating = false;
+            this.calibrationComplete = true;
+            logger.info('[AUWebSocket] Baseline calibration complete', {
+                sessionId: this.sessionId,
+                baseline: this.baselineCalibration.baseline
+            });
+        });
+
+        // Send confirmation + calibration status
         this.sendMessage({
             type: 'init_ack',
             sessionId: this.sessionId,
-            message: 'Backend ready to receive AU data'
+            message: 'Backend ready. Starting 60-second baseline calibration...',
+            calibrationStarted: true,
+            calibrationDuration: 60
         });
     }
 
     /**
      * Handle incoming AU frame from Frontend
-     * This is the KEY: Frontend sends lightweight JSON, Backend does clinical work
+     * INTEGRATED: Calibration + Congruence + Temporal + Clinical
      */
     handleAUFrame(data) {
         try {
-            const { actionUnits, confidence, symmetry, smileAuthenticity, timestamp } = data;
+            const { actionUnits, confidence, symmetry, smileAuthenticity, timestamp, prosody, transcript } = data;
 
-            // 1. Buffer the AU data
-            this.analysisBuffer.push({
+            const frameData = {
                 timestamp: timestamp,
                 actionUnits: actionUnits,
                 confidence: confidence,
                 symmetry: symmetry,
-                smileAuthenticity: smileAuthenticity
-            });
+                smileAuthenticity: smileAuthenticity,
+                prosody: prosody,
+                transcript: transcript
+            };
 
-            // 2. When buffer reaches size, do clinical interpretation
-            if (this.analysisBuffer.length >= this.bufferSize) {
-                this.performClinicalInterpretation();
-                this.analysisBuffer = [];
+            // Store for congruence analysis (will be used when buffer is full)
+            this.lastCongruenceData = frameData;
+
+            // ═══════════════════════════════════════════════════════════
+            // PHASE 1: BASELINE CALIBRATION (first 60 seconds)
+            // ═══════════════════════════════════════════════════════════
+
+            if (this.isCalibrating) {
+                // Add frame to baseline calibration
+                this.baselineCalibration.addCalibrationFrame(frameData);
+
+                // Send calibration progress
+                const status = this.baselineCalibration.getStatus();
+                this.sendMessage({
+                    type: 'calibration_progress',
+                    framesCollected: status.framesCollected,
+                    progress: Math.round((status.framesCollected / 100) * 100) + '%'
+                });
+
+                return; // Don't process clinically during calibration
             }
 
-            // 3. Log periodic stats
+            // ═══════════════════════════════════════════════════════════
+            // PHASE 2: TEMPORAL ANALYSIS (track expression duration)
+            // ═══════════════════════════════════════════════════════════
+
+            this.temporalAnalyzer.addFrame(frameData);
+
+            // ═══════════════════════════════════════════════════════════
+            // PHASE 3: BUFFER FOR BATCH PROCESSING
+            // ═══════════════════════════════════════════════════════════
+
+            this.analysisBuffer.push(frameData);
+
+            // When buffer reaches size, do FULL clinical interpretation
+            if (this.analysisBuffer.length >= this.bufferSize) {
+                this.performFullClinicalInterpretation();
+                // Keep last frame for next batch's context
+                this.analysisBuffer = [this.analysisBuffer[this.analysisBuffer.length - 1]];
+            }
+
+            // Log progress
             if (this.analysisBuffer.length % 10 === 0) {
                 logger.debug('[AUWebSocket] Buffering AU data', {
                     sessionId: this.sessionId,
-                    bufferSize: this.analysisBuffer.length,
-                    frameCount: this.analysisBuffer.length
+                    bufferSize: this.analysisBuffer.length
                 });
             }
         } catch (error) {
@@ -121,43 +219,101 @@ export class AUWebSocketHandler {
     }
 
     /**
-     * MAIN LOGIC: Process buffered AU data through Clinical Interpreter
-     * This is where Frontend's vision data meets Backend's clinical logic
+     * FULL CLINICAL INTERPRETATION
+     * Integrates: Baseline → Deviation → Congruence → Temporal → Clinical
+     *
+     * This is THE HEART of Lyra's intelligence:
+     * 1. Convert absolute AU values to RELATIVE deviation from baseline
+     * 2. Analyze congruence across facial + vocal + verbal modalities
+     * 3. Track temporal patterns (micro vs macro expressions)
+     * 4. Generate comprehensive clinical interpretation
      */
-    performClinicalInterpretation() {
+    performFullClinicalInterpretation() {
         try {
-            // 1. Aggregate AU data from buffer
+            // ═══════════════════════════════════════════════════════════
+            // STEP 1: AGGREGATE AU DATA FROM BUFFER
+            // ═══════════════════════════════════════════════════════════
             const aggregatedAU = this.aggregateActionUnits();
 
-            // 2. Create somatic state from Frontend's vision data
+            // ═══════════════════════════════════════════════════════════
+            // STEP 2: BASELINE DEVIATION ANALYSIS
+            // Convert absolute values → relative deviations
+            // ═══════════════════════════════════════════════════════════
+            const deviationAnalysis = this.baselineCalibration.interpretWithBaseline(aggregatedAU);
+
+            // ═══════════════════════════════════════════════════════════
+            // STEP 3: TEMPORAL PATTERN ANALYSIS
+            // Micro-expressions vs macro-expressions
+            // ═══════════════════════════════════════════════════════════
+            const temporalInsights = this.temporalAnalyzer.getTemporalInsights();
+
+            // ═══════════════════════════════════════════════════════════
+            // STEP 4: CONGRUENCE ANALYSIS
+            // Facial + Vocal + Verbal alignment
+            // ═══════════════════════════════════════════════════════════
+            // Note: Store congruenceData BEFORE aggregation clears buffer
+            const congruenceData = this.lastCongruenceData || {};
+            const congruenceAnalysis = this.congruenceEngine.analyzeCongruence({
+                facs: aggregatedAU,
+                prosody: congruenceData.prosody,
+                transcript: congruenceData.transcript
+            });
+
+            // ═══════════════════════════════════════════════════════════
+            // STEP 5: CREATE COMPREHENSIVE SOMATIC STATE
+            // This goes to ClinicalSomaticInterpreter
+            // ═══════════════════════════════════════════════════════════
             const fusedState = {
                 sessionId: this.sessionId,
                 userId: this.userId,
                 timestamp: new Date().toISOString(),
 
-                // REAL DATA from Frontend's Vision Pipeline
+                // Vision data (with baseline deviation)
                 modalities: {
                     facs: {
                         actionUnits: Object.keys(aggregatedAU.intensities),
                         actionUnitIntensities: aggregatedAU.intensities,
+                        baselineDeviation: deviationAnalysis.deviations,
                         facialSymmetry: aggregatedAU.symmetry,
                         confidence: aggregatedAU.confidence,
                         smileAuthenticity: aggregatedAU.smileAuthenticity
                     },
-                    prosody: null // Would come from separate audio processing
+                    prosody: congruenceData.prosody
                 },
 
-                // Preliminary somatic markers
-                somaticMarkers: this.inferSomaticMarkers(aggregatedAU)
+                // Clinical markers (based on DEVIATION, not absolute)
+                somaticMarkers: deviationAnalysis.clinicalMarkers,
+
+                // Congruence data
+                congruenceAnalysis: congruenceAnalysis,
+
+                // Temporal data
+                temporalPatterns: temporalInsights,
+
+                // Metadata
+                calibrationQuality: this.baselineCalibration.calibrationQuality,
+                analysisConfidence: deviationAnalysis.confidence
             };
 
-            // 3. Clinical Interpretation (THIS IS THE HEART)
-            // ClinicalSomaticInterpreter now processes REAL vision data, not mocks
+            // ═══════════════════════════════════════════════════════════
+            // STEP 6: CLINICAL INTERPRETATION
+            // ClinicalSomaticInterpreter receives CALIBRATED data
+            // ═══════════════════════════════════════════════════════════
             const interpretation = clinicalSomaticInterpreter.interpretSomaticState(fusedState);
 
             this.lastInterpretation = interpretation;
 
-            // 4. Send therapist guidance back to Frontend
+            // ═══════════════════════════════════════════════════════════
+            // STEP 7: ENHANCE WITH INCONGRUENCE INSIGHTS
+            // ═══════════════════════════════════════════════════════════
+            if (congruenceAnalysis?.incongruencePatterns?.length > 0) {
+                interpretation.incongruencePatterns = congruenceAnalysis.incongruencePatterns;
+                interpretation.clinicalSignificance = congruenceAnalysis.clinicalSignificance;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // STEP 8: SEND TO FRONTEND
+            // ═══════════════════════════════════════════════════════════
             this.sendMessage({
                 type: 'therapist_guidance',
                 sessionId: this.sessionId,
@@ -166,13 +322,22 @@ export class AUWebSocketHandler {
                 autonomicState: interpretation.autonomicState,
                 somaticMarkers: interpretation.somaticMarkers,
                 recommendations: interpretation.recommendations,
+
+                // NEW: Rich clinical data
+                baselineDeviation: deviationAnalysis.deviations,
+                congruencePatterns: congruenceAnalysis?.incongruencePatterns,
+                temporalAnalysis: temporalInsights,
+                calibrationQuality: this.baselineCalibration.calibrationQuality,
+
                 timestamp: new Date().toISOString()
             });
 
-            logger.info('[AUWebSocket] Clinical interpretation complete', {
+            logger.info('[AUWebSocket] Full clinical analysis complete', {
                 sessionId: this.sessionId,
                 emotionalState: interpretation.emotionalState?.primary,
-                autonomicState: interpretation.autonomicState?.vagalState
+                autonomicState: interpretation.autonomicState?.vagalState,
+                congruenceScore: congruenceAnalysis?.congruence?.congruenceScore,
+                calibrationQuality: this.baselineCalibration.calibrationQuality
             });
         } catch (error) {
             logger.error('[AUWebSocket] Clinical interpretation failed:', { error: error.message });

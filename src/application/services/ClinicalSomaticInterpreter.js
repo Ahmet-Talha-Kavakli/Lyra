@@ -645,7 +645,7 @@ export class ClinicalSomaticInterpreter {
 
     getAutonomicRationale(vagalState, markers) {
         if (vagalState === 'ventral_vagal') {
-            return 'Client's vagus nerve is in "social engagement" mode. Brain is integrating. This is the optimal window for processing and change.';
+            return 'Client\'s vagus nerve is in "social engagement" mode. Brain is integrating. This is the optimal window for processing and change.';
         } else if (vagalState === 'sympathetic_activation') {
             return 'Client\'s body is in survival mode (fight/flight). Processing deep emotions now would be overwhelming. Stabilize first.';
         } else if (vagalState === 'dorsal_vagal_shutdown') {

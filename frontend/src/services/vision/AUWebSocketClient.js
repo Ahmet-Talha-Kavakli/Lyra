@@ -37,6 +37,9 @@ export class AUWebSocketClient {
         this.onDisconnected = null;
         this.onError = null;
         this.onClinicalGuidance = null;
+        this.onCalibrationStart = null;
+        this.onCalibrationProgress = null;
+        this.onCalibrationComplete = null;
     }
 
     /**
@@ -144,6 +147,22 @@ export class AUWebSocketClient {
             const message = JSON.parse(data);
 
             switch (message.type) {
+                case 'init_ack':
+                    // Backend acknowledged initialization
+                    console.log('[AUWebSocket] Init acknowledged, calibration starting');
+                    if (this.onCalibrationStart) {
+                        this.onCalibrationStart(message);
+                    }
+                    break;
+
+                case 'calibration_progress':
+                    // Backend sending calibration progress
+                    console.log('[AUWebSocket] Calibration progress:', message.progress);
+                    if (this.onCalibrationProgress) {
+                        this.onCalibrationProgress(message);
+                    }
+                    break;
+
                 case 'therapist_guidance':
                     // Backend sent clinical guidance back
                     console.log('[AUWebSocket] Received guidance:', message.guidance);

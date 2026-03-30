@@ -149,6 +149,30 @@
         <div id="vizual-kapat" onclick="vizualKapat()">Geri dön</div>
     </div>
 
+    <!-- BASELINE CALIBRATION OVERLAY -->
+    <div id="calibration-overlay" style="display:none;">
+        <div id="calibration-card">
+            <div id="calibration-header">
+                <h2>📊 Kalibrasyonla Başlayalım</h2>
+                <p>Seninle tanışmam için 60 saniye daha devam et. Rahat ol, doğal davran.</p>
+            </div>
+            <div id="calibration-progress-wrap">
+                <div id="calibration-progress-bar"></div>
+                <div id="calibration-timer">60s</div>
+            </div>
+            <div id="calibration-status">Kalibrasyonunuz başlıyor... Yüz ifadeni sakin tutun.</div>
+            <div id="calibration-tips">
+                <p>💡 İpuçları:</p>
+                <ul>
+                    <li>Doğal şekilde oturt</li>
+                    <li>İyi ışıklandırma için düzene bak</li>
+                    <li>Yüzünü doğrudan kameraya çevir</li>
+                </ul>
+            </div>
+            <button id="calibration-skip" onclick="skipCalibration()">Geç</button>
+        </div>
+    </div>
+
     <div class="therapy-layout" id="therapyLayout">
         <div class="panels-row">
             <!-- Sol panel: Lyra 3D avatar -->

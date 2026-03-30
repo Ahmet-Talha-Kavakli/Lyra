@@ -1474,6 +1474,145 @@ body {
 }
 
 /* ══════════════════════════════════
+   BASELINE CALIBRATION OVERLAY
+   ══════════════════════════════════ */
+#calibration-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 8, 6, 0.92);
+  backdrop-filter: var(--blur-md);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+#calibration-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-lg);
+  padding: 40px 32px;
+  max-width: 360px;
+  animation: scaleIn 0.4s var(--transition);
+  text-align: center;
+}
+
+#calibration-header h2 {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0 0 8px 0;
+  color: var(--text);
+}
+
+#calibration-header p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+#calibration-progress-wrap {
+  position: relative;
+  margin: 24px 0 16px 0;
+  height: 8px;
+  background: rgba(200, 169, 110, 0.1);
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+#calibration-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  border-radius: 100px;
+  width: 0%;
+  animation: none;
+  transition: width 0.3s ease;
+}
+
+#calibration-timer {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: rgba(200, 169, 110, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+}
+
+#calibration-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+#calibration-tips {
+  background: rgba(200, 169, 110, 0.06);
+  border: 1px solid rgba(200, 169, 110, 0.12);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+#calibration-tips p {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 8px 0;
+  letter-spacing: 0.05em;
+}
+
+#calibration-tips ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#calibration-tips li {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  padding-left: 16px;
+  position: relative;
+}
+
+#calibration-tips li:before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  color: var(--primary);
+}
+
+#calibration-tips li:last-child {
+  margin-bottom: 0;
+}
+
+#calibration-skip {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+#calibration-skip:hover {
+  border-color: var(--border-md);
+  color: var(--text);
+  background: rgba(200, 169, 110, 0.06);
+}
+
+/* ══════════════════════════════════
    REDUCED MOTION
    ══════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
