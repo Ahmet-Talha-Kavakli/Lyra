@@ -93,9 +93,11 @@ export class AUWebSocketClient {
     }
 
     /**
-     * Send AU frame to backend
+     * Send AU frame to backend with optional prosody data
+     * @param {Object} auData - Action unit data from vision pipeline
+     * @param {Object} prosodyData - Optional prosody data from audio pipeline
      */
-    sendAUFrame(auData) {
+    sendAUFrame(auData, prosodyData = null) {
         if (!this.isConnected) {
             console.warn('[AUWebSocket] Not connected, dropping frame');
             return;
@@ -112,6 +114,19 @@ export class AUWebSocketClient {
                 smileAuthenticity: auData.actionUnits?.smile_authenticity,
                 timestamp: new Date().toISOString(),
             };
+
+            // Add prosody data if available
+            if (prosodyData) {
+                message.prosody = {
+                    pitch_normalized: prosodyData.pitch_normalized,
+                    pitch_hz: prosodyData.pitch_hz,
+                    intensity_db: prosodyData.intensity_db,
+                    intensity_normalized: prosodyData.intensity_normalized,
+                    speech_rate_wpm: prosodyData.speech_rate_wpm,
+                    voice_quality: prosodyData.voice_quality,
+                    confidence: prosodyData.confidence
+                };
+            }
 
             this.sendMessage(message);
 
