@@ -7,7 +7,6 @@
 
 import express from 'express';
 import { logger } from '../lib/infrastructure/logger.js';
-import { openai } from '../lib/shared/openai.js';
 import { supabase } from '../lib/shared/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimit } from 'express-rate-limit';
@@ -16,18 +15,7 @@ import {
     getUserEmotion, setUserEmotion,
     getSessionTranscript, setSessionTranscript
 } from '../src/services/cache/redisService.js';
-import {
-    queueProfileUpdatePersistent,
-    queueSessionAnalysisPersistent,
-    queueHomeworkGenerationPersistent
-} from '../src/services/queue/persistentQueue.js';
-import {
-    selectPsychologyModules,
-    buildEnhancedSystemPrompt,
-    extractPsychologyInsights,
-    formatPsychologyContext
-} from '../src/services/psychology/psychologyIntegration.js';
-import { executeModules, formatModuleResultsForLLM } from '../src/services/psychology/moduleExecutor.js';
+import { TherapistAgent } from '../src/application/agents/TherapistAgent.js';
 
 const router = express.Router();
 
@@ -43,88 +31,80 @@ const chatRateLimit = rateLimit({
 
 /**
  * POST /v1/api/chat/completions
- * Vapi Custom LLM endpoint with Psychology Integration
+ * Lyra's Omni-Modal Chat Endpoint
  *
  * Flow:
- * 1. Accept messages array
- * 2. Select relevant psychology modules based on conversation
- * 3. Build enhanced system prompt using therapeutic approaches
- * 4. Call OpenAI with psychology-informed context
- * 5. Stream response via SSE
- * 6. Queue background analysis jobs with psychology insights
+ * 1. Accept user message + optional somatic telemetry (facial + vocal)
+ * 2. Retrieve patient's episodic memory (RAG)
+ * 3. Use TherapistAgent (Claude 3.5 Sonnet) with full context
+ * 4. Stream response via SSE
  */
 router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompletionSchema), async (req, res) => {
     try {
         // ✅ Request already validated by middleware
         const { messages, model, call } = req.validated;
 
-        // Get userId from call metadata or request
+        // Get userId and sessionId from request
         const userId = call?.metadata?.userId || call?.assistantOverrides?.variableValues?.userId;
+        const sessionId = call?.metadata?.sessionId || `session_${Date.now()}`;
 
-        logger.info('[CHAT] Request received', {
+        // Optional: Somatic telemetry from frontend (facial + vocal)
+        const somaticTelemetry = req.body.somaticTelemetry || null;
+
+        logger.info('[CHAT] Omni-modal request received', {
             userId,
+            sessionId,
             messageCount: messages.length,
-            model: model || 'gpt-4o-mini'
+            hasSomaticData: !!somaticTelemetry
         });
 
-        // AŞAMA 5: Select psychology modules based on conversation context
-        const selectedModules = selectPsychologyModules(messages);
-        logger.info('[PSYCHOLOGY] Modules selected', {
+        // Initialize TherapistAgent with patient context
+        const therapistAgent = new TherapistAgent({
             userId,
-            modules: selectedModules
+            sessionId,
+            model: 'claude-3-5-sonnet-20241022'
         });
 
-        // EXECUTE MODULES — Get real therapeutic insights
-        const moduleResults = await executeModules(selectedModules, messages);
-        const moduleContext = formatModuleResultsForLLM(moduleResults);
+        // Get the last user message
+        const userMessage = messages[messages.length - 1]?.content || '';
 
-        logger.info('[MODULE_EXECUTION] Modules executed', {
-            userId,
-            results: Object.keys(moduleResults).filter(k => moduleResults[k].status === 'executed')
-        });
+        // Prepare clinical data for TherapistAgent
+        const clinicalData = {
+            transcript: userMessage,
+            somaticMarkers: somaticTelemetry?.somaticMarkers || {},
+            congruenceAnalysis: somaticTelemetry?.congruenceAnalysis || {},
+            temporalPatterns: somaticTelemetry?.temporalPatterns || {},
+            emotionalState: somaticTelemetry?.emotionalState || {},
+            autonomicState: somaticTelemetry?.autonomicState || {},
+            recommendations: somaticTelemetry?.recommendations || {},
+            baselineDeviation: somaticTelemetry?.baselineDeviation || {}
+        };
 
-        // Build enhanced system prompt using selected psychology modules
-        let systemPrompt = buildEnhancedSystemPrompt(selectedModules);
+        // Generate response with RAG + somatic context
+        const therapistResponse = await therapistAgent.generateResponse(clinicalData);
 
-        // INJECT MODULE RESULTS INTO SYSTEM PROMPT
-        systemPrompt += `\n\n## Therapeutic Insights from Psychology Analysis\n${moduleContext}`;
-
-        // Call OpenAI with psychology-informed context (REAL streaming)
+        // Stream response via SSE
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        let fullContent = ''; // Accumulate for psychology analysis
-
         try {
-            const stream = await openai.chat.completions.create({
-                model: model || 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...messages
-                ],
-                max_tokens: 1000,
-                temperature: 0.7,
-                stream: true // ✅ REAL streaming (was false before)
-            });
+            // Send response in chunks
+            const responseText = therapistResponse.response;
+            const chunkSize = 20;
 
-            // Stream tokens as they arrive
-            for await (const chunk of stream) {
-                const delta = chunk.choices[0]?.delta;
-                if (!delta) continue;
-
-                // Accumulate content for analysis
-                if (delta.content) {
-                    fullContent += delta.content;
-                }
-
-                // Send SSE chunk
+            for (let i = 0; i < responseText.length; i += chunkSize) {
+                const chunk = responseText.substring(i, i + chunkSize);
                 const sseChunk = {
-                    id: chunk.id || `chatcmpl-${Date.now()}`,
+                    id: `chatcmpl-${Date.now()}`,
                     object: 'text_completion.chunk',
-                    created: chunk.created || Date.now(),
-                    model: chunk.model,
-                    choices: [{ index: 0, delta, finish_reason: chunk.choices[0]?.finish_reason || null }]
+                    created: Date.now(),
+                    model: 'claude-3-5-sonnet-20241022',
+                    choices: [{
+                        index: 0,
+                        delta: { content: chunk },
+                        finish_reason: i + chunkSize >= responseText.length ? 'stop' : null
+                    }]
                 };
 
                 res.write(`data: ${JSON.stringify(sseChunk)}\n\n`);
@@ -134,13 +114,12 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             res.write(`data: [DONE]\n\n`);
             res.end();
 
-            // Extract psychology insights from complete response (after streaming ends)
-            const psychologyInsights = extractPsychologyInsights(fullContent, selectedModules);
-
-            logger.info('[CHAT] Streaming complete', {
+            logger.info('[CHAT] Response streamed', {
                 userId,
-                contentLength: fullContent.length,
-                psychologyInsights: psychologyInsights.intervention_type
+                sessionId,
+                responseLength: responseText.length,
+                similarMoments: therapistResponse.context.similarMoments,
+                themes: therapistResponse.context.relevantThemes
             });
         } catch (streamErr) {
             logger.error('[CHAT] Stream error', { error: streamErr.message });
@@ -148,55 +127,9 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             res.end();
         }
 
-        // Queue background jobs with persistent BullMQ
-        // Response already sent to client, jobs will be processed in background
-        // If server crashes, jobs are recovered from Redis
-        if (userId) {
-            const transcript = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-            const sessionId = `${userId}_${Date.now()}`;
-            const psychologyContext = formatPsychologyContext(selectedModules, {
-                intervention_type: 'streaming_based_analysis',
-                emotional_tone: 'engaged',
-                action_items: [],
-                timestamp: Date.now()
-            });
-
-            // Queue jobs (persistent, survives server crashes)
-            try {
-                await queueProfileUpdatePersistent(userId, transcript, psychologyContext);
-                await queueSessionAnalysisPersistent(userId, sessionId, transcript, psychologyContext, null, null, null, null, null);
-                await queueHomeworkGenerationPersistent(userId, sessionId, transcript, psychologyContext, 'belirsiz', null);
-
-                logger.info('[QUEUE] Persistent jobs queued', {
-                    userId,
-                    sessionId,
-                    modules: selectedModules
-                });
-            } catch (qErr) {
-                logger.warn('[QUEUE] Queueing error', { error: qErr.message });
-                // Don't fail response — client already got chat response
-            }
-        }
-
     } catch (error) {
         logger.error('[CHAT] Error', { error: error.message });
         res.status(500).json({ error: error.message });
-    }
-});
-
-/**
- * GET /v1/queue-status
- * Monitor job queue
- */
-router.get('/v1/queue-status', async (req, res) => {
-    try {
-        // Dynamic import for queue status (ESM compatible)
-        const { getQueueStatus } = await import('../src/services/queue/analysisJobs.js');
-        const status = getQueueStatus();
-        res.json(status);
-    } catch (err) {
-        logger.error('[QUEUE STATUS] Error', { error: err.message });
-        res.status(500).json({ error: 'Queue status unavailable' });
     }
 });
 

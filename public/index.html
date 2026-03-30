@@ -225,6 +225,7 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import Vapi from "https://esm.sh/@vapi-ai/web";
+        import { OmniModalPipeline } from '/frontend/src/services/OmniModalPipeline.js';
 
         // ── SUPABASE AUTH ──
         let supabaseClient = null;
@@ -701,6 +702,9 @@
             emotionTimer = setTimeout(analyzeEmotion, adaptifInterval);
         }
 
+        // ── OMNI-MODAL PIPELINE (Video + Audio + WebSocket) ──
+        let omniModal = null;
+
         async function startCamera() {
             try {
                 camStream = await navigator.mediaDevices.getUserMedia({
@@ -712,6 +716,29 @@
                 cameraActive = true;
                 cameraToggleBtn.classList.add('active');
                 cameraToggleBtn.textContent = '🟢';
+
+                // INTEGRATE: Start OmniModalPipeline (Vision + Audio + WebSocket)
+                console.log('[OMNI-MODAL] Initializing pipeline...');
+                omniModal = new OmniModalPipeline({
+                    videoElement: userVideo,
+                    baseWsUrl: 'ws://localhost:3001',
+                    userId: persistentUserId,
+                    sessionId: sessionId
+                });
+
+                omniModal.onReady = () => {
+                    console.log('[OMNI-MODAL] Ready ✓');
+                    omniModal.start();
+                    console.log('[OMNI-MODAL] Vision + Audio + WebSocket active');
+                };
+
+                omniModal.onError = (error) => {
+                    console.error('[OMNI-MODAL] Error:', error);
+                    showError(`Sensör hatası: ${error.message}`);
+                };
+
+                await omniModal.initialize();
+
                 scheduleNextAnalysis();
             } catch (err) {
                 console.error('[KAMERA] Erişim reddedildi:', err);
@@ -724,6 +751,12 @@
         }
 
         function stopCamera() {
+            // Stop OmniModalPipeline
+            if (omniModal) {
+                omniModal.stop();
+                console.log('[OMNI-MODAL] Stopped');
+            }
+
             if (camStream) camStream.getTracks().forEach(t => t.stop());
             camStream = null;
             cameraActive = false;
