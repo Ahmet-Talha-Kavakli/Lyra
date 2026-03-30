@@ -24,7 +24,7 @@ async function initializeRedisRateLimitStore() {
 
         await redisRateLimitClient.connect();
         redisRateLimitStore = new RedisStore({
-            client: redisRateLimitClient,
+            sendCommand: async (...args) => await redisRateLimitClient.sendCommand(args),
             prefix: 'rl:',  // Rate limit key prefix
         });
 
