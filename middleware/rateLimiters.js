@@ -15,11 +15,30 @@ let redisRateLimitStore = null;
 // Initialize Redis store for rate limiting
 async function initializeRedisRateLimitStore() {
     try {
-        const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-        redisRateLimitClient = createClient({ url: redisUrl });
+        // PRODUCTION READY: Support Redis URL (preferred) or individual config
+        const redisConfig = process.env.REDIS_URL
+            ? { url: process.env.REDIS_URL }
+            : {
+                host: process.env.REDIS_HOST || 'localhost',
+                port: parseInt(process.env.REDIS_PORT || '6379'),
+                password: process.env.REDIS_PASSWORD || undefined,
+                socket: {
+                    reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+                },
+                // TLS for production
+                ...(process.env.NODE_ENV === 'production' && {
+                    socket: { tls: true }
+                })
+            };
+
+        redisRateLimitClient = createClient(redisConfig);
 
         redisRateLimitClient.on('error', (err) => {
             logger.error('[RateLimit Redis] Connection error', { error: err.message });
+        });
+
+        redisRateLimitClient.on('reconnecting', () => {
+            logger.warn('[RateLimit Redis] Reconnecting...');
         });
 
         await redisRateLimitClient.connect();
@@ -28,10 +47,20 @@ async function initializeRedisRateLimitStore() {
             prefix: 'rl:',  // Rate limit key prefix
         });
 
-        logger.info('[RateLimit Redis] Store initialized');
+        logger.info('[RateLimit Redis] Store initialized successfully', {
+            host: redisConfig.host || 'url-based'
+        });
     } catch (err) {
-        logger.warn('[RateLimit Redis] Fallback to memory store', { error: err.message });
-        redisRateLimitStore = null; // Use default MemoryStore
+        logger.error('[RateLimit Redis] CRITICAL - Fallback to memory store (NOT PRODUCTION SAFE)', {
+            error: err.message,
+            env: process.env.NODE_ENV
+        });
+
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error('[RateLimit] Production requires Redis — set REDIS_URL or REDIS_HOST/PORT');
+        }
+
+        redisRateLimitStore = null; // Use default MemoryStore (dev only)
     }
 }
 

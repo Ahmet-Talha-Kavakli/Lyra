@@ -60,13 +60,44 @@ const config = {
 };
 
 // Validate critical settings
-const requiredInProduction = ['OPENAI_API_KEY', 'DATABASE_URL', 'JWT_SECRET'];
+const requiredInProduction = [
+    'OPENAI_API_KEY',
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_KEY',
+    'REDIS_HOST',
+    'REDIS_PORT'
+];
 
+const requiredInAll = ['JWT_SECRET', 'OPENAI_API_KEY'];
+
+// Always validate core keys
+for (const key of requiredInAll) {
+    if (!config[key]) {
+        const msg = `CRITICAL: Missing ${key} — application cannot run`;
+        console.error(msg);
+        throw new Error(msg);
+    }
+}
+
+// Production strict validation
 if (config.IS_PROD) {
+    const missing = [];
     for (const key of requiredInProduction) {
         if (!config[key]) {
-            throw new Error(`Missing required config in production: ${key}`);
+            missing.push(key);
         }
+    }
+    if (missing.length > 0) {
+        const msg = `PRODUCTION DEPLOYMENT BLOCKED: Missing required env vars: ${missing.join(', ')}`;
+        console.error(msg);
+        throw new Error(msg);
+    }
+
+    // Warn about weak secrets
+    if (config.JWT_SECRET === 'your-secret-key') {
+        throw new Error('CRITICAL: Default JWT_SECRET detected in production. Set JWT_SECRET env var.');
     }
 }
 

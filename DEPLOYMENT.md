@@ -1,282 +1,336 @@
-# Lyra Deployment Guide
+# 🚀 LYRA DEPLOYMENT GUIDE - PRODUCTION (100K+ USERS)
 
-Enterprise-grade production deployment for 100K concurrent users.
+## Architecture Overview
 
-## Quick Start
-
-### Docker Compose (Development)
-```bash
-# Copy environment file
-cp .env.example .env
-
-# Start all services (app + Redis + Prometheus + Grafana)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f lyra
-
-# Check health
-curl http://localhost:3000/health
+```
+┌─────────────────────────────────────────────────────────┐
+│                   VERCEL (Frontend + API)               │
+├─────────────────────────────────────────────────────────┤
+│ Frontend (React) │ API Functions (Node.js)              │
+└──────────┬───────────────────────────────┬──────────────┘
+           │                               │
+     [5173]                            [3000]
+           │                               │
+    ┌──────▼────────┐          ┌──────────▼──────────┐
+    │   vercel.com   │          │  Supabase Database  │
+    │   (static)     │          │  (PostgreSQL)       │
+    └────────────────┘          └──────────┬──────────┘
+                                           │
+                          ┌────────────────┼────────────────┐
+                          │                │                │
+                    ┌─────▼──────┐   ┌─────▼──────┐   ┌────▼────────┐
+                    │ Redis Cache │   │ Bull Queue │   │ Monitoring  │
+                    │ (Rate Limit)│   │(Background)│   │   (Sentry)  │
+                    └─────────────┘   └────────────┘   └─────────────┘
 ```
 
-### Docker Build (Production)
-```bash
-# Build image
-docker build -t lyra-therapist:1.0.0 .
+## Pre-Deployment Checklist
 
-# Run with environment
-docker run -p 3000:3000 \
-  -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  -e SUPABASE_URL=$SUPABASE_URL \
-  -e SUPABASE_KEY=$SUPABASE_KEY \
-  -e REDIS_URL=redis://redis:6379 \
-  lyra-therapist:1.0.0
+### 1. Environment Secrets
+
+**Create in Vercel Dashboard:**
+```
+Settings → Environment Variables
 ```
 
-## Kubernetes Deployment (100K Scale)
+Required variables:
+- [ ] `OPENAI_API_KEY` — OpenAI API key
+- [ ] `DATABASE_URL` — Supabase PostgreSQL connection string
+- [ ] `SUPABASE_URL` — Supabase project URL
+- [ ] `SUPABASE_SERVICE_KEY` — Supabase service role key
+- [ ] `REDIS_URL` — Redis connection string (Upstash or Redis Cloud)
+- [ ] `JWT_SECRET` — Random 32+ char secret
+- [ ] `FRONTEND_URL` — Your production frontend domain
+- [ ] `SESSION_SECRET` — Random secret for sessions
 
-### Prerequisites
-- Kubernetes 1.24+
-- kubectl configured
-- Docker registry access
-- cert-manager (for TLS)
-- nginx-ingress controller
+### 2. Database Setup
 
-### Step 1: Set Environment Variables
+**In Supabase:**
 
-```bash
-# Edit k8s/secret.yaml with actual values
-export VAPI_API_KEY="your_key"
-export OPENAI_API_KEY="your_key"
-export SUPABASE_URL="your_url"
-# ... etc
+```sql
+-- Run these migrations
+psql postgresql://user:password@db.supabase.co:5432/postgres
 
-# Create secret from file (recommended for CI/CD)
-kubectl create secret generic lyra-secrets \
-  --from-literal=VAPI_API_KEY=$VAPI_API_KEY \
-  --from-literal=OPENAI_API_KEY=$OPENAI_API_KEY \
-  -n lyra
+-- Create schema
+CREATE SCHEMA IF NOT EXISTS public;
+
+-- Create users table
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMP
+);
+
+-- Create sessions table
+CREATE TABLE therapy_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP,
+    status TEXT DEFAULT 'active'
+);
+
+-- Create messages table
+CREATE TABLE chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID REFERENCES therapy_sessions(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL, -- 'user' | 'assistant'
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indices for performance
+CREATE INDEX idx_sessions_user_id ON therapy_sessions(user_id);
+CREATE INDEX idx_messages_session_id ON chat_messages(session_id);
+CREATE INDEX idx_messages_user_id ON chat_messages(user_id);
 ```
 
-### Step 2: Deploy
+### 3. Redis Setup
+
+**Option A: Upstash (Recommended for Vercel)**
+1. Create account at https://upstash.com
+2. Create Redis database
+3. Copy `REDIS_URL` (includes auth)
+4. Add to Vercel environment variables
+
+**Option B: Redis Cloud**
+1. Create account at https://redis.com/cloud
+2. Create database
+3. Get connection string
+4. Add to Vercel environment variables
+
+### 4. Backend Deployment
+
+#### Step 1: Push to GitHub
 
 ```bash
-# Create namespace
-kubectl apply -f k8s/namespace.yaml
-
-# Create config and secrets
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-
-# Create RBAC
-kubectl apply -f k8s/rbac.yaml
-
-# Deploy Redis
-kubectl apply -f k8s/service.yaml
-
-# Deploy application
-kubectl apply -f k8s/deployment.yaml
-
-# Create ingress
-kubectl apply -f k8s/ingress.yaml
-
-# Verify rollout
-kubectl rollout status deployment/lyra-app -n lyra
+git add .
+git commit -m "build: production-ready deployment config"
+git push origin main
 ```
 
-### Step 3: Verify Deployment
+#### Step 2: Connect to Vercel
 
 ```bash
-# Check pods
-kubectl get pods -n lyra
-
-# Check services
-kubectl get svc -n lyra
-
-# Check ingress
-kubectl get ingress -n lyra
-
-# View logs
-kubectl logs -f deployment/lyra-app -n lyra
-
-# Port forward (local testing)
-kubectl port-forward svc/lyra-internal 3000:3000 -n lyra
+vercel --prod
 ```
 
-## Scaling to 100K Concurrent Users
+Or via Vercel Dashboard:
+1. Import project from GitHub
+2. Select root directory (not `/frontend`)
+3. Override build command: `npm install`
+4. Add environment variables
 
-### Application Layer
-- **Replicas**: 3-10 pods (HPA scales automatically)
-- **CPU**: 500m request, 1000m limit per pod
-- **Memory**: 512Mi request, 1Gi limit per pod
-- **Max throughput**: ~10K requests/minute per pod = 100K across cluster
+#### Step 3: Verify Deployment
 
-### Redis Layer
-- **StatefulSet**: Single master (read-write)
-- **Storage**: 1Gi persistent volume
-- **Upgrade path**: Redis Sentinel/Cluster for HA
-- **Memory policy**: allkeys-lru (evict unused keys)
-
-### Database (Supabase)
-- **Connection pool**: 20 connections per pod
-- **Max connections**: 200 (10 pods × 20)
-- **Upgrade**: Supabase Enterprise plan for higher limits
-
-### Load Balancing
-- **Strategy**: Round-robin (K8s built-in)
-- **Session affinity**: ClientIP (1 hour timeout)
-- **Rate limiting**: 20 requests/minute per user (configurable)
-
-## Monitoring & Observability
-
-### Prometheus
-- Access: http://localhost:9090
-- Metrics: CPU, memory, request latency, error rates
-- Scrape interval: 15s
-
-### Grafana
-- Access: http://localhost:3001
-- Dashboards: Application, Redis, System
-- Default: admin/admin (change in production)
-
-### Health Checks
 ```bash
-# Liveness (restart if fails)
-GET /health
-
-# Readiness (remove from LB if fails)
-GET /health
-
-# Custom metrics
-GET /metrics
+curl https://your-backend.vercel.app/health
 ```
 
-## CI/CD Integration
+Expected response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-03-30T...",
+  "env": "production",
+  "version": "1.0.0"
+}
+```
 
-### GitHub Actions Example
-```yaml
-name: Deploy to K8s
+### 5. Frontend Deployment
 
-on:
-  push:
-    branches: [main]
+#### Step 1: Build
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Build Docker image
-        run: docker build -t lyra-therapist:${{ github.sha }} .
-      
-      - name: Push to registry
-        run: docker push your-registry/lyra-therapist:${{ github.sha }}
-      
-      - name: Update K8s image
-        run: kubectl set image deployment/lyra-app \
-          lyra=your-registry/lyra-therapist:${{ github.sha }} \
-          -n lyra
-      
-      - name: Wait for rollout
-        run: kubectl rollout status deployment/lyra-app -n lyra
+```bash
+cd frontend
+npm run build
+# Output: dist/
+```
+
+#### Step 2: Deploy
+
+**Option A: Vercel (Recommended)**
+```bash
+vercel --prod
+```
+
+**Option B: Netlify**
+```bash
+npm install -g netlify-cli
+netlify deploy --prod --dir=dist
+```
+
+#### Step 3: Configure CORS in Backend
+
+Update `.env.production`:
+```
+FRONTEND_URL=https://your-frontend.vercel.app
+```
+
+Redeploy backend.
+
+## Post-Deployment
+
+### 1. Health Checks
+
+```bash
+# Backend health
+curl https://api.your-domain.com/health
+
+# Frontend load
+# Open https://your-frontend.vercel.app in browser
+```
+
+### 2. Monitor Logs
+
+**Vercel Dashboard:**
+```
+Settings → Functions → Logs
+```
+
+**Sentry (Error Tracking):**
+1. Create account at sentry.io
+2. Create Node.js project
+3. Add `SENTRY_DSN` to environment variables
+4. Monitor errors at https://sentry.io/projects/
+
+### 3. Database Performance
+
+Check Supabase dashboard:
+```
+Database → Logs
+Database → Performance
+```
+
+Look for:
+- Slow queries (> 1000ms)
+- Connection pool exhaustion
+- Index usage
+
+### 4. Rate Limiting Status
+
+Monitor Redis:
+```bash
+# If using Upstash, check web console
+# Look for key patterns: rl:*
+```
+
+## Scaling Beyond 100K Users
+
+### Database Optimization
+```sql
+-- Add read replicas in Supabase
+-- Enable connection pooling (PgBouncer)
+-- Archive old sessions to cold storage
+```
+
+### Cache Layer
+```javascript
+// Implement caching for:
+// - Psychology module configs
+// - User preferences
+// - Session history
+```
+
+### Rate Limiting
+```javascript
+// Adjust limits based on monitoring:
+// - Chat: 20 msgs/min per user
+// - Auth: 5 attempts/15min per IP
+// - API: 100 req/min per IP
 ```
 
 ## Troubleshooting
 
-### Pod not starting
+### Issue: 503 Service Unavailable
+
+**Cause:** Database connection exhaustion
+
+**Fix:**
 ```bash
-kubectl describe pod <pod-name> -n lyra
-kubectl logs <pod-name> -n lyra
+# Check pool stats
+curl https://api.your-domain.com/health | jq .checks.databaseOptimization
+
+# Reduce concurrent connections
+# Increase DB_POOL_SIZE in Supabase settings
 ```
 
-### High memory usage
+### Issue: WebSocket Timeout
+
+**Cause:** Vercel serverless timeout (30s default)
+
+**Fix:**
+- Move WebSocket to external service (Socket.io on Railway)
+- OR use polling instead of WebSocket
+- OR increase timeout in vercel.json (up to 60s)
+
+### Issue: High OpenAI Costs
+
+**Cause:** Inefficient prompt caching
+
+**Fix:**
+```javascript
+// Implement:
+// - Response caching (Redis)
+// - Batch processing of similar requests
+// - Cost monitoring per user
+```
+
+## Security Checklist
+
+- [ ] All env vars set (no defaults in production)
+- [ ] HTTPS/WSS enforced
+- [ ] Rate limiting enabled
+- [ ] CORS whitelist configured
+- [ ] JWT secret is cryptographically random
+- [ ] Database backups enabled
+- [ ] Audit logging enabled
+- [ ] Error monitoring (Sentry) active
+- [ ] GDPR consent mechanism working
+- [ ] Log sanitization removing PII
+
+## Monitoring & Alerts
+
+### Key Metrics to Monitor
+
+1. **API Response Time**
+   - Target: < 200ms (p95)
+   - Alert: > 500ms (p95)
+
+2. **Error Rate**
+   - Target: < 0.1%
+   - Alert: > 1%
+
+3. **Database Connections**
+   - Target: < 80% of pool
+   - Alert: > 95% of pool
+
+4. **Redis Hit Rate**
+   - Target: > 80%
+   - Alert: < 50%
+
+5. **OpenAI API Usage**
+   - Monitor: Tokens per user/day
+   - Limit: Set hard caps per account
+
+## Rollback Procedure
+
+If critical issue discovered:
+
 ```bash
-# Check pod metrics
-kubectl top pods -n lyra
+# Vercel: One-click rollback in dashboard
+# Dashboard → Deployments → [Previous] → Redeploy
 
-# Scale down replicas
-kubectl scale deployment lyra-app --replicas=3 -n lyra
+# Or via CLI:
+vercel rollback
 ```
 
-### Redis connection issues
-```bash
-# Check Redis service
-kubectl get svc redis-service -n lyra
+## Support & Resources
 
-# Test connection
-kubectl exec -it <pod-name> -n lyra -- redis-cli -h redis-service ping
-```
-
-### Load balancer not accessible
-```bash
-# Check ingress status
-kubectl get ingress -n lyra
-
-# Wait for external IP
-kubectl get svc lyra-service -n lyra -w
-```
-
-## Rollback
-
-```bash
-# View deployment history
-kubectl rollout history deployment/lyra-app -n lyra
-
-# Rollback to previous version
-kubectl rollout undo deployment/lyra-app -n lyra
-
-# Rollback to specific revision
-kubectl rollout undo deployment/lyra-app --to-revision=2 -n lyra
-```
-
-## Production Checklist
-
-- [ ] All secrets configured (API keys, DB credentials)
-- [ ] TLS certificates set up (cert-manager)
-- [ ] Redis backup strategy defined
-- [ ] Monitoring alerts configured
-- [ ] Log aggregation set up (ELK, CloudWatch, etc.)
-- [ ] Database backups automated
-- [ ] Disaster recovery plan documented
-- [ ] Load testing completed (100K simulation)
-- [ ] Performance baselines established
-- [ ] Security scan passed (OWASP, dependencies)
-
-## Advanced Configuration
-
-### Custom Resource Limits
-Edit `k8s/deployment.yaml` resources section:
-```yaml
-resources:
-  requests:
-    cpu: 1000m        # Increase for high traffic
-    memory: 1Gi
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-```
-
-### Custom HPA Thresholds
-Edit HPA in `k8s/deployment.yaml`:
-```yaml
-metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 60  # More aggressive scaling
-```
-
-### Add Caching Layer (Redis Cluster)
-1. Install Redis Operator
-2. Create RedisCluster manifest
-3. Update REDIS_URL in ConfigMap
-
-## Support
-
-For issues or questions:
-1. Check logs: `kubectl logs -f deployment/lyra-app -n lyra`
-2. Check metrics: Open Grafana dashboard
-3. Check Kubernetes events: `kubectl get events -n lyra`
+- **Vercel Docs:** https://vercel.com/docs
+- **Supabase Docs:** https://supabase.com/docs
+- **Redis Docs:** https://redis.io/docs
+- **OpenAI Docs:** https://platform.openai.com/docs
