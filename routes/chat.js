@@ -26,6 +26,7 @@ import {
     extractPsychologyInsights,
     formatPsychologyContext
 } from '../src/services/psychology/psychologyIntegration.js';
+import { executeModules, formatModuleResultsForLLM } from '../src/services/psychology/moduleExecutor.js';
 
 const router = express.Router();
 
@@ -75,8 +76,20 @@ router.post('/v1/api/chat/completions', chatRateLimit, async (req, res) => {
             modules: selectedModules
         });
 
+        // EXECUTE MODULES — Get real therapeutic insights
+        const moduleResults = await executeModules(selectedModules, messages);
+        const moduleContext = formatModuleResultsForLLM(moduleResults);
+
+        logger.info('[MODULE_EXECUTION] Modules executed', {
+            userId,
+            results: Object.keys(moduleResults).filter(k => moduleResults[k].status === 'executed')
+        });
+
         // Build enhanced system prompt using selected psychology modules
-        const systemPrompt = buildEnhancedSystemPrompt(selectedModules);
+        let systemPrompt = buildEnhancedSystemPrompt(selectedModules);
+
+        // INJECT MODULE RESULTS INTO SYSTEM PROMPT
+        systemPrompt += `\n\n## Therapeutic Insights from Psychology Analysis\n${moduleContext}`;
 
         // Call OpenAI with psychology-informed context (REAL streaming)
         res.setHeader('Content-Type', 'text/event-stream');
