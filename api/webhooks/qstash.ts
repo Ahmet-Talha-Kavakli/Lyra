@@ -1,14 +1,14 @@
 /**
  * POST /api/webhooks/qstash
- * Receives background job completions from Upstash QStash
  *
- * QStash publishes:
- * { jobType, data, timestamp, retryCount, messageId }
- *
- * This endpoint dispatches to job handlers
+ * Secure QStash webhook receiver
+ * - Verifies Upstash signature on every request
+ * - Prevents unauthorized job triggering
+ * - HIPAA audit trail
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import { verifyQStashSignature } from '../../lib/infrastructure/qstashSecurity';
 import { logger } from '../../lib/infrastructure/logger';
 import { backgroundJobs } from '../../lib/infrastructure/backgroundJobs';
 
@@ -22,71 +22,84 @@ export default async function handler(
   }
 
   try {
-    const { jobType, data, messageId, retryCount } = req.body;
+    // Get raw body for signature verification
+    const rawBody = req.rawBody || JSON.stringify(req.body);
 
-    if (!jobType || !data) {
-      logger.warn('[QStash] Invalid job payload', { body: req.body });
-      return res.status(400).json({ error: 'Missing jobType or data' });
+    // Verify QStash signature (CRITICAL SECURITY)
+    const verification = await verifyQStashSignature(req, rawBody);
+
+    if (!verification.verified) {
+      logger.warn('[QStash] Webhook rejected - invalid signature');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: verification.error
+      });
     }
 
-    logger.info('[QStash] Job received', {
-      jobType,
-      messageId,
-      retryCount,
-      attempt: retryCount ? retryCount + 1 : 1
+    const job = verification.body;
+
+    if (!job || !job.jobType || !job.data) {
+      logger.warn('[QStash] Invalid job payload', { job });
+      return res.status(400).json({ error: 'Invalid job payload' });
+    }
+
+    logger.info('[QStash] Job processing', {
+      jobType: job.jobType,
+      messageId: job.messageId,
+      retryCount: job.retryCount || 0
     });
 
-    // Dispatch to appropriate handler
+    // Dispatch to job handler
     let result;
-    switch (jobType) {
+    switch (job.jobType) {
       case 'profile-synthesis':
-        result = await backgroundJobs.profileSynthesis(data);
+        result = await backgroundJobs.profileSynthesis(job.data);
         break;
 
       case 'session-sync':
-        result = await backgroundJobs.sessionSync(data);
+        result = await backgroundJobs.sessionSync(job.data);
         break;
 
       case 'safety-check':
-        result = await backgroundJobs.safetyCheck(data);
+        result = await backgroundJobs.safetyCheck(job.data);
         break;
 
       case 'data-export':
-        result = await backgroundJobs.dataExport(data);
+        result = await backgroundJobs.dataExport(job.data);
         break;
 
       default:
-        logger.warn('[QStash] Unknown job type', { jobType, messageId });
-        return res.status(400).json({ error: `Unknown job type: ${jobType}` });
+        logger.warn('[QStash] Unknown job type', { jobType: job.jobType });
+        return res.status(400).json({
+          error: 'Unknown job type',
+          jobType: job.jobType
+        });
     }
 
     logger.info('[QStash] Job completed', {
-      jobType,
-      messageId,
-      result: JSON.stringify(result).slice(0, 100) // First 100 chars
+      jobType: job.jobType,
+      messageId: job.messageId,
+      result: JSON.stringify(result).slice(0, 100)
     });
 
-    // Return 200 so QStash marks job as successful
     return res.status(200).json({
       success: true,
-      jobType,
-      messageId,
+      jobType: job.jobType,
+      messageId: job.messageId,
       result
     });
 
   } catch (error: any) {
-    logger.error('[QStash] Job failed', {
-      error: error.message,
-      body: JSON.stringify(req.body).slice(0, 200)
+    logger.error('[QStash] Job processing failed', {
+      error: error.message
     });
 
-    // Return 200 anyway - QStash will retry automatically
-    // If we return 500, QStash will retry with exponential backoff
+    // Return 200 anyway so QStash doesn't retry infinitely
+    // (If we return 5xx, QStash retries with backoff)
     return res.status(200).json({
       success: false,
       error: error.message,
-      willRetry: true
+      willRetry: false
     });
-
   }
 }

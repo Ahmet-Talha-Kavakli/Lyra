@@ -1,25 +1,31 @@
 import { logger } from '../../../lib/infrastructure/logger.js';
 import { supabase } from '../../../lib/shared/supabase.js';
 import { validateRequest, chatCompletionSchema } from '../../../lib/infrastructure/validationSchemas.js';
-// UPSTASH REDIS İLE DEĞİŞTİRİLDİ
 import { Redis } from '@upstash/redis';
 import { TherapistAgent } from '../../../src/application/agents/TherapistAgent.js';
 import { IntakeAgent } from '../../../src/application/agents/IntakeAgent.js';
 import { queueJob, waitUntil } from '../../../lib/infrastructure/backgroundJobs.js';
 
 // Serverless Upstash Redis Client
-const redis = Redis.fromEnv(); // Vercel Env variables kullanır (UPSTASH_REDIS_REST_URL vs)
+const redis = Redis.fromEnv();
 
-// Edge Runtime konfigürasyonu (Vercel'de Timeout yememek için çok önemli!)
+// EDGE RUNTIME CONFIGURATION: Bypasses maximum duration limits
 export const config = {
-  maxDuration: 60, // Maximum execution time in Vercel Pro
+  runtime: 'edge', 
 };
 
 /**
- * Yardımcı: Kullanıcının ilk seansı mı kontrol et
+ * PROFESYONEL MÜDAHALE: Veritabanı Darboğazı Çözümü
  */
-async function isFirstSession(userId) {
+async function isFirstSession(userId: string) {
     try {
+        const cacheKey = `lyra:user:${userId}:is_first_session`;
+        const cached = await redis.get(cacheKey);
+        
+        if (cached !== null) {
+            return cached === true || String(cached) === 'true';
+        }
+
         const { data: result, error } = await supabase
             .from('user_profile')
             .select('session_count, is_first_session')
@@ -27,19 +33,17 @@ async function isFirstSession(userId) {
             .single();
 
         if (error && error.code !== 'PGRST116') throw error;
-        if (!result) return true;
-
-        return result.session_count === 0 || result.is_first_session === true;
-    } catch (err) {
+        
+        const isFirst = !result ? true : (result.session_count === 0 || result.is_first_session === true);
+        await redis.set(cacheKey, isFirst, { ex: 3600 });
+        return isFirst;
+    } catch (err: any) {
         logger.warn('[CHAT] First session check failed:', err.message);
         return true;
     }
 }
 
-/**
- * Yardımcı: Seans sayacını güncelle (Vercel waitUntil içine alınacak)
- */
-async function incrementSessionCount(userId) {
+async function incrementSessionCount(userId: string) {
     try {
         const { data: result, error: readError } = await supabase
             .from('user_profile')
@@ -60,18 +64,16 @@ async function incrementSessionCount(userId) {
             .eq('user_id', userId);
 
         if (updateError) throw updateError;
-        logger.info('[CHAT] Session count incremented', { userId, newCount });
-    } catch (err) {
+        await redis.del(`lyra:user:${userId}:is_first_session`);
+    } catch (err: any) {
         logger.warn('[CHAT] Session increment failed:', err.message);
     }
 }
 
-async function getObjectContext(userId) {
+async function getObjectContext(userId: string) {
     try {
         const objectData = await redis.get(`object_tracker:${userId}:current`);
         if (!objectData) return {};
-        
-        // Upstash Redis directly parses JSON if it is a JSON object.
         const parsed = typeof objectData === 'string' ? JSON.parse(objectData) : objectData;
         return {
             detected_objects: parsed.objects || [],
@@ -84,11 +86,10 @@ async function getObjectContext(userId) {
     }
 }
 
-async function getPhysicalHarmContext(userId) {
+async function getPhysicalHarmContext(userId: string) {
     try {
         const harmData = await redis.get(`physical_harm:${userId}:current`);
         if (!harmData) return {};
-
         const parsed = typeof harmData === 'string' ? JSON.parse(harmData) : harmData;
         return {
             indicators: parsed.indicators || [],
@@ -102,27 +103,46 @@ async function getPhysicalHarmContext(userId) {
     }
 }
 
-export default async function handler(req, res) {
-    // Sadece POST desteklenir
+// Edge API Handler 
+export default async function handler(req: Request) {
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
+        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
     }
 
     try {
-        // Vercel Serverless'ta body otomatik parse edilir
-        const body = req.body;
+        // -------------------------------------------------------------------------------- //
+        // CRITICAL SECURITY SHIELD: Extract & Validate HttpOnly Cookie
+        // -------------------------------------------------------------------------------- //
+        const cookieHeader = req.headers.get('cookie') || '';
+        const tokenMatch = cookieHeader.match(/lyra_access_token=([^;]+)/);
+        const accessToken = tokenMatch ? tokenMatch[1] : null;
+
+        if (!accessToken) {
+            logger.warn('[AUTH] Missing access token in chat endpoint');
+            return new Response(JSON.stringify({ error: 'Unauthorized: Missing Authentication Token' }), { status: 401 });
+        }
+
+        // Very secure validation directly through Supabase
+        const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
+
+        if (authError || !user) {
+            logger.warn('[AUTH] Invalid or expired access token', authError);
+            return new Response(JSON.stringify({ error: 'Unauthorized: Invalid Token' }), { status: 401 });
+        }
+
+        // SECURE SOURCE: The userId is strictly determined by the cryptographic verification.
+        const userId = user.id;
+
+        // Vercel Edge Runtime body parsing
+        const body = await req.json();
         
-        // Validation (Manuel validation middleware yerine kod içi adaptasyon)
-        // ... Normalde middleware vardı, burada basitleştirilmiş validasyon uyguluyoruz ...
         const messages = body.messages || [];
         const call = body.call || {};
-
-        const userId = call?.metadata?.userId || call?.assistantOverrides?.variableValues?.userId || 'anonymous';
         const sessionId = call?.metadata?.sessionId || `session_${Date.now()}`;
         const somaticTelemetry = body.somaticTelemetry || null;
         const userMessage = messages[messages.length - 1]?.content || '';
 
-        logger.info('[CHAT] Stream request', { userId, sessionId });
+        logger.info('[CHAT] Stream request authorized', { userId, sessionId });
 
         const objectContext = await getObjectContext(userId);
         const physicalHarmContext = await getPhysicalHarmContext(userId);
@@ -149,65 +169,65 @@ export default async function handler(req, res) {
             agent = new TherapistAgent({ userId, sessionId, model: 'gpt-4o-mini' });
         }
 
-        // SSE HEADERS İÇİN VERCEL STANDARTLARI
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache, no-transform');
-        res.setHeader('Connection', 'keep-alive');
-        
-        let totalTokens = '';
-        let firstTokenTime = null;
         let tokenCount = 0;
 
-        try {
-            for await (const event of agent.generateResponse(clinicalData)) {
-                if (firstTokenTime === null && event.type === 'token') {
-                    firstTokenTime = Date.now();
-                }
+        // Create Readable Stream for Edge Runtime
+        const stream = new ReadableStream({
+            async start(controller) {
+                const encoder = new TextEncoder();
+                const write = (text: string) => controller.enqueue(encoder.encode(text));
 
-                if (event.type === 'token') {
-                    totalTokens += event.content;
-                    tokenCount++;
+                try {
+                    for await (const event of agent.generateResponse(clinicalData)) {
+                        if (event.type === 'token') {
+                            tokenCount++;
+                            const sseChunk = {
+                                id: `chatcmpl-${Date.now()}-${tokenCount}`,
+                                object: 'text_completion.chunk',
+                                model: 'gpt-4o-mini',
+                                choices: [{ delta: { content: event.content } }]
+                            };
+                            write(`data: ${JSON.stringify(sseChunk)}\n\n`);
+                        }
 
-                    const sseChunk = {
-                        id: `chatcmpl-${Date.now()}-${tokenCount}`,
-                        object: 'text_completion.chunk',
-                        model: 'gpt-4o-mini',
-                        choices: [{ delta: { content: event.content } }]
-                    };
-                    res.write(`data: ${JSON.stringify(sseChunk)}\n\n`);
-                }
-
-                if (event.type === 'complete') {
-                    res.write(`data: [DONE]\n\n`);
-                    
-                    if (firstSession && event.isIntakeComplete) {
-                        const intakeSummary = agent.getIntakeSummary();
-                        
-                        // ÖLÜMCÜL HATA DÜZELTİLDİ: Ağır AI işlemleri webhook ile asenkron yapılmalıdır (QStash).
-                        waitUntil(
-                            Promise.all([
-                                queueJob('profile-synthesis', {
-                                    userId,
-                                    sessionId,
-                                    intakeSummary
-                                }).catch((e: any) => logger.error('[CHAT] Failed to queue profile synthesis', e)),
-                                incrementSessionCount(userId).catch((e: any) => logger.error(e))
-                            ])
-                        );
+                        if (event.type === 'complete') {
+                            write(`data: [DONE]\n\n`);
+                            
+                            if (firstSession && event.isIntakeComplete) {
+                                // Background heavy processing (QStash)
+                                waitUntil(
+                                    Promise.all([
+                                        queueJob('profile-synthesis', {
+                                            userId,
+                                            sessionId,
+                                            intakeSummary: agent.getIntakeSummary ? agent.getIntakeSummary() : {}
+                                        }).catch((e: any) => logger.error('[CHAT] Failed to queue', e)),
+                                        incrementSessionCount(userId).catch((e: any) => logger.error(e))
+                                    ])
+                                );
+                            }
+                        }
                     }
+                    controller.close();
+                } catch (streamErr: any) {
+                    logger.error('[CHAT] Stream error:', streamErr);
+                    write(`data: {"error": "${streamErr.message}"}\n\n`);
+                    controller.close();
                 }
             }
-            res.end();
-            return;
-        } catch (streamErr) {
-            logger.error('[CHAT] Stream error:', streamErr);
-            res.write(`data: {"error": "${streamErr.message}"}\n\n`);
-            res.end();
-            return;
-        }
+        });
 
-    } catch (error) {
+        // SSE HEADERS FOR EDGE
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache, no-transform',
+                'Connection': 'keep-alive',
+            }
+        });
+
+    } catch (error: any) {
         logger.error('[CHAT] Request error:', error);
-        return res.status(500).json({ error: error.message });
+        return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 }

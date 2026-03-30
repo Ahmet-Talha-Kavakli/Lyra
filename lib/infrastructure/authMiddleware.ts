@@ -17,13 +17,26 @@ export async function verifyAuth(req: VercelRequest): Promise<{
   error?: string;
 }> {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { success: false, error: 'Missing authorization header' };
+    // Extract token from Cookie OR Authorization header
+    let token = '';
+    
+    // 1. Try to get securely from HttpOnly Cookie
+    if (req.headers.cookie) {
+      const cookies = req.headers.cookie.split(';');
+      const lyraTokenCookie = cookies.find(c => c.trim().startsWith('lyra_access_token='));
+      if (lyraTokenCookie) {
+        token = lyraTokenCookie.split('=')[1];
+      }
     }
 
-    const token = authHeader.slice(7); // Remove "Bearer "
+    // 2. Fallback to Authorization header
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.slice(7);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Missing authorization' };
+    }
 
     // Verify token with Supabase
     const { data, error } = await supabase.auth.getUser(token);

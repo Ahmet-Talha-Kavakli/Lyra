@@ -100,7 +100,14 @@ export default async function handler(
 
     logger.info('User signup successful', { userId, email });
 
-    // Return tokens and user info
+    // SET SECURE HTTP-ONLY COOKIES
+    const secureFlag = process.env.NODE_ENV === 'production' ? 'Secure;' : '';
+    res.setHeader('Set-Cookie', [
+      `lyra_access_token=${sessionData.session.access_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=${sessionData.session.expires_in}`,
+      `lyra_refresh_token=${sessionData.session.refresh_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=2592000`
+    ]);
+
+    // Return user info
     return res.status(201).json({
       user: {
         id: userId,
@@ -109,8 +116,6 @@ export default async function handler(
         lastName
       },
       session: {
-        accessToken: sessionData.session.access_token,
-        refreshToken: sessionData.session.refresh_token,
         expiresIn: sessionData.session.expires_in,
         expiresAt: sessionData.session.expires_at
       }

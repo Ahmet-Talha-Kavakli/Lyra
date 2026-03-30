@@ -51,8 +51,6 @@ export default function SignupForm({ onSwitchMode }: SignupFormProps) {
       }
 
       const data = await response.json();
-      localStorage.setItem('lyra_token', data.accessToken);
-      setAccessToken(data.accessToken);
       setUser(data.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

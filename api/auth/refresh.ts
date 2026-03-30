@@ -34,10 +34,15 @@ export default async function handler(
 
     logger.info('Token refreshed', { userId: data.user?.id });
 
+    // SET SECURE HTTP-ONLY COOKIES
+    const secureFlag = process.env.NODE_ENV === 'production' ? 'Secure;' : '';
+    res.setHeader('Set-Cookie', [
+      `lyra_access_token=${data.session.access_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=${data.session.expires_in}`,
+      `lyra_refresh_token=${data.session.refresh_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=2592000`
+    ]);
+
     return res.status(200).json({
       session: {
-        accessToken: data.session.access_token,
-        refreshToken: data.session.refresh_token,
         expiresIn: data.session.expires_in,
         expiresAt: data.session.expires_at
       }

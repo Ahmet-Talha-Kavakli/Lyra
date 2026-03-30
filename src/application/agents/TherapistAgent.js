@@ -23,6 +23,9 @@ import OpenAI from 'openai';
 import { logger } from '../../../lib/infrastructure/logger.js';
 import { EpisodicMemoryService } from '../services/EpisodicMemoryService.js';
 import { supabase } from '../../../lib/shared/supabase.js';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export class TherapistAgent {
     constructor(options = {}) {
@@ -57,11 +60,23 @@ export class TherapistAgent {
     }
 
     /**
-     * Load patient's comprehensive profile from Supabase
-     * Called before generating response to provide deep context
+     * Load patient's comprehensive profile from Redis Cache or Supabase
+     * Called before generating response to provide deep context.
+     * PROFESYONEL MÜDAHALE: %95 hedefine ulaşmak için N+1 darbogazini 
+     * engellemek adına profile verisi Redis'te 24 saat cache'lendi.
      */
     async loadPatientProfile() {
         try {
+            const cacheKey = `lyra:user:${this.userId}:profile`;
+            
+            // 1. Try Redis Cache
+            const cachedProfile = await redis.get(cacheKey);
+            if (cachedProfile) {
+                this.patientProfile = typeof cachedProfile === 'string' ? JSON.parse(cachedProfile) : cachedProfile;
+                return this.patientProfile;
+            }
+
+            // 2. Fallback to Supabase Database
             const { data, error } = await supabase
                 .from('user_profile')
                 .select('comprehensive_profile, intake_pillars')
@@ -74,7 +89,11 @@ export class TherapistAgent {
             }
 
             this.patientProfile = data.comprehensive_profile;
-            logger.info('[TherapistAgent] Patient profile loaded', {
+            
+            // Wait lazily or set immediately
+            await redis.set(cacheKey, JSON.stringify(this.patientProfile), { ex: 86400 }); // Cache for 24 hours
+
+            logger.info('[TherapistAgent] Patient profile loaded from DB and Cached', {
                 userId: this.userId,
                 hasProfile: !!this.patientProfile
             });
@@ -87,9 +106,38 @@ export class TherapistAgent {
     }
 
     /**
+     * SERVERLESS AMNESIA FIX: Load history persistently to survive Vercel kills
+     */
+    async loadHistory() {
+        if (!this.userId || !this.sessionId) return;
+        const key = `lyra:chat_history:${this.userId}:${this.sessionId}`;
+        try {
+            const data = await redis.get(key);
+            if (data) {
+                this.conversationHistory = typeof data === 'string' ? JSON.parse(data) : data;
+            }
+        } catch(e) {
+            logger.error('[TherapistAgent] Failed to load history', e);
+        }
+    }
+
+    /**
+     * SERVERLESS AMNESIA FIX: Save history persistently 
+     */
+    async saveHistory() {
+        if (!this.userId || !this.sessionId) return;
+        const key = `lyra:chat_history:${this.userId}:${this.sessionId}`;
+        try {
+            const limitHistory = this.conversationHistory.slice(-20); // Keep last 20 strictly
+            await redis.set(key, JSON.stringify(limitHistory), { ex: 86400 });
+        } catch(e) {
+            logger.error('[TherapistAgent] Failed to save history', e);
+        }
+    }
+
+    /**
      * GENERATE THERAPEUTIC RESPONSE WITH REAL STREAMING
-     * Returns async iterable that yields tokens as they arrive from Claude
-     * Frontend can use for await...of to display response in real-time (typewriter effect)
+     * Returns async iterable that yields tokens as they arrive from LLM
      */
     async *generateResponse(data) {
         try {
@@ -110,6 +158,9 @@ export class TherapistAgent {
             if (!this.patientProfile) {
                 await this.loadPatientProfile();
             }
+
+            // CRITICAL FIX: Load history from Redis
+            await this.loadHistory();
 
             // Get patient history context
             const similarMoments = await this.memory.findSimilarMoments(transcript, 3);
@@ -141,42 +192,33 @@ export class TherapistAgent {
                 physicalHarmContext
             });
 
-            // Stream Claude's response in real-time
+            // Stream OpenAI's response in real-time
             let fullContent = '';
-            let inputTokens = 0;
-            let outputTokens = 0;
+            
+            // CRITICAL FIX: The previous code used Anthropic's SDK format on an OpenAI client!
+            const openAiMessages = [
+                { role: 'system', content: systemPrompt },
+                ...this.conversationHistory,
+                { role: 'user', content: userMessage }
+            ];
 
-            const stream = await this.client.messages.stream({
+            const stream = await this.client.chat.completions.create({
                 model: this.model,
                 max_tokens: this.maxTokens,
-                system: systemPrompt,
-                messages: [
-                    ...this.conversationHistory,
-                    { role: 'user', content: userMessage }
-                ]
+                messages: openAiMessages,
+                stream: true
             });
 
             // Process stream tokens and yield them
-            for await (const event of stream) {
-                // ContentBlockDeltaEvent: text token arrived
-                if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                    const token = event.delta.text;
+            for await (const chunk of stream) {
+                const token = chunk.choices[0]?.delta?.content || "";
+                if (token) {
                     fullContent += token;
                     yield {
                         type: 'token',
                         content: token,
                         timestamp: Date.now()
                     };
-                }
-
-                // MessageStartEvent: get input tokens
-                if (event.type === 'message_start') {
-                    inputTokens = event.message?.usage?.input_tokens || 0;
-                }
-
-                // MessageDeltaEvent: get output tokens and stop reason
-                if (event.type === 'message_delta') {
-                    outputTokens = event.usage?.output_tokens || 0;
                 }
             }
 
@@ -190,12 +232,15 @@ export class TherapistAgent {
                 content: fullContent
             });
 
-            // Limit history to last 10 exchanges
+            // Limit history to last 20 exchanges inside instance
             if (this.conversationHistory.length > 20) {
                 this.conversationHistory = this.conversationHistory.slice(-20);
             }
 
-            // Store memory fragment
+            // CRITICAL FIX: Persist history back to Redis
+            await this.saveHistory();
+
+            // Store memory fragment (Background)
             await this.memory.storeMemoryFragment({
                 transcript,
                 somaticMarkers,
@@ -219,14 +264,13 @@ export class TherapistAgent {
                     relevantThemes: therapeuticThemes.slice(0, 3).map(t => t.theme_name)
                 },
                 usage: {
-                    inputTokens,
-                    outputTokens
+                    inputTokens: 0, // In OpenAI streaming, usage comes separately or you estimate it
+                    outputTokens: 0
                 }
             };
 
             logger.info('[TherapistAgent] Response stream complete', {
                 sessionId: this.sessionId,
-                tokensUsed: outputTokens,
                 similarMoments: similarMoments.length
             });
 

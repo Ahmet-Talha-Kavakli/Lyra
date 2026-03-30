@@ -35,6 +35,13 @@ export default async function handler(
 
     logger.info('Logout successful', { userId });
 
+    // CLEAR SECURE HTTP-ONLY COOKIES
+    const secureFlag = process.env.NODE_ENV === 'production' ? 'Secure;' : '';
+    res.setHeader('Set-Cookie', [
+      `lyra_access_token=; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=0`,
+      `lyra_refresh_token=; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=0`
+    ]);
+
     return res.status(200).json({ message: 'Logged out successfully' });
 
   } catch (error: any) {

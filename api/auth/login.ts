@@ -46,15 +46,22 @@ export default async function handler(
 
     logger.info('Login successful', { userId: data.user.id, email });
 
+    // SET SECURE HTTP-ONLY COOKIES TO PREVENT XSS
+    const secureFlag = process.env.NODE_ENV === 'production' ? 'Secure;' : '';
+    res.setHeader('Set-Cookie', [
+      `lyra_access_token=${data.session.access_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=${data.session.expires_in}`,
+      `lyra_refresh_token=${data.session.refresh_token}; Path=/; HttpOnly; ${secureFlag} SameSite=Strict; Max-Age=2592000`
+    ]);
+
     return res.status(200).json({
       user: {
         id: data.user.id,
         email: data.user.email,
         firstName: data.user.user_metadata?.firstName || ''
       },
+      // Optionally keeping session in JSON for backward compatibility during transition, 
+      // but client MUST stop saving it to localStorage
       session: {
-        accessToken: data.session.access_token,
-        refreshToken: data.session.refresh_token,
         expiresIn: data.session.expires_in,
         expiresAt: data.session.expires_at
       }
