@@ -71,7 +71,7 @@ export async function queueJob(
     const webhookUrl = options?.callbackUrl ||
       `${process.env.API_URL || 'http://localhost:3000'}/api/webhooks/qstash`;
 
-    const messageId = await qstash.publishJSON({
+    const response = await qstash.publishJSON({
       topic: `lyra-jobs-${jobType}`,
       body: {
         jobType,
@@ -88,11 +88,11 @@ export async function queueJob(
 
     logger.info('[queueJob] Job queued', {
       jobType,
-      messageId,
+      messageId: response.messageId,
       delaySeconds: options?.delaySeconds || 0
     });
 
-    return messageId;
+    return response.messageId;
   } catch (error: any) {
     logger.error('[queueJob] Failed to queue job', {
       jobType,
@@ -111,21 +111,24 @@ export async function profileSynthesisJob(data: {
   userId: string;
   sessionId: string;
   intakeSummary: Record<string, any>;
-}): Promise<{ success: boolean }> {
+}): Promise<{ success: boolean; profile?: any }> {
   try {
     logger.info('[Job] Profile synthesis starting', {
       userId: data.userId,
       sessionId: data.sessionId
     });
 
-    // TODO: Import and call generateComprehensiveProfile here
-    // const profile = await generateComprehensiveProfile(data.userId, data.sessionId, data.intakeSummary);
+    // Import dynamically or statically. We do it here statically at the top of the file,
+    // actually let me check if I can just import at the top of the file.
+    const { generateComprehensiveProfile } = await import('../../src/services/queue/profileSynthesisJob.js');
+    
+    const profile = await generateComprehensiveProfile(data.userId, data.sessionId, data.intakeSummary);
 
     logger.info('[Job] Profile synthesis complete', { userId: data.userId });
-    return { success: true };
+    return { success: true, profile };
   } catch (error: any) {
     logger.error('[Job] Profile synthesis failed', { error: error.message });
-    throw error; // QStash will retry
+    throw error; // QStash will retry automatically
   }
 }
 

@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { createClient } from '@supabase/supabase-js';
 import ChatMessages from '../../components/chat/ChatMessages';
 import ChatInput from '../../components/chat/ChatInput';
 import MediaControls from '../../components/chat/MediaControls';
 import SessionHeader from '../../components/chat/SessionHeader';
+
+// Supabase client for Realtime
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || '',
+  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+);
 
 export default function ChatPage() {
   const user = useAuthStore(state => state.user);
@@ -16,7 +23,7 @@ export default function ChatPage() {
   const endSession = useSessionStore(state => state.endSession);
   const addMessage = useSessionStore(state => state.addMessage);
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const realtimeChannelRef = useRef<any>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
 
@@ -27,75 +34,71 @@ export default function ChatPage() {
     }
   }, [currentSession, createSession]);
 
-  // WebSocket connection
+  // Supabase Realtime subscription (replaces WebSocket)
   useEffect(() => {
-    if (!currentSession || !accessToken) return;
+    if (!currentSession || !user?.id) return;
 
-    const connectWebSocket = () => {
-      setIsConnecting(true);
-      setWsError(null);
+    setIsConnecting(true);
+    setWsError(null);
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${import.meta.env.VITE_WS_URL || 'localhost:3000'}/ws`;
+    try {
+      // Subscribe to therapist responses via Supabase Realtime
+      const channelName = `therapist:${currentSession.id}`;
 
-      try {
-        // SECURITY: Token in Authorization header, not URL
-        wsRef.current = new WebSocket(wsUrl, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'broadcast',
+          {
+            event: 'message'
+          },
+          (payload) => {
+            // Receive message from therapist
+            if (payload.payload?.type === 'token') {
+              // Streaming token received
+              addMessage({
+                id: `msg_${payload.payload.messageId || Date.now()}`,
+                role: 'assistant',
+                content: payload.payload.content,
+                timestamp: new Date(),
+                videoAnalysis: payload.payload.videoAnalysis
+              });
+            } else if (payload.payload?.type === 'complete') {
+              // Message complete
+              console.log('Message complete', payload.payload);
+            }
+          }
+        )
+        .on('presence', { event: 'sync' }, () => {
+          console.log('Therapist presence updated');
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setIsConnecting(false);
+            console.log('Supabase Realtime connected');
+          } else if (status === 'CHANNEL_ERROR') {
+            setWsError('Connection error');
+            setIsConnecting(false);
           }
         });
 
-        wsRef.current.onopen = () => {
-          setIsConnecting(false);
-          console.log('WebSocket connected');
-        };
+      realtimeChannelRef.current = channel;
 
-        wsRef.current.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'message') {
-              addMessage({
-                id: data.id,
-                role: 'assistant',
-                content: data.content,
-                timestamp: new Date(),
-                videoAnalysis: data.videoAnalysis
-              });
-            }
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
-          }
-        };
-
-        wsRef.current.onerror = (error) => {
-          setWsError('Connection error. Retrying...');
-          console.error('WebSocket error:', error);
-        };
-
-        wsRef.current.onclose = () => {
-          console.log('WebSocket disconnected');
-          // Auto-reconnect after 3 seconds
-          setTimeout(connectWebSocket, 3000);
-        };
-      } catch (error) {
-        setWsError('Failed to connect');
-        console.error('WebSocket connection failed:', error);
-      }
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [currentSession, accessToken, addMessage]);
+      return () => {
+        if (realtimeChannelRef.current) {
+          supabase.removeChannel(realtimeChannelRef.current);
+        }
+      };
+    } catch (error) {
+      setWsError('Failed to connect');
+      setIsConnecting(false);
+      console.error('Realtime connection failed:', error);
+    }
+  }, [currentSession, user?.id, addMessage]);
 
   const handleSendMessage = async (content: string) => {
-    if (!currentSession || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setWsError('Not connected. Please wait...');
+    if (!currentSession) {
+      setWsError('Session not ready');
       return;
     }
 
@@ -107,14 +110,58 @@ export default function ChatPage() {
       timestamp: new Date()
     });
 
-    // Send to backend
+    // Send to API endpoint (instead of WebSocket)
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'message',
-        sessionId: currentSession.id,
-        content,
-        userId: user?.id
-      }));
+      const response = await fetch('/api/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          messages: currentSession.messages.map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          sessionId: currentSession.id,
+          userId: user?.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(line.slice(6));
+              if (json.choices?.[0]?.delta?.content) {
+                addMessage({
+                  id: `msg_${json.id || Date.now()}`,
+                  role: 'assistant',
+                  content: json.choices[0].delta.content,
+                  timestamp: new Date()
+                });
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
       setWsError('Failed to send message');
