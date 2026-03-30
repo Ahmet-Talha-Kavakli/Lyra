@@ -56,10 +56,40 @@ export class IntakeAgent {
      * GENERATE INTAKE RESPONSE
      * Async generator that yields tokens in real-time
      * Each message explores one pillar naturally
+     *
+     * CRITICAL: Receives full clinicalData context including:
+     * - somaticMarkers (facial emotion)
+     * - objectContext (dangerous objects in environment)
+     * - physicalHarmContext (injuries/trauma signs)
+     *
+     * If safety concern detected → CRISIS MODE (override intake)
      */
-    async *generateResponse(transcript) {
+    async *generateResponse(clinicalData) {
         try {
             this.messageCount++;
+
+            // Extract data from clinicalData object
+            const transcript = clinicalData.transcript;
+            const objectContext = clinicalData.objectContext || {};
+            const physicalHarmContext = clinicalData.physicalHarmContext || {};
+            const somaticMarkers = clinicalData.somaticMarkers || {};
+
+            // ── CRITICAL: Check for safety concerns FIRST ──
+            const crisisDetected = this.detectCrisis(objectContext, physicalHarmContext);
+
+            // If crisis detected, override intake flow and address safety
+            if (crisisDetected) {
+                logger.warn('[IntakeAgent] CRISIS DETECTED - Entering safety mode', {
+                    userId: this.userId,
+                    crisisReason: crisisDetected.reason,
+                    threatLevel: objectContext.threat_level,
+                    harmIndicators: physicalHarmContext.indicators?.length
+                });
+
+                // Yield crisis response instead of normal intake
+                yield* this.generateCrisisResponse(transcript, crisisDetected, objectContext, physicalHarmContext);
+                return;
+            }
 
             // Determine which pillar to explore next
             const nextPillar = this.getNextPillar();
@@ -67,8 +97,8 @@ export class IntakeAgent {
             // Build system prompt with intake-specific instructions
             const systemPrompt = this.buildIntakeSystemPrompt(nextPillar);
 
-            // Build user message with context
-            const userMessage = this.buildIntakeUserMessage(transcript, nextPillar);
+            // Build user message with context (including somatic + environmental data)
+            const userMessage = this.buildIntakeUserMessage(transcript, nextPillar, clinicalData);
 
             // Stream Claude's response
             let fullContent = '';
@@ -163,6 +193,146 @@ export class IntakeAgent {
     }
 
     /**
+     * Detect if there are immediate safety concerns
+     * Returns { crisis: true, reason: "..." } or null
+     */
+    detectCrisis(objectContext, physicalHarmContext) {
+        // High threat level (weapons, danger)
+        if (objectContext.threat_level === 'high') {
+            return {
+                crisis: true,
+                reason: 'HIGH_THREAT_ENVIRONMENT',
+                threatLevel: 'high',
+                objects: objectContext.detected_objects || []
+            };
+        }
+
+        // Severe physical harm indicators
+        if (physicalHarmContext.indicators?.length > 0) {
+            const severe = physicalHarmContext.indicators.some(
+                ind => ind.severity === 'severe' || ind.type === 'bleeding'
+            );
+            if (severe) {
+                return {
+                    crisis: true,
+                    reason: 'SEVERE_PHYSICAL_HARM',
+                    indicators: physicalHarmContext.indicators,
+                    requiresMedicalAttention: true
+                };
+            }
+        }
+
+        // Multiple harm indicators (pattern of abuse)
+        if (physicalHarmContext.indicators?.length >= 2 && physicalHarmContext.has_prior_harm) {
+            return {
+                crisis: true,
+                reason: 'PATTERN_OF_HARM',
+                indicators: physicalHarmContext.indicators,
+                hasHistory: true
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate crisis response instead of normal intake
+     * Safety supersedes intake protocol
+     */
+    async *generateCrisisResponse(transcript, crisisInfo, objectContext, physicalHarmContext) {
+        try {
+            const crisisSystemPrompt = `You are Lyra. THIS IS A CRISIS SITUATION.
+
+SAFETY FIRST PROTOCOL:
+Your intake session is PAUSED. The patient's safety is the only priority right now.
+
+CRISIS DETAILS:
+${crisisInfo.reason === 'HIGH_THREAT_ENVIRONMENT' ? `
+THREAT IN ENVIRONMENT:
+Objects detected: ${objectContext.detected_objects?.map(o => o.name).join(', ')}
+Threat level: HIGH
+This patient may be in immediate danger.
+` : ''}
+
+${crisisInfo.reason === 'SEVERE_PHYSICAL_HARM' ? `
+SEVERE PHYSICAL HARM DETECTED:
+Injuries: ${crisisInfo.indicators?.map(i => \`\${i.type} on \${i.location}\`).join(', ')}
+Severity: SEVERE (requires medical attention)
+This may indicate abuse, violence, or self-harm.
+` : ''}
+
+${crisisInfo.reason === 'PATTERN_OF_HARM' ? `
+PATTERN OF HARM DETECTED:
+Multiple injuries: ${crisisInfo.indicators?.map(i => \`\${i.type}\`).join(', ')}
+Prior harm history: YES
+Pattern indicates ongoing abuse or crisis cycle.
+` : ''}
+
+YOUR RESPONSE:
+1. Express immediate concern without judgment
+2. Validate their safety needs as priority
+3. Ask: "Are you safe right now?"
+4. Offer immediate resources (hotline, emergency contact, hospital)
+5. Make clear: This conversation continues, but first we handle safety
+
+TONE: Warm, urgent, caring. Not alarming. Professional crisis protocol.`;
+
+            const crisisUserMessage = `Patient said: "${transcript}"
+
+CONTEXT: Safety concern detected. Proceed with crisis protocol.
+Remember: You're not giving up on intake, just prioritizing their immediate safety.`;
+
+            let fullContent = '';
+            const stream = await this.client.messages.stream({
+                model: this.model,
+                max_tokens: this.maxTokens,
+                system: crisisSystemPrompt,
+                messages: [
+                    { role: 'user', content: crisisUserMessage }
+                ]
+            });
+
+            for await (const event of stream) {
+                if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                    const token = event.delta.text;
+                    fullContent += token;
+                    yield {
+                        type: 'token',
+                        content: token,
+                        timestamp: Date.now()
+                    };
+                }
+            }
+
+            yield {
+                type: 'complete',
+                totalContent: fullContent,
+                crisisMode: true,
+                crisisReason: crisisInfo.reason,
+                isSafetyCheck: true,
+                context: {
+                    crisisDetected: true,
+                    threatLevel: objectContext.threat_level,
+                    harmIndicators: physicalHarmContext.indicators?.length || 0
+                }
+            };
+
+            logger.info('[IntakeAgent] Crisis response completed', {
+                userId: this.userId,
+                crisisReason: crisisInfo.reason
+            });
+
+        } catch (error) {
+            logger.error('[IntakeAgent] Crisis response failed:', error);
+            yield {
+                type: 'error',
+                error: error.message
+            };
+            throw error;
+        }
+    }
+
+    /**
      * Build intake-specific system prompt
      */
     buildIntakeSystemPrompt(currentPillar) {
@@ -234,8 +404,9 @@ Remember: You're building trust and gathering a map. No rushing. No judgment. Pu
 
     /**
      * Build intake-specific user message
+     * Now includes somatic + environmental context for richer understanding
      */
-    buildIntakeUserMessage(transcript, currentPillar) {
+    buildIntakeUserMessage(transcript, currentPillar, clinicalData = {}) {
         const contextByPillar = {
             'PRESENTING_COMPLAINT': 'This is their first message. Welcome them warmly and begin exploring what brought them here today.',
             'HISTORY': 'They shared about their presenting complaint. Now explore the history and roots of these feelings.',
@@ -246,6 +417,26 @@ Remember: You're building trust and gathering a map. No rushing. No judgment. Pu
         };
 
         let message = `PATIENT MESSAGE:\n"${transcript}"\n\n`;
+
+        // Add somatic context if available
+        if (clinicalData.somaticMarkers && Object.keys(clinicalData.somaticMarkers).length > 0) {
+            message += `BODY LANGUAGE RIGHT NOW:\n`;
+            Object.entries(clinicalData.somaticMarkers).forEach(([marker, data]) => {
+                if (data.score > 0) {
+                    message += `- ${marker} (${Math.round(data.score * 100)}%)\n`;
+                }
+            });
+            message += `\n`;
+        }
+
+        // Add emotional state if available
+        if (clinicalData.emotionalState?.primary) {
+            message += `EMOTIONAL STATE: ${clinicalData.emotionalState.primary}\n`;
+            if (clinicalData.emotionalState.secondary) {
+                message += `Secondary: ${clinicalData.emotionalState.secondary}\n`;
+            }
+            message += `\n`;
+        }
 
         message += `CONTEXT: ${contextByPillar[currentPillar] || 'Continue the intake conversation.'}\n`;
         message += `CURRENT PILLAR: ${currentPillar}\n`;

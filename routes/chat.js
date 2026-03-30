@@ -240,11 +240,9 @@ router.post('/v1/api/chat/completions', chatRateLimit, validateRequest(chatCompl
             let intakeSummary = null;
 
             // ── REAL STREAMING: for await...of on async generator ──
-            const generatorInput = firstSession
-                ? userMessage
-                : clinicalData;
-
-            for await (const event of agent.generateResponse(generatorInput)) {
+            // CRITICAL: BOTH agents get FULL clinicalData context
+            // Intake agent also needs somatic + safety data!
+            for await (const event of agent.generateResponse(clinicalData)) {
 
                 // Record first token arrival time (TTFB)
                 if (firstTokenTime === null && event.type === 'token') {
