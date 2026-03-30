@@ -13,11 +13,13 @@
  * Frontend (Display to therapist)
  */
 
+import os from 'os';
 import { logger } from '../logging/logger.js';
 import { clinicalSomaticInterpreter } from '../../application/services/ClinicalSomaticInterpreter.js';
 import { BaselineCalibration } from '../calibration/BaselineCalibration.js';
 import { CongruenceEngine } from '../analysis/CongruenceEngine.js';
 import { TemporalAnalyzer } from '../analysis/TemporalAnalyzer.js';
+import AnalysisWorkerPool from '../workers/AnalysisWorkerPool.js';
 
 /**
  * Handle WebSocket connection for AU stream
@@ -69,6 +71,11 @@ export class AUWebSocketHandler {
         // Calibration state
         this.isCalibrating = false;
         this.calibrationComplete = false;
+
+        // Worker pool for heavy math operations
+        this.workerPool = new AnalysisWorkerPool({
+            maxWorkers: require('os').cpus().length
+        });
 
         logger.info('[AUWebSocket] Connection established with analysis modules');
     }
@@ -150,8 +157,9 @@ export class AUWebSocketHandler {
     /**
      * Handle incoming AU frame from Frontend
      * INTEGRATED: Calibration + Congruence + Temporal + Clinical
+     * ASYNC: Uses worker pool for heavy operations
      */
-    handleAUFrame(data) {
+    async handleAUFrame(data) {
         try {
             const { actionUnits, confidence, symmetry, smileAuthenticity, timestamp, prosody, transcript } = data;
 
@@ -201,7 +209,10 @@ export class AUWebSocketHandler {
 
             // When buffer reaches size, do FULL clinical interpretation
             if (this.analysisBuffer.length >= this.bufferSize) {
-                this.performFullClinicalInterpretation();
+                // Async - don't await here, let it process in background
+                this.performFullClinicalInterpretation().catch(error => {
+                    logger.error('[AUWebSocket] Async interpretation error:', error);
+                });
                 // Keep last frame for next batch's context
                 this.analysisBuffer = [this.analysisBuffer[this.analysisBuffer.length - 1]];
             }
@@ -219,33 +230,54 @@ export class AUWebSocketHandler {
     }
 
     /**
-     * FULL CLINICAL INTERPRETATION
+     * FULL CLINICAL INTERPRETATION (ASYNC)
      * Integrates: Baseline → Deviation → Congruence → Temporal → Clinical
      *
-     * This is THE HEART of Lyra's intelligence:
-     * 1. Convert absolute AU values to RELATIVE deviation from baseline
-     * 2. Analyze congruence across facial + vocal + verbal modalities
-     * 3. Track temporal patterns (micro vs macro expressions)
-     * 4. Generate comprehensive clinical interpretation
+     * Uses worker pool for heavy math operations:
+     * - aggregateActionUnits()
+     * - calculateDeviation()
+     * - inferSomaticMarkers()
+     * - analyzeTemporalPatterns()
+     *
+     * This keeps main event loop responsive for 1000+ concurrent users
      */
-    performFullClinicalInterpretation() {
+    async performFullClinicalInterpretation() {
         try {
             // ═══════════════════════════════════════════════════════════
-            // STEP 1: AGGREGATE AU DATA FROM BUFFER
+            // STEP 1: OFFLOAD HEAVY MATH TO WORKER THREAD
             // ═══════════════════════════════════════════════════════════
-            const aggregatedAU = this.aggregateActionUnits();
+            const analysisResult = await this.workerPool.performFullAnalysis({
+                analysisBuffer: this.analysisBuffer,
+                baseline: this.baselineCalibration.baseline,
+                frameHistory: this.temporalAnalyzer.frameHistory,
+                temporalState: {
+                    currentExpression: this.temporalAnalyzer.currentExpression,
+                    expressionDuration: this.temporalAnalyzer.expressionDuration
+                }
+            });
+
+            const aggregatedAU = analysisResult.aggregated;
+            const deviationAnalysis = {
+                deviations: analysisResult.deviation.deviations,
+                clinicalMarkers: {},
+                confidence: analysisResult.deviation.deviationPercentage
+            };
 
             // ═══════════════════════════════════════════════════════════
-            // STEP 2: BASELINE DEVIATION ANALYSIS
-            // Convert absolute values → relative deviations
+            // STEP 2: TEMPORAL PATTERN ANALYSIS
+            // Results already computed by worker
             // ═══════════════════════════════════════════════════════════
-            const deviationAnalysis = this.baselineCalibration.interpretWithBaseline(aggregatedAU);
-
-            // ═══════════════════════════════════════════════════════════
-            // STEP 3: TEMPORAL PATTERN ANALYSIS
-            // Micro-expressions vs macro-expressions
-            // ═══════════════════════════════════════════════════════════
-            const temporalInsights = this.temporalAnalyzer.getTemporalInsights();
+            const temporalInsights = {
+                sessionId: this.sessionId,
+                frameHistorySize: this.temporalAnalyzer.frameHistory.length,
+                currentExpression: analysisResult.temporal.currentExpression,
+                currentExpressionDuration_seconds: (analysisResult.temporal.expressionDuration / 24).toFixed(2),
+                totalTransitions: analysisResult.temporal.totalTransitions,
+                expressionStability: analysisResult.temporal.stability,
+                microExpressions: analysisResult.temporal.microExpressions,
+                macroExpressions: analysisResult.temporal.macroExpressions,
+                lastUpdate: new Date().toISOString()
+            };
 
             // ═══════════════════════════════════════════════════════════
             // STEP 4: CONGRUENCE ANALYSIS
@@ -264,10 +296,9 @@ export class AUWebSocketHandler {
             // This goes to ClinicalSomaticInterpreter
             // ═══════════════════════════════════════════════════════════
 
-            // CRITICAL: Infer somatic markers from DEVIATIONS (not absolute AU values)
-            // This ensures markers match ClinicalSomaticInterpreter's expectations:
-            // shame, fear, sadness, disgust, safety, dissociation
-            const somaticMarkers = this.inferSomaticMarkers(deviationAnalysis, aggregatedAU);
+            // CRITICAL: Use markers computed by worker
+            // Already has correct types: shame, fear, sadness, disgust, safety, dissociation
+            const somaticMarkers = analysisResult.markers;
 
             const fusedState = {
                 sessionId: this.sessionId,

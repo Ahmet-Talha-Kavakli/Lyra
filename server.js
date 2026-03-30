@@ -18,6 +18,7 @@ import { securityHeadersMiddleware, apiSecurityHeadersMiddleware } from './lib/i
 import { getCacheHealth } from './lib/infrastructure/cacheManager.js';
 import { getOptimizationStats, checkConnectionPoolHealth } from './lib/infrastructure/databaseOptimizer.js';
 import { apiDocsEndpoint, swaggerUIEndpoint, getEndpointStats } from './lib/infrastructure/apiDocumentation.js';
+import setupWebSocket from './lib/infrastructure/websocket.js';
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 import authRouter      from './routes/auth.js';
@@ -47,11 +48,16 @@ app.use(helmet({
 }));
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
+// ENTERPRISE SECURITY: Whitelist only specific, approved origins
+// Production Vercel deployments: explicitly add your exact domain
 const ALLOWED_ORIGINS = [
     'http://localhost:3001',
     'http://localhost:5173',
     ...(config.FRONTEND_URL ? [config.FRONTEND_URL] : []),
     ...(config.FRONTEND_URL_PREVIEW ? [config.FRONTEND_URL_PREVIEW] : []),
+    // PRODUCTION ONLY: Add your exact Vercel deployment URL here
+    // Example: 'https://lyra-app.vercel.app' (NOT a regex pattern)
+    ...(config.VERCEL_FRONTEND_URL ? [config.VERCEL_FRONTEND_URL] : []),
 ];
 
 app.use(cors({
@@ -63,7 +69,7 @@ app.use(cors({
             }
             return callback(null, true); // dev: izin ver
         }
-        if (/\.vercel\.app$/.test(origin)) return callback(null, true);
+        // SECURITY: Use exact string matching only (no regex patterns that can be bypassed)
         if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
         return callback(new Error('CORS: Origin izinli değil'));
     },
@@ -177,6 +183,11 @@ if (process.env.VERCEL !== '1') {
     server = app.listen(port, () => {
         logger.info('Lyra Brain başlatıldı', { port, env: config.NODE_ENV });
     });
+
+    // ─── WEBSOCKET SETUP (Critical: attach to HTTP server, not Express app) ────
+    // WebSocket requires raw HTTP server for upgrade event handling
+    setupWebSocket(server);
+    logger.info('WebSocket server initialized on /somatic-analysis');
 }
 
 // ─── GRACEFUL SHUTDOWN ────────────────────────────────────────────────────────
