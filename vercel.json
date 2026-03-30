@@ -2,10 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "middleware.ts",
-      "use": "@vercel/node"
-    },
-    {
       "src": "api/**/*.{js,ts}",
       "use": "@vercel/node"
     },
