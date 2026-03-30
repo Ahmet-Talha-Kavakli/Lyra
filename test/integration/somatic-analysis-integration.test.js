@@ -287,4 +287,71 @@ describe('Somatic Analysis Integration', () => {
         // Frame should be buffered regardless of calibration status
         expect(handler.analysisBuffer.length).toBeGreaterThan(0);
     });
+
+    it('should generate deviation-based somatic markers matching ClinicalSomaticInterpreter expectations', () => {
+        handler.isCalibrating = false;
+
+        // Setup baseline
+        handler.baselineCalibration.baseline = {
+            AU1: 0, AU4: 0.5, AU6: 1, AU12: 1,
+            AU5: 0, AU26: 0, AU7: 0.5, AU9: 0, AU10: 0, AU15: 0,
+            symmetry: 0.95,
+            expression_intensity: 0
+        };
+        handler.baselineCalibration.calibrationQuality = 0.85;
+
+        // Create deviation data with significant changes
+        const deviationAnalysis = {
+            deviations: {
+                AU1: { baseline: 0, current: 1.5, deviation: 1.5 },     // Sadness
+                AU4: { baseline: 0.5, current: 3.0, deviation: 2.5 },   // Shame
+                AU5: { baseline: 0, current: 2.0, deviation: 2.0 },     // Fear
+                AU6: { baseline: 1, current: 3.0, deviation: 2.0 },     // Smile component
+                AU7: { baseline: 0.5, current: 2.5, deviation: 2.0 },   // Dissociation
+                AU9: { baseline: 0, current: 1.5, deviation: 1.5 },     // Disgust
+                AU10: { baseline: 0, current: 1.2, deviation: 1.2 },    // Disgust
+                AU12: { baseline: 1, current: 3.5, deviation: 2.5 },    // Smile
+                AU15: { baseline: 0, current: 1.0, deviation: 1.0 },    // Shame
+                AU26: { baseline: 0, current: 0.5, deviation: 0.5 }     // Fear
+            },
+            clinicalMarkers: {}
+        };
+
+        const aggregatedAU = {
+            intensities: {
+                AU1: 1.5, AU4: 3.0, AU5: 2.0, AU6: 3.0,
+                AU7: 2.5, AU9: 1.5, AU10: 1.2, AU12: 3.5,
+                AU15: 1.0, AU26: 0.5
+            },
+            symmetry: 0.60,  // < 0.65 = dissociation indicator
+            confidence: 0.94,
+            smileAuthenticity: 'genuine'
+        };
+
+        // Call inferSomaticMarkers with deviations
+        const somaticMarkers = handler.inferSomaticMarkers(deviationAnalysis, aggregatedAU);
+
+        // Verify that all 6 expected markers are present
+        expect(somaticMarkers).toHaveProperty('shame');
+        expect(somaticMarkers).toHaveProperty('fear');
+        expect(somaticMarkers).toHaveProperty('sadness');
+        expect(somaticMarkers).toHaveProperty('disgust');
+        expect(somaticMarkers).toHaveProperty('safety');
+        expect(somaticMarkers).toHaveProperty('dissociation');
+
+        // Verify marker detection based on deviations
+        expect(somaticMarkers.shame.score).toBeGreaterThan(0);       // AU4 deviation > 1
+        expect(somaticMarkers.fear.score).toBeGreaterThan(0);        // AU5 deviation > 1
+        expect(somaticMarkers.sadness.score).toBeGreaterThan(0);     // AU1 deviation > 0.5
+        expect(somaticMarkers.disgust.score).toBeGreaterThan(0);     // AU9 deviation > 1
+        expect(somaticMarkers.safety.score).toBeGreaterThan(0);      // Genuine smile + deviations
+        expect(somaticMarkers.dissociation.score).toBeGreaterThan(0); // AU7 deviation > 1 + asymmetry
+
+        // Verify correct indicators are set
+        expect(somaticMarkers.shame.indicators).toContain('brow_lowering');
+        expect(somaticMarkers.fear.indicators).toContain('eye_widening');
+        expect(somaticMarkers.sadness.indicators).toContain('inner_brow_raise');
+        expect(somaticMarkers.disgust.indicators).toContain('nose_wrinkle');
+        expect(somaticMarkers.dissociation.indicators).toContain('eye_tension');
+    });
 });

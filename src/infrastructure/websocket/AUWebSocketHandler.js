@@ -263,6 +263,12 @@ export class AUWebSocketHandler {
             // STEP 5: CREATE COMPREHENSIVE SOMATIC STATE
             // This goes to ClinicalSomaticInterpreter
             // ═══════════════════════════════════════════════════════════
+
+            // CRITICAL: Infer somatic markers from DEVIATIONS (not absolute AU values)
+            // This ensures markers match ClinicalSomaticInterpreter's expectations:
+            // shame, fear, sadness, disgust, safety, dissociation
+            const somaticMarkers = this.inferSomaticMarkers(deviationAnalysis, aggregatedAU);
+
             const fusedState = {
                 sessionId: this.sessionId,
                 userId: this.userId,
@@ -281,8 +287,9 @@ export class AUWebSocketHandler {
                     prosody: congruenceData.prosody
                 },
 
-                // Clinical markers (based on DEVIATION, not absolute)
-                somaticMarkers: deviationAnalysis.clinicalMarkers,
+                // Clinical markers (based on DEVIATION from baseline, not absolute)
+                // These are: shame, fear, sadness, disgust, safety, dissociation
+                somaticMarkers: somaticMarkers,
 
                 // Congruence data
                 congruenceAnalysis: congruenceAnalysis,
@@ -394,9 +401,16 @@ export class AUWebSocketHandler {
     }
 
     /**
-     * Infer somatic markers from AU data
+     * Infer somatic markers from DEVIATION-BASED AU data
+     *
+     * CRITICAL: Uses deviations from baseline, NOT absolute AU values
+     * This ensures markers match what ClinicalSomaticInterpreter expects:
+     * shame, fear, sadness, disgust, safety, dissociation
+     *
+     * @param {Object} deviationAnalysis - Output from baselineCalibration.interpretWithBaseline()
+     * @param {Object} aggregatedAU - Aggregated AU data with symmetry and authenticity
      */
-    inferSomaticMarkers(aggregatedAU) {
+    inferSomaticMarkers(deviationAnalysis, aggregatedAU) {
         const markers = {
             shame: { score: 0, indicators: [] },
             fear: { score: 0, indicators: [] },
@@ -406,41 +420,70 @@ export class AUWebSocketHandler {
             dissociation: { score: 0, indicators: [] }
         };
 
-        const au = aggregatedAU.intensities;
+        const deviations = deviationAnalysis.deviations || {};
 
-        // SHAME: Brow lowering + Lip depression
-        if ((au['AU4'] || 0) > 2 || (au['AU15'] || 0) > 2) {
-            markers.shame.score = Math.min(1, (au['AU4'] || 0) / 5 * 0.5 + (au['AU15'] || 0) / 5 * 0.5);
+        // ═══════════════════════════════════════════════════════════
+        // SHAME: Brow lowering (AU4) + Lip depression (AU15)
+        // Relative deviation from baseline indicates shame/guilt
+        // ═══════════════════════════════════════════════════════════
+        const au4Dev = deviations['AU4']?.deviation || 0;
+        const au15Dev = deviations['AU15']?.deviation || 0;
+        if (au4Dev > 1 || au15Dev > 1) {
+            markers.shame.score = Math.min(1, Math.max(au4Dev, au15Dev) / 3);
             markers.shame.indicators.push('brow_lowering', 'lip_depression');
         }
 
-        // FEAR: Eye widening + Jaw drop
-        if ((au['AU5'] || 0) > 2 || (au['AU26'] || 0) > 2) {
-            markers.fear.score = Math.min(1, (au['AU5'] || 0) / 5 * 0.5 + (au['AU26'] || 0) / 5 * 0.5);
+        // ═══════════════════════════════════════════════════════════
+        // FEAR: Eye widening (AU5) + Jaw drop (AU26)
+        // Deviation indicates fear/threat response
+        // ═══════════════════════════════════════════════════════════
+        const au5Dev = deviations['AU5']?.deviation || 0;
+        const au26Dev = deviations['AU26']?.deviation || 0;
+        if (au5Dev > 1 || au26Dev > 1) {
+            markers.fear.score = Math.min(1, (Math.max(au5Dev, au26Dev) / 3));
             markers.fear.indicators.push('eye_widening', 'jaw_dropping');
         }
 
-        // SADNESS: Inner brow + Lip corner down
-        if ((au['AU1'] || 0) > 1) {
-            markers.sadness.score = Math.min(1, (au['AU1'] || 0) / 5);
+        // ═══════════════════════════════════════════════════════════
+        // SADNESS: Inner brow raise (AU1)
+        // Elevation from baseline indicates sadness/grief
+        // ═══════════════════════════════════════════════════════════
+        const au1Dev = deviations['AU1']?.deviation || 0;
+        if (au1Dev > 0.5) {
+            markers.sadness.score = Math.min(1, au1Dev / 2);
             markers.sadness.indicators.push('inner_brow_raise');
         }
 
-        // DISGUST: Nose wrinkler + Upper lip raise
-        if ((au['AU9'] || 0) > 2 || (au['AU10'] || 0) > 2) {
-            markers.disgust.score = Math.min(1, (au['AU9'] || 0) / 5 * 0.5 + (au['AU10'] || 0) / 5 * 0.5);
-            markers.disgust.indicators.push('nose_wrinkle');
+        // ═══════════════════════════════════════════════════════════
+        // DISGUST: Nose wrinkler (AU9) + Upper lip raise (AU10)
+        // Deviation indicates disgust/rejection
+        // ═══════════════════════════════════════════════════════════
+        const au9Dev = deviations['AU9']?.deviation || 0;
+        const au10Dev = deviations['AU10']?.deviation || 0;
+        if (au9Dev > 1 || au10Dev > 1) {
+            markers.disgust.score = Math.min(1, Math.max(au9Dev, au10Dev) / 3);
+            markers.disgust.indicators.push('nose_wrinkle', 'upper_lip_raise');
         }
 
-        // SAFETY: Genuine smile (AU6 + AU12)
-        if ((au['AU12'] || 0) > 2 && (au['AU6'] || 0) > 2 && aggregatedAU.smileAuthenticity === 'genuine') {
-            markers.safety.score = 0.8;
-            markers.safety.indicators.push('genuine_smile');
+        // ═══════════════════════════════════════════════════════════
+        // SAFETY: Genuine smile (AU6 + AU12) with positive baseline
+        // Indicates felt safety, ventral vagal engagement
+        // ═══════════════════════════════════════════════════════════
+        const au6Dev = deviations['AU6']?.deviation || 0;
+        const au12Dev = deviations['AU12']?.deviation || 0;
+        if ((au12Dev > 1 && au6Dev > 0.5) && aggregatedAU?.smileAuthenticity === 'genuine') {
+            markers.safety.score = Math.min(1, 0.8);
+            markers.safety.indicators.push('genuine_smile', 'positive_engagement');
         }
 
-        // DISSOCIATION: Eye tension + Asymmetry
-        if ((au['AU7'] || 0) > 2 && aggregatedAU.symmetry < 0.6) {
-            markers.dissociation.score = 0.6;
+        // ═══════════════════════════════════════════════════════════
+        // DISSOCIATION: Eye tension (AU7) + Facial asymmetry
+        // Indicates shutdown, protective disconnection
+        // ═══════════════════════════════════════════════════════════
+        const au7Dev = deviations['AU7']?.deviation || 0;
+        const symmetry = aggregatedAU?.symmetry || 1;
+        if (au7Dev > 1 && symmetry < 0.65) {
+            markers.dissociation.score = Math.min(1, 0.7);
             markers.dissociation.indicators.push('eye_tension', 'facial_asymmetry');
         }
 
